@@ -6,6 +6,7 @@ const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const path = require("path");
 const { Session } = require("../api/session");
+const { SessionStorage } = require("../api/storage");
 const { CMD, command } = require("../api/commands");
 const { parseClientMessage, formatResponse, formatBroadcast, formatWelcome, formatError } = require("./protocol");
 
@@ -28,15 +29,38 @@ function startServer(userConfig = {}) {
   const config = { ...DEFAULT_CONFIG, ...userConfig };
   const port = config.port;
   const tableConfig = config.table;
+  const dataDir = config.dataDir || path.join(process.cwd(), "data", "sessions");
 
-  // Session setup
-  const logPath = config.logPath || path.join(process.cwd(), "session-events.jsonl");
-  const session = new Session(tableConfig, {
-    sessionId: config.sessionId || `ws-${Date.now()}`,
-    logPath,
-  });
+  const storage = new SessionStorage(dataDir);
+  let session;
 
-  // HTTP server for static files + WebSocket upgrade
+  // ── Recovery or fresh start ──────────────────────────────────────────
+  if (config.session) {
+    // Directly provided session (for tests)
+    session = config.session;
+  } else {
+    const active = storage.findActive();
+    if (active) {
+      // Recover from disk
+      console.log(`Recovering session ${active.sessionId}...`);
+      session = Session.load(active.meta.config, active.sessionId, active.eventsPath, {
+        status: active.meta.status,
+      });
+      const eventCount = session.getEventLog().length;
+      console.log(`Recovered: ${eventCount} events, ${session.getState().handsPlayed} hands`);
+    } else {
+      // Fresh session
+      const sessionId = config.sessionId || `session-${Date.now()}`;
+      const info = storage.create(sessionId, tableConfig);
+      session = new Session(tableConfig, {
+        sessionId,
+        logPath: info.eventsPath,
+      });
+      console.log(`Created new session ${sessionId}`);
+    }
+  }
+
+  // ── HTTP server for static files ─────────────────────────────────────
   const clientDir = path.join(__dirname, "..", "..", "client");
   const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png" };
 
@@ -58,19 +82,19 @@ function startServer(userConfig = {}) {
 
   httpServer.listen(port);
 
+  // ── WebSocket server ─────────────────────────────────────────────────
   const wss = new WebSocketServer({ server: httpServer });
   const clients = new Set();
 
   console.log(`Poker Lab server listening on http://localhost:${port}`);
-  console.log(`Table: ${tableConfig.tableName} (${tableConfig.sb}/${tableConfig.bb})`);
-  console.log(`Event log: ${logPath}`);
+  const st = session.getState();
+  console.log(`Table: ${st.tableName} (${st.sb}/${st.bb}) | Hands: ${st.handsPlayed}`);
   console.log();
 
   wss.on("connection", (ws) => {
     clients.add(ws);
     console.log(`Client connected (${clients.size} total)`);
 
-    // Send welcome with current state
     const state = session.getState();
     const eventCount = session.getEventLog().length;
     ws.send(formatWelcome(session.sessionId, state, eventCount));
@@ -83,9 +107,38 @@ function startServer(userConfig = {}) {
         return;
       }
 
-      const { id, cmd, payload } = parsed;
+      const { id, cmd: cmdName, payload } = parsed;
 
-      // Map wire command to internal CMD
+      // ── Server-level commands (not routed to session) ──────────────
+      if (cmdName === "GET_SESSION_LIST") {
+        const list = storage.list();
+        ws.send(formatResponse(id, { ok: true, events: [], state: { sessions: list }, error: null }));
+        return;
+      }
+
+      if (cmdName === "ARCHIVE_SESSION") {
+        const handsPlayed = session.getState().handsPlayed;
+        storage.archive(session.sessionId, handsPlayed);
+        session.status = "complete";
+
+        // Create a new active session
+        const newId = `session-${Date.now()}`;
+        const info = storage.create(newId, tableConfig);
+        session = new Session(tableConfig, { sessionId: newId, logPath: info.eventsPath });
+        console.log(`Archived old session. New session: ${newId}`);
+
+        ws.send(formatResponse(id, { ok: true, events: [], state: null, error: null }));
+        // All clients get welcome with new session state
+        const newState = session.getState();
+        const newCount = session.getEventLog().length;
+        const welcomeMsg = formatWelcome(session.sessionId, newState, newCount);
+        for (const c of clients) {
+          if (c.readyState === 1) c.send(welcomeMsg);
+        }
+        return;
+      }
+
+      // ── Session-level commands ─────────────────────────────────────
       const cmdMap = {
         CREATE_TABLE: CMD.CREATE_TABLE,
         SEAT_PLAYER: CMD.SEAT_PLAYER,
@@ -98,19 +151,15 @@ function startServer(userConfig = {}) {
         GET_HAND_LIST: CMD.GET_HAND_LIST,
       };
 
-      const internalCmd = cmdMap[cmd];
+      const internalCmd = cmdMap[cmdName];
       if (!internalCmd) {
-        ws.send(formatError(id, `Unknown command: ${cmd}`));
+        ws.send(formatError(id, `Unknown command: ${cmdName}`));
         return;
       }
 
-      // Dispatch
       const result = session.dispatch(command(internalCmd, payload));
-
-      // Send response to sender
       ws.send(formatResponse(id, result));
 
-      // Broadcast events to all OTHER clients (if any events produced)
       if (result.ok && result.events.length > 0) {
         const broadcast = formatBroadcast(result.events);
         for (const client of clients) {
@@ -118,14 +167,23 @@ function startServer(userConfig = {}) {
             client.send(broadcast);
           }
         }
+
+        // Update meta periodically
+        const handsPlayed = session.getState().handsPlayed;
+        if (handsPlayed > 0 && handsPlayed % 5 === 0) {
+          storage.updateMeta(session.sessionId, {
+            handsPlayed,
+            lastEventAt: new Date().toISOString(),
+          });
+        }
       }
 
       // Log
       if (result.ok && result.events.length > 0) {
         const types = result.events.map((e) => e.type).join(", ");
-        console.log(`[${cmd}] seat=${payload.seat ?? "-"} → ${types}`);
+        console.log(`[${cmdName}] seat=${payload.seat ?? "-"} → ${types}`);
       } else if (!result.ok) {
-        console.log(`[${cmd}] ERROR: ${result.error}`);
+        console.log(`[${cmdName}] ERROR: ${result.error}`);
       }
     });
 
@@ -140,12 +198,16 @@ function startServer(userConfig = {}) {
     });
   });
 
-  // Return server handle for testing
   return {
-    wss,
-    httpServer,
-    session,
+    wss, httpServer, session, storage,
     close() {
+      // Update meta on shutdown
+      try {
+        storage.updateMeta(session.sessionId, {
+          handsPlayed: session.getState().handsPlayed,
+          lastEventAt: new Date().toISOString(),
+        });
+      } catch {}
       wss.close();
       httpServer.close();
     },
@@ -156,7 +218,6 @@ function startServer(userConfig = {}) {
 
 if (require.main === module) {
   const config = {};
-  // Parse --port from args
   const portArg = process.argv.find((a) => a.startsWith("--port="));
   if (portArg) config.port = parseInt(portArg.split("=")[1]);
 

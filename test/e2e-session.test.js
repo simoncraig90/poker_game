@@ -55,8 +55,9 @@ async function run() {
   const logPath = path.join(logDir, "e2e-session-events.jsonl");
 
   let seed = 555;
+  const dataDir = path.join(logDir, "e2e-data-" + Date.now());
   const server = startServer({
-    port, logPath, sessionId: "e2e-test",
+    port, dataDir, sessionId: "e2e-test",
     table: { tableId: "e2e", tableName: "E2E Test", maxSeats: 6, sb: 5, bb: 10, minBuyIn: 400, maxBuyIn: 1000 },
   });
 

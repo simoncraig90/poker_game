@@ -3,12 +3,23 @@
 const fs = require("fs");
 
 class EventLog {
-  constructor(filePath) {
+  /**
+   * @param {string|null} filePath - path to JSONL file
+   * @param {boolean} loadExisting - if true, load events from existing file instead of truncating
+   */
+  constructor(filePath, loadExisting = false) {
     this.filePath = filePath;
     this.events = [];
+
     if (filePath) {
-      // Ensure file exists (truncate if new session)
-      fs.writeFileSync(filePath, "");
+      if (loadExisting && fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, "utf8").trim();
+        if (content) {
+          this.events = content.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        }
+      } else {
+        fs.writeFileSync(filePath, "");
+      }
     }
   }
 

@@ -1,10 +1,11 @@
 "use strict";
 
-const { createTable, sitDown, leave, getOccupiedSeats } = require("../engine/table");
+const { createTable, sitDown, leave, getOccupiedSeats, resetHandState } = require("../engine/table");
 const { HandOrchestrator } = require("../engine/orchestrator");
 const { EventLog } = require("../engine/event-log");
 const { getLegalActions } = require("../engine/betting");
 const { PHASE, SEAT_STATUS, ACTION } = require("../engine/types");
+const { reconstructState } = require("./reconstruct");
 const ev = require("../engine/events");
 const { CMD, ok, fail } = require("./commands");
 
@@ -14,21 +15,141 @@ class Session {
     this.sessionId = options.sessionId || `session-${Date.now()}`;
     this.logPath = options.logPath || null;
     this.rng = options.rng || null;
+    this.status = "active"; // "active" or "complete"
 
     this.table = createTable(config);
     this.log = new EventLog(this.logPath);
     this.orch = null;
-    this.commandLog = []; // append-only command history
+    this.commandLog = [];
 
     // Emit initial snapshot
     this.log.append(ev.tableSnapshot(this.sessionId, this.table));
   }
 
   /**
-   * Single entry point. All mutations go through here.
-   * Returns { ok, events, error, state }
+   * Load a session from an existing event log on disk.
+   * Reconstructs state, handles mid-hand recovery.
    */
+  static load(config, sessionId, eventsPath, options = {}) {
+    const session = Object.create(Session.prototype);
+    session.config = config;
+    session.sessionId = sessionId;
+    session.logPath = eventsPath;
+    session.rng = options.rng || null;
+    session.status = options.status || "active";
+    session.commandLog = [];
+    session.orch = null;
+
+    // Load existing events
+    session.log = new EventLog(eventsPath, true);
+    const events = session.log.getEvents();
+
+    // Reconstruct state from events
+    const rebuilt = reconstructState(events);
+    if (!rebuilt) {
+      throw new Error("Cannot reconstruct state from event log");
+    }
+
+    // Rebuild table from reconstructed state
+    session.table = createTable(config);
+    session.table.button = rebuilt.button;
+    session.table.handsPlayed = rebuilt.handsPlayed;
+
+    // Restore seats directly (bypass buy-in validation — stacks may exceed maxBuyIn from winnings)
+    for (let i = 0; i < config.maxSeats; i++) {
+      const rs = rebuilt.seats[i];
+      if (rs && rs.status === SEAT_STATUS.OCCUPIED && rs.player) {
+        const seat = session.table.seats[i];
+        seat.status = SEAT_STATUS.OCCUPIED;
+        seat.player = { name: rs.player.name, country: rs.player.country, avatarId: null };
+        seat.stack = rs.stack;
+      }
+    }
+
+    // Check for incomplete hand (HAND_START without HAND_END)
+    const hasIncompleteHand = session._detectIncompleteHand(events);
+    if (hasIncompleteHand) {
+      session._voidIncompleteHand(events);
+    }
+
+    return session;
+  }
+
+  /**
+   * Detect if the event log ends mid-hand.
+   */
+  _detectIncompleteHand(events) {
+    let lastHandStart = null;
+    let lastHandEnd = null;
+    for (const e of events) {
+      if (e.type === "HAND_START") lastHandStart = e;
+      if (e.type === "HAND_END") lastHandEnd = e;
+    }
+    if (!lastHandStart) return false;
+    if (!lastHandEnd) return true;
+    // If the last HAND_START is after the last HAND_END, hand is incomplete
+    const startIdx = events.indexOf(lastHandStart);
+    const endIdx = events.indexOf(lastHandEnd);
+    return startIdx > endIdx;
+  }
+
+  /**
+   * Void an incomplete hand: restore stacks to pre-hand values, emit void HAND_END.
+   */
+  _voidIncompleteHand(events) {
+    // Find the last HAND_START to get pre-hand stacks
+    let lastHandStart = null;
+    for (const e of events) {
+      if (e.type === "HAND_START") lastHandStart = e;
+    }
+    if (!lastHandStart) return;
+
+    // Restore stacks from HAND_START.players
+    for (const [seatStr, p] of Object.entries(lastHandStart.players || {})) {
+      const idx = parseInt(seatStr);
+      const seat = this.table.seats[idx];
+      if (seat && seat.status === SEAT_STATUS.OCCUPIED) {
+        seat.stack = p.stack;
+      }
+    }
+
+    // Clear per-hand state
+    for (const seat of Object.values(this.table.seats)) {
+      resetHandState(seat);
+    }
+
+    // Don't count the voided hand
+    this.table.handsPlayed = Math.max(0, this.table.handsPlayed - 1);
+    this.table.hand = null;
+
+    // Emit void HAND_END
+    this.log.append({
+      sessionId: this.sessionId,
+      handId: lastHandStart.handId,
+      seq: -1,
+      type: "HAND_END",
+      tableId: this.table.tableId,
+      void: true,
+      voidReason: "mid-hand recovery",
+      _source: { origin: "recovery", ts: Date.now() },
+    });
+
+    console.log(`Recovery: voided incomplete hand #${lastHandStart.handId}`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  Dispatch
+  // ═══════════════════════════════════════════════════════════════════════
+
   dispatch(command) {
+    if (this.status === "complete") {
+      // Read-only commands allowed on archived sessions
+      const readOnly = [CMD.GET_STATE, CMD.GET_EVENT_LOG, CMD.GET_HAND_EVENTS, CMD.GET_HAND_LIST, CMD.GET_SESSION_LIST];
+      if (!readOnly.includes(command.type)) {
+        return fail("Session is archived (complete). Read-only access.");
+      }
+    }
+
     this.commandLog.push(command);
 
     try {
@@ -62,8 +183,6 @@ class Session {
   // ── Command Handlers ───────────────────────────────────────────────────
 
   _createTable(_payload) {
-    // Table already created in constructor. This is a no-op for re-dispatch.
-    // Return the snapshot event that was already emitted.
     return ok([this.log.getEvents()[0]]);
   }
 
@@ -72,23 +191,16 @@ class Session {
       return fail("SEAT_PLAYER requires seat, name, buyIn");
     }
     sitDown(this.table, seat, name, buyIn, country);
-
-    const event = this.log.append(
-      ev.seatPlayer(this.sessionId, seat, name, buyIn, country)
-    );
+    const event = this.log.append(ev.seatPlayer(this.sessionId, seat, name, buyIn, country));
     return ok([event]);
   }
 
   _leaveTable({ seat }) {
     if (seat == null) return fail("LEAVE_TABLE requires seat");
-
     const s = this.table.seats[seat];
     const playerName = s && s.player ? s.player.name : null;
     leave(this.table, seat);
-
-    const event = this.log.append(
-      ev.leaveTable(this.sessionId, seat, playerName)
-    );
+    const event = this.log.append(ev.leaveTable(this.sessionId, seat, playerName));
     return ok([event]);
   }
 
@@ -103,7 +215,6 @@ class Session {
   _playerAction({ seat, action, amount }) {
     if (seat == null || !action) return fail("PLAYER_ACTION requires seat, action");
     if (!this.orch) return fail("No hand in progress");
-
     const beforeLen = this.log.getEvents().length;
     this.orch.act(seat, action, amount);
     const newEvents = this.log.getEvents().slice(beforeLen);
@@ -114,7 +225,6 @@ class Session {
     const hand = this.table.hand;
     const actionSeat = this.orch ? this.orch.getActionSeat() : null;
 
-    // Compute legal actions for the active seat
     let legalActions = null;
     if (actionSeat != null && hand && this.orch && this.orch.round) {
       const seat = this.table.seats[actionSeat];
@@ -165,8 +275,7 @@ class Session {
 
   _getHandEvents({ handId }) {
     if (!handId) return fail("GET_HAND_EVENTS requires handId");
-    const events = this.log.getHandEvents(String(handId));
-    return ok(events);
+    return ok(this.log.getHandEvents(String(handId)));
   }
 
   _getHandList() {
@@ -174,34 +283,18 @@ class Session {
     const hands = [];
     for (const e of allEvents) {
       if (e.type === "HAND_SUMMARY") {
-        hands.push({
-          handId: e.handId,
-          winner: e.winPlayer,
-          pot: e.totalPot,
-          showdown: e.showdown,
-        });
+        hands.push({ handId: e.handId, winner: e.winPlayer, pot: e.totalPot, showdown: e.showdown });
       }
     }
     return ok([], { hands });
   }
 
-  // ── Direct Accessors (for tests) ──────────────────────────────────────
+  // ── Direct Accessors ───────────────────────────────────────────────────
 
-  getState() {
-    return this._getState().state;
-  }
-
-  getEventLog() {
-    return this.log.getEvents();
-  }
-
-  getHandEvents(handId) {
-    return this.log.getHandEvents(handId);
-  }
-
-  getCommandLog() {
-    return this.commandLog;
-  }
+  getState() { return this._getState().state; }
+  getEventLog() { return this.log.getEvents(); }
+  getHandEvents(handId) { return this.log.getHandEvents(handId); }
+  getCommandLog() { return this.commandLog; }
 }
 
 module.exports = { Session };

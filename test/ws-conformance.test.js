@@ -80,9 +80,10 @@ async function run() {
   const port = 9200 + Math.floor(Math.random() * 100);
   const logPath = path.join(logDir, "ws-conformance-events.jsonl");
 
+  const dataDir = path.join(logDir, "ws-conf-data-" + Date.now());
   const server = startServer({
     port,
-    logPath,
+    dataDir,
     sessionId: "ws-conformance",
     table: { tableId: "ws-t1", tableName: "WS Test", maxSeats: 6, sb: 5, bb: 10, minBuyIn: 400, maxBuyIn: 1000 },
   });
