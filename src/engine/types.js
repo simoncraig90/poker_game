@@ -43,6 +43,8 @@ const EVENT = {
   HAND_SUMMARY: "HAND_SUMMARY",
   HAND_RESULT: "HAND_RESULT",
   HAND_END: "HAND_END",
+  SEAT_PLAYER: "SEAT_PLAYER",
+  LEAVE_TABLE: "LEAVE_TABLE",
 };
 
 // ── Cards ──────────────────────────────────────────────────────────────────

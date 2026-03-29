@@ -110,7 +110,22 @@ function handEnd(sessionId, handId, tableId) {
   return { ...base(sessionId, handId, EVENT.HAND_END), tableId };
 }
 
+function seatPlayer(sessionId, seatIndex, playerName, buyIn, country) {
+  return {
+    ...base(sessionId, null, EVENT.SEAT_PLAYER),
+    seat: seatIndex, player: playerName, buyIn, country: country || "XX",
+  };
+}
+
+function leaveTable(sessionId, seatIndex, playerName) {
+  return {
+    ...base(sessionId, null, EVENT.LEAVE_TABLE),
+    seat: seatIndex, player: playerName,
+  };
+}
+
 module.exports = {
   resetSeq, tableSnapshot, handStart, blindPost, heroCards,
   playerAction, betReturn, dealCommunity, potAward, handSummary, handResult, handEnd,
+  seatPlayer, leaveTable,
 };
