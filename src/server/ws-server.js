@@ -94,6 +94,8 @@ function startServer(userConfig = {}) {
         PLAYER_ACTION: CMD.PLAYER_ACTION,
         GET_STATE: CMD.GET_STATE,
         GET_EVENT_LOG: CMD.GET_EVENT_LOG,
+        GET_HAND_EVENTS: CMD.GET_HAND_EVENTS,
+        GET_HAND_LIST: CMD.GET_HAND_LIST,
       };
 
       const internalCmd = cmdMap[cmd];

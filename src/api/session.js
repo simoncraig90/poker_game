@@ -47,6 +47,10 @@ class Session {
           return this._getState();
         case CMD.GET_EVENT_LOG:
           return this._getEventLog();
+        case CMD.GET_HAND_EVENTS:
+          return this._getHandEvents(command.payload);
+        case CMD.GET_HAND_LIST:
+          return this._getHandList();
         default:
           return fail(`Unknown command: ${command.type}`);
       }
@@ -157,6 +161,28 @@ class Session {
 
   _getEventLog() {
     return ok(this.log.getEvents());
+  }
+
+  _getHandEvents({ handId }) {
+    if (!handId) return fail("GET_HAND_EVENTS requires handId");
+    const events = this.log.getHandEvents(String(handId));
+    return ok(events);
+  }
+
+  _getHandList() {
+    const allEvents = this.log.getEvents();
+    const hands = [];
+    for (const e of allEvents) {
+      if (e.type === "HAND_SUMMARY") {
+        hands.push({
+          handId: e.handId,
+          winner: e.winPlayer,
+          pot: e.totalPot,
+          showdown: e.showdown,
+        });
+      }
+    }
+    return ok([], { hands });
   }
 
   // ── Direct Accessors (for tests) ──────────────────────────────────────

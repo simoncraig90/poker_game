@@ -22,6 +22,9 @@
   /* Table area */
   #table-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; }
 
+  /* Error toast */
+  #error-toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #6a2d2d; color: #e4b7b7; padding: 6px 16px; border-radius: 4px; font-size: 11px; display: none; z-index: 10; border: 1px solid #a44; }
+
   /* Seats arranged around table */
   #table-felt { position: relative; width: 680px; height: 420px; background: #0f3d0f; border-radius: 160px; border: 3px solid #1a5c1a; }
 
@@ -47,61 +50,90 @@
 
   /* Board + pot center */
   #board-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
-  #board { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
+  #board { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; min-height: 30px; }
   .board-card { background: #fff; color: #111; padding: 4px 6px; border-radius: 4px; font-size: 14px; font-weight: bold; min-width: 28px; text-align: center; border: 1px solid #888; }
   .board-card.empty { background: #2a2a4a; color: #555; border-color: #444; }
   .board-card.red { color: #d33; }
   #pot { font-size: 13px; color: #ffd700; font-weight: bold; }
   #phase { font-size: 11px; color: #888; margin-top: 2px; }
+  #result-banner { font-size: 13px; color: #4ecca3; margin-top: 6px; min-height: 20px; }
 
   /* Action bar */
-  #action-bar { background: #16213e; padding: 10px 16px; display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid #333; }
+  #action-bar { background: #16213e; padding: 10px 16px; display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid #333; flex-wrap: wrap; }
   #action-bar button { padding: 6px 16px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e; color: #e0e0e0; cursor: pointer; font-family: inherit; font-size: 12px; }
   #action-bar button:hover:not(:disabled) { background: #2a2a4e; border-color: #4ecca3; }
   #action-bar button:disabled { opacity: 0.3; cursor: not-allowed; }
-  #action-bar button.primary { background: #2d6a4f; border-color: #4ecca3; color: #fff; }
   #bet-input { width: 70px; padding: 5px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e; color: #ffd700; font-family: inherit; font-size: 12px; text-align: center; }
   #start-btn { background: #4a3f00; border-color: #ffd700; color: #ffd700; }
+  .key-hint { font-size: 9px; color: #555; margin-left: -4px; }
 
-  /* Event log */
-  #log-panel { width: 280px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; }
-  #log-header { padding: 6px 10px; font-size: 11px; font-weight: bold; color: #4ecca3; border-bottom: 1px solid #333; }
-  #log { flex: 1; overflow-y: auto; padding: 4px 8px; font-size: 10px; line-height: 1.5; }
+  /* Right panel with tabs */
+  #right-panel { width: 300px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; }
+  #panel-tabs { display: flex; border-bottom: 1px solid #333; }
+  .panel-tab { flex: 1; padding: 6px 10px; font-size: 11px; font-weight: bold; color: #888; text-align: center; cursor: pointer; border-bottom: 2px solid transparent; }
+  .panel-tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
+  .panel-content { flex: 1; overflow-y: auto; display: none; }
+  .panel-content.active { display: block; }
+
+  /* Events tab */
+  #log { padding: 4px 8px; font-size: 10px; line-height: 1.5; }
   .log-entry { border-bottom: 1px solid #1a1a1a; padding: 2px 0; }
   .log-entry .type { color: #4ecca3; }
   .log-entry .detail { color: #888; }
+
+  /* History tab */
+  #history { padding: 4px 8px; font-size: 11px; }
+  .hand-row { padding: 4px 2px; border-bottom: 1px solid #1a1a1a; cursor: pointer; }
+  .hand-row:hover { background: #1a1a2e; }
+  .hand-row .hid { color: #4ecca3; }
+  .hand-row .hwinner { color: #ccc; }
+  .hand-row .hpot { color: #ffd700; }
+  #hand-detail { padding: 4px 8px; font-size: 10px; line-height: 1.6; white-space: pre-wrap; }
+  #hand-detail-back { padding: 4px 8px; color: #4ecca3; cursor: pointer; font-size: 11px; border-bottom: 1px solid #333; }
+  #hand-detail-back:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <div id="header">
   <span class="title">Poker Lab</span>
-  <span class="info" id="table-info">—</span>
+  <span class="info" id="table-info">--</span>
   <span id="status" class="disconnected">Disconnected</span>
 </div>
 
 <div id="main">
   <div id="table-area">
+    <div id="error-toast"></div>
     <div id="table-felt">
-      <!-- Seats rendered by JS -->
       <div id="board-area">
         <div id="board"></div>
         <div id="pot"></div>
         <div id="phase"></div>
+        <div id="result-banner"></div>
       </div>
     </div>
   </div>
-  <div id="log-panel">
-    <div id="log-header">Events</div>
-    <div id="log"></div>
+  <div id="right-panel">
+    <div id="panel-tabs">
+      <div class="panel-tab active" onclick="switchTab('events')">Events</div>
+      <div class="panel-tab" onclick="switchTab('history')">History</div>
+    </div>
+    <div id="events-panel" class="panel-content active">
+      <div id="log"></div>
+    </div>
+    <div id="history-panel" class="panel-content">
+      <div id="hand-detail-back" style="display:none" onclick="showHandList()">Back</div>
+      <div id="hand-list"></div>
+      <div id="hand-detail" style="display:none"></div>
+    </div>
   </div>
 </div>
 
 <div id="action-bar">
-  <button id="start-btn" onclick="sendStartHand()">Deal</button>
-  <button id="fold-btn" onclick="sendAction('FOLD')" disabled>Fold</button>
-  <button id="check-btn" onclick="sendAction('CHECK')" disabled>Check</button>
-  <button id="call-btn" onclick="sendAction('CALL')" disabled>Call</button>
+  <button id="start-btn" onclick="sendStartHand()">Deal <span class="key-hint">[D]</span></button>
+  <button id="fold-btn" onclick="sendAction('FOLD')" disabled>Fold <span class="key-hint">[F]</span></button>
+  <button id="check-btn" onclick="sendAction('CHECK')" disabled>Check <span class="key-hint">[X]</span></button>
+  <button id="call-btn" onclick="sendAction('CALL')" disabled>Call <span class="key-hint">[C]</span></button>
   <input id="bet-input" type="number" placeholder="amt" min="0">
   <button id="bet-btn" onclick="sendBet()" disabled>Bet</button>
   <button id="raise-btn" onclick="sendRaise()" disabled>Raise</button>

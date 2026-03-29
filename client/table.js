@@ -1,22 +1,19 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  Poker Lab Browser Client
-//  Vanilla JS — connects to WS server, renders state, sends commands
+//  Poker Lab Browser Client — Phase 5
 // ═══════════════════════════════════════════════════════════════════════════
 
 let ws = null;
 let state = null;
 let msgId = 0;
 let sessionId = null;
+let resultBannerTimeout = null;
 
-// ── WebSocket Connection ───────────────────────────────────────────────────
+// ── WebSocket ──────────────────────────────────────────────────────────────
 
 function connect() {
-  const url = `ws://${location.host}`;
-  ws = new WebSocket(url);
+  ws = new WebSocket(`ws://${location.host}`);
 
-  ws.onopen = () => {
-    setStatus("connected", "Connected");
-  };
+  ws.onopen = () => setStatus("connected", "Connected");
 
   ws.onmessage = (evt) => {
     const msg = JSON.parse(evt.data);
@@ -31,21 +28,25 @@ function connect() {
 
     if (msg.broadcast) {
       for (const e of msg.events) logEvent(e);
+      handleEvents(msg.events);
       refreshState();
       return;
     }
 
-    // Response to our command
     if (msg.ok === false) {
       logEvent({ type: "ERROR", detail: msg.error });
+      showError(msg.error);
       return;
     }
 
-    if (msg.events) {
+    if (msg.events && msg.events.length > 0) {
       for (const e of msg.events) logEvent(e);
+      handleEvents(msg.events);
     }
     if (msg.state) {
-      state = msg.state;
+      // Response to GET_STATE or GET_HAND_LIST
+      state = msg.state.seats ? msg.state : state;
+      if (msg.state.hands) renderHandList(msg.state.hands);
       render();
     } else {
       refreshState();
@@ -56,25 +57,40 @@ function connect() {
     setStatus("disconnected", "Disconnected");
     setTimeout(connect, 2000);
   };
-
   ws.onerror = () => {};
 }
 
-function send(cmd, payload) {
+function send(cmd, payload, callback) {
   if (!ws || ws.readyState !== 1) return;
   const id = `msg-${++msgId}`;
+  if (callback) {
+    const handler = (evt) => {
+      const m = JSON.parse(evt.data);
+      if (m.id === id) { ws.removeEventListener("message", handler); callback(m); }
+    };
+    ws.addEventListener("message", handler);
+  }
   ws.send(JSON.stringify({ id, cmd, payload: payload || {} }));
 }
 
-function refreshState() {
-  send("GET_STATE");
+function refreshState() { send("GET_STATE"); }
+
+// ── Event Handling ─────────────────────────────────────────────────────────
+
+function handleEvents(events) {
+  for (const e of events) {
+    if (e.type === "HAND_RESULT") {
+      showResultBanner(e);
+    }
+    if (e.type === "HAND_START") {
+      clearResultBanner();
+    }
+  }
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────
 
-function sendStartHand() {
-  send("START_HAND");
-}
+function sendStartHand() { send("START_HAND"); }
 
 function sendAction(action) {
   if (!state || !state.hand) return;
@@ -99,24 +115,42 @@ function seatClick(seatIndex) {
   if (!state) return;
   const seat = state.seats[seatIndex];
   if (seat.status !== "EMPTY") return;
-
   const name = prompt("Player name:");
   if (!name) return;
   const buyIn = parseInt(prompt("Buy-in (cents):", "1000"));
   if (isNaN(buyIn)) return;
-
   send("SEAT_PLAYER", { seat: seatIndex, name, buyIn, country: "XX" });
 }
+
+// ── Keyboard Shortcuts ─────────────────────────────────────────────────────
+
+document.addEventListener("keydown", (e) => {
+  // Don't intercept when typing in an input
+  if (e.target.tagName === "INPUT") return;
+
+  const hand = state ? state.hand : null;
+  const legal = hand ? (hand.legalActions ? hand.legalActions.actions : []) : [];
+
+  switch (e.key.toLowerCase()) {
+    case "f": if (legal.includes("FOLD")) sendAction("FOLD"); break;
+    case "c": if (legal.includes("CALL")) sendAction("CALL"); break;
+    case "x": if (legal.includes("CHECK")) sendAction("CHECK"); break;
+    case "d":
+    case "enter":
+      if (!hand || hand.phase === "COMPLETE") sendStartHand();
+      break;
+  }
+});
 
 // ── Rendering ──────────────────────────────────────────────────────────────
 
 function c$(v) {
-  if (v == null) return "—";
+  if (v == null) return "--";
   return Math.abs(v) >= 100 ? "$" + (v / 100).toFixed(2) : v + "c";
 }
 
 function cardHtml(card) {
-  if (!card) return '<span class="board-card empty">?</span>';
+  if (!card) return '<span class="board-card empty"></span>';
   const isRed = card.includes("h") || card.includes("d");
   return `<span class="board-card${isRed ? " red" : ""}">${card}</span>`;
 }
@@ -125,12 +159,14 @@ function render() {
   if (!state) return;
 
   // Header
+  const hand = state.hand;
+  const handActive = hand && hand.phase !== "COMPLETE";
+  const handInfo = handActive ? `Hand #${hand.handId} | ${hand.phase}` : "Between hands";
   document.getElementById("table-info").textContent =
-    `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | Hands: ${state.handsPlayed}`;
+    `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | ${handInfo} | Played: ${state.handsPlayed}`;
 
   // Seats
   const felt = document.getElementById("table-felt");
-  // Remove old seats (keep board-area)
   felt.querySelectorAll(".seat").forEach((el) => el.remove());
 
   for (let i = 0; i < state.maxSeats; i++) {
@@ -145,24 +181,19 @@ function render() {
       div.onclick = () => seatClick(i);
     } else {
       if (s.folded) div.classList.add("folded");
-      if (state.hand && state.hand.actionSeat === i) div.classList.add("active");
+      if (handActive && hand.actionSeat === i) div.classList.add("active");
 
       const badges = [];
       if (state.button === i) badges.push("BTN");
-      if (state.hand && state.hand.phase !== "COMPLETE") {
-        if (i === state.seats[i]?.seat) {
-          // Check SB/BB from blind info — approximate from hand events
-        }
-      }
       if (s.allIn) badges.push("ALL-IN");
       if (s.folded) badges.push("FOLD");
 
       const cardsHtml = s.holeCards
         ? `<div class="seat-cards">${s.holeCards.join(" ")}</div>`
-        : (s.inHand && !s.folded ? '<div class="seat-cards" style="color:#666">[**]</div>' : "");
+        : (s.inHand && !s.folded ? '<div class="seat-cards" style="color:#555">[**]</div>' : "");
 
       const betHtml = s.bet > 0 ? `<div class="seat-bet">Bet: ${c$(s.bet)}</div>` : "";
-      const badgeHtml = badges.length > 0 ? `<div class="seat-badge">${badges.join(" ")}</div>` : "";
+      const badgeHtml = badges.length > 0 ? `<div class="seat-badge">${badges.join(" | ")}</div>` : "";
 
       div.innerHTML =
         `<div class="seat-name">${s.player.name}</div>` +
@@ -175,8 +206,7 @@ function render() {
 
   // Board
   const boardEl = document.getElementById("board");
-  const hand = state.hand;
-  const board = hand ? hand.board : [];
+  const board = (handActive && hand) ? hand.board : [];
   let boardHtml = "";
   for (let i = 0; i < 5; i++) {
     boardHtml += board[i] ? cardHtml(board[i]) : '<span class="board-card empty"></span>';
@@ -184,14 +214,11 @@ function render() {
   boardEl.innerHTML = boardHtml;
 
   // Pot
-  const potEl = document.getElementById("pot");
-  potEl.textContent = hand && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
+  document.getElementById("pot").textContent = handActive && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
 
   // Phase
-  const phaseEl = document.getElementById("phase");
-  phaseEl.textContent = hand ? hand.phase : "Waiting";
+  document.getElementById("phase").textContent = handActive ? hand.phase : "";
 
-  // Action buttons
   updateActionButtons();
 }
 
@@ -200,28 +227,18 @@ function updateActionButtons() {
   const legal = hand ? hand.legalActions : null;
   const actions = legal ? legal.actions : [];
 
-  const foldBtn = document.getElementById("fold-btn");
-  const checkBtn = document.getElementById("check-btn");
+  document.getElementById("fold-btn").disabled = !actions.includes("FOLD");
+  document.getElementById("check-btn").disabled = !actions.includes("CHECK");
+  document.getElementById("call-btn").disabled = !actions.includes("CALL");
+  document.getElementById("bet-btn").disabled = !actions.includes("BET");
+  document.getElementById("raise-btn").disabled = !actions.includes("RAISE");
+
   const callBtn = document.getElementById("call-btn");
-  const betBtn = document.getElementById("bet-btn");
-  const raiseBtn = document.getElementById("raise-btn");
+  callBtn.innerHTML = actions.includes("CALL") && legal
+    ? `Call ${c$(legal.callAmount)} <span class="key-hint">[C]</span>`
+    : 'Call <span class="key-hint">[C]</span>';
+
   const betInput = document.getElementById("bet-input");
-  const startBtn = document.getElementById("start-btn");
-
-  foldBtn.disabled = !actions.includes("FOLD");
-  checkBtn.disabled = !actions.includes("CHECK");
-  callBtn.disabled = !actions.includes("CALL");
-  betBtn.disabled = !actions.includes("BET");
-  raiseBtn.disabled = !actions.includes("RAISE");
-
-  // Update call button label with amount
-  if (actions.includes("CALL") && legal) {
-    callBtn.textContent = `Call ${c$(legal.callAmount)}`;
-  } else {
-    callBtn.textContent = "Call";
-  }
-
-  // Set bet input defaults
   if (actions.includes("BET") && legal) {
     betInput.value = legal.minBet;
     betInput.min = legal.minBet;
@@ -231,13 +248,43 @@ function updateActionButtons() {
     betInput.max = legal.maxRaise;
   }
 
-  // Start button: enabled when no hand active and 2+ players seated
   const occupied = state ? Object.values(state.seats).filter((s) => s.status === "OCCUPIED").length : 0;
   const handActive = hand && hand.phase !== "COMPLETE";
-  startBtn.disabled = handActive || occupied < 2;
+  document.getElementById("start-btn").disabled = handActive || occupied < 2;
 }
 
-// ── Event Log Panel ────────────────────────────────────────────────────────
+// ── Result Banner ──────────────────────────────────────────────────────────
+
+function showResultBanner(resultEvent) {
+  const banner = document.getElementById("result-banner");
+  const lines = [];
+  for (const r of resultEvent.results || []) {
+    if (r.won) lines.push(`${r.player} wins ${c$(r.amount)}`);
+  }
+  for (const r of resultEvent.results || []) {
+    if (r.text && r.won) lines.push(r.text);
+  }
+  banner.textContent = lines.join(" | ") || "";
+
+  clearTimeout(resultBannerTimeout);
+  resultBannerTimeout = setTimeout(() => { banner.textContent = ""; }, 5000);
+}
+
+function clearResultBanner() {
+  clearTimeout(resultBannerTimeout);
+  document.getElementById("result-banner").textContent = "";
+}
+
+// ── Error Toast ────────────────────────────────────────────────────────────
+
+function showError(msg) {
+  const toast = document.getElementById("error-toast");
+  toast.textContent = msg;
+  toast.style.display = "block";
+  setTimeout(() => { toast.style.display = "none"; }, 3000);
+}
+
+// ── Event Log ──────────────────────────────────────────────────────────────
 
 function logEvent(e) {
   const log = document.getElementById("log");
@@ -259,6 +306,142 @@ function logEvent(e) {
   div.innerHTML = `<span class="type">${e.type || "?"}</span> <span class="detail">${detail.trim()}</span>`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
+}
+
+// ── Panel Tabs ─────────────────────────────────────────────────────────────
+
+function switchTab(tab) {
+  document.querySelectorAll(".panel-tab").forEach((t) => t.classList.remove("active"));
+  document.querySelectorAll(".panel-content").forEach((p) => p.classList.remove("active"));
+
+  if (tab === "events") {
+    document.querySelector('.panel-tab:nth-child(1)').classList.add("active");
+    document.getElementById("events-panel").classList.add("active");
+  } else {
+    document.querySelector('.panel-tab:nth-child(2)').classList.add("active");
+    document.getElementById("history-panel").classList.add("active");
+    loadHandList();
+  }
+}
+
+// ── Hand History ───────────────────────────────────────────────────────────
+
+function loadHandList() {
+  send("GET_HAND_LIST", {}, (resp) => {
+    if (resp.ok && resp.state && resp.state.hands) {
+      renderHandList(resp.state.hands);
+    }
+  });
+}
+
+function renderHandList(hands) {
+  const el = document.getElementById("hand-list");
+  if (!hands || hands.length === 0) {
+    el.innerHTML = '<div style="color:#555;padding:8px">No completed hands yet</div>';
+    return;
+  }
+  el.innerHTML = hands.map((h) =>
+    `<div class="hand-row" onclick="loadHandDetail('${h.handId}')">` +
+    `<span class="hid">#${h.handId}</span> ` +
+    `<span class="hwinner">${h.winner}</span> ` +
+    `<span class="hpot">${c$(h.pot)}</span>` +
+    `</div>`
+  ).join("");
+  el.style.display = "block";
+  document.getElementById("hand-detail").style.display = "none";
+  document.getElementById("hand-detail-back").style.display = "none";
+}
+
+function loadHandDetail(handId) {
+  send("GET_HAND_EVENTS", { handId }, (resp) => {
+    if (resp.ok && resp.events) {
+      renderHandDetail(resp.events);
+    }
+  });
+}
+
+function renderHandDetail(events) {
+  const lines = formatTimeline(events);
+  document.getElementById("hand-detail").textContent = lines.join("\n");
+  document.getElementById("hand-detail").style.display = "block";
+  document.getElementById("hand-list").style.display = "none";
+  document.getElementById("hand-detail-back").style.display = "block";
+}
+
+function showHandList() {
+  document.getElementById("hand-detail").style.display = "none";
+  document.getElementById("hand-detail-back").style.display = "none";
+  document.getElementById("hand-list").style.display = "block";
+}
+
+// ── Timeline Formatter (browser version of replay-normalized-hand.js) ─────
+
+function formatTimeline(events) {
+  const lines = [];
+  let players = {};
+  let board = [];
+
+  for (const e of events) {
+    switch (e.type) {
+      case "HAND_START":
+        lines.push(`Hand #${e.handId} | Button: Seat ${e.button}`);
+        players = e.players || {};
+        const stacks = Object.entries(players).map(([s, p]) => `${p.name} ${c$(p.stack)}`);
+        lines.push(`Stacks: ${stacks.join(" | ")}`);
+        lines.push("");
+        break;
+
+      case "BLIND_POST":
+        lines.push(`${e.player} posts ${e.blindType} ${c$(e.amount)}`);
+        break;
+
+      case "HERO_CARDS":
+        lines.push(`[${e.seat}] cards: ${e.cards.join(" ")}`);
+        break;
+
+      case "PLAYER_ACTION": {
+        const inf = e.inferred ? " {inferred}" : "";
+        if (e.action === "FOLD") lines.push(`${e.player} folds${inf}`);
+        else if (e.action === "CHECK") lines.push(`${e.player} checks${inf}`);
+        else if (e.action === "CALL") lines.push(`${e.player} calls ${c$(e.totalBet)}${inf}`);
+        else if (e.action === "BET") lines.push(`${e.player} bets ${c$(e.totalBet)}${inf}`);
+        else if (e.action === "RAISE") lines.push(`${e.player} raises to ${c$(e.totalBet)}${inf}`);
+        else lines.push(`${e.player} ${e.action} ${c$(e.totalBet)}${inf}`);
+        break;
+      }
+
+      case "BET_RETURN":
+        lines.push(`${e.player} returned ${c$(e.amount)}`);
+        break;
+
+      case "DEAL_COMMUNITY":
+        board = e.board || [];
+        lines.push("");
+        lines.push(`--- ${e.street} [${board.join(" ")}] ---`);
+        break;
+
+      case "POT_AWARD":
+        lines.push("");
+        for (const a of e.awards || []) {
+          lines.push(`** ${a.player} wins ${c$(a.amount)} **`);
+        }
+        break;
+
+      case "HAND_SUMMARY":
+        lines.push(`Result: ${e.winPlayer} wins ${c$(e.totalPot)} (${e.showdown ? "showdown" : "no showdown"})`);
+        if (board.length > 0) lines.push(`Board: ${board.join(" ")}`);
+        break;
+
+      case "HAND_RESULT":
+        lines.push("");
+        for (const r of e.results || []) {
+          lines.push(`${r.player}: ${r.text}`);
+        }
+        break;
+    }
+  }
+
+  return lines;
 }
 
 // ── Status ─────────────────────────────────────────────────────────────────
