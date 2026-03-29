@@ -1,0 +1,49 @@
+╔══════════════════════════════════════════════════════════╗
+║  Hand #260272208552
+║  Margo II | 5c/10c NL Hold'em
+║  Button: Seat 3 (BoriSuizo)
+╠══════════════════════════════════════════════════════════╣
+║  Seats:
+║    Seat 0: Bandifull (AT) $21.64
+║    Seat 1: Skurj_poker (GB) $7.90
+║    Seat 2: Blurrr99 (UA) $10.05
+║    Seat 3: BoriSuizo (CH) $10.00 [BTN]
+║    Seat 4: Tragladit987 (UA) $20.91
+╚══════════════════════════════════════════════════════════╝
+  Tragladit987 posts SB 5c  [stack: $20.86]
+  Bandifull posts BB 10c  [stack: $21.54]
+  ★ Hero cards: 4h 6c
+  BoriSuizo raises to 40c  [stack: $9.60]
+  Skurj_poker checks {inferred}
+  Blurrr99 checks {inferred}
+  Tragladit987 checks {inferred}
+  Bandifull checks {inferred}
+
+  ★★ BoriSuizo wins 25c ★★
+  Result: BoriSuizo wins 25c (no showdown)
+
+  Bandifull: Loses main pot and mucks cards.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Takes down main pot.
+  Tragladit987: Loses main pot and mucks cards.
+
+┌── Final Stacks ──────────────────────────────────────────┐
+│  Seat 0: Bandifull        $21.54  (-10c)
+│  Seat 1: Skurj_poker       $7.90  (+0c)
+│  Seat 2: Blurrr99         $10.05  (+0c)
+│  Seat 3: BoriSuizo         $9.85  (-15c)
+│  Seat 4: Tragladit987     $20.86  (-5c)
+├── Accounting ────────────────────────────────────────────┤
+│  Pot (from actions):  55c
+│  Pot (from summary):  25c
+│  Total invested:      55c
+│  Total awarded:       25c
+│  Balance check:       FAIL ✗ (invested ≠ awarded)
+│  Pot mismatch:        actions=55c vs summary=25c
+│    (expected: inferred folds don't carry amounts)
+│  Inferred events:     4
+│  Actions:             5
+│  Board:               (none)
+│  Hero:                4h 6c
+└──────────────────────────────────────────────────────────┘

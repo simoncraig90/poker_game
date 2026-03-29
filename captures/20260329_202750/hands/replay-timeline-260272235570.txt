@@ -1,0 +1,58 @@
+╔══════════════════════════════════════════════════════════╗
+║  Hand #260272235570
+║  Margo II | 5c/10c NL Hold'em
+║  Button: Seat 0 (Bandifull)
+╠══════════════════════════════════════════════════════════╣
+║  Seats:
+║    Seat 0: Bandifull (AT) $21.49 [BTN]
+║    Seat 1: Skurj_poker (GB) $7.80
+║    Seat 2: Blurrr99 (UA) $10.00
+║    Seat 3: BoriSuizo (CH) $11.90
+║    Seat 4: Tragladit987 (UA) $19.56
+║    Seat 5: Dante63s (AR) $10.00
+╚══════════════════════════════════════════════════════════╝
+  Skurj_poker posts SB 5c  [stack: $7.75]
+  Blurrr99 posts BB 10c  [stack: $9.90]
+  ★ Hero cards: Qc 9c
+  Bandifull raises to 30c  [stack: $21.19]
+  Skurj_poker calls 30c  [stack: $7.50]
+  BoriSuizo checks {inferred}
+  Tragladit987 checks {inferred}
+  Blurrr99 checks {inferred}
+
+  ── FLOP [4h 5s 7s] ──  (6 players remaining)
+  Bandifull bets 30c  [stack: $20.89]
+  Skurj_poker checks {inferred}
+
+  ── TURN [4h 5s 7s Ts Ad] ──  (6 players remaining)
+
+  ★★ Bandifull wins 66c ★★
+  Result: Bandifull wins 66c (no showdown)
+  Board: 4h 5s 7s Ts Ad
+
+  Bandifull: Takes down main pot.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Loses main pot and mucks cards.
+
+┌── Final Stacks ──────────────────────────────────────────┐
+│  Seat 0: Bandifull        $21.55  (+6c)
+│  Seat 1: Skurj_poker       $7.50  (-30c)
+│  Seat 2: Blurrr99          $9.90  (-10c)
+│  Seat 3: BoriSuizo        $11.90  (+0c)
+│  Seat 4: Tragladit987     $19.56  (+0c)
+│  Seat 5: Dante63s         $10.00  (+0c)
+├── Accounting ────────────────────────────────────────────┤
+│  Pot (from actions):  $1.00
+│  Pot (from summary):  66c
+│  Total invested:      $1.00
+│  Total awarded:       66c
+│  Balance check:       FAIL ✗ (invested ≠ awarded)
+│  Pot mismatch:        actions=$1.00 vs summary=66c
+│    (expected: inferred folds don't carry amounts)
+│  Inferred events:     4
+│  Actions:             7
+│  Board:               4h 5s 7s Ts Ad
+│  Hero:                Qc 9c
+└──────────────────────────────────────────────────────────┘

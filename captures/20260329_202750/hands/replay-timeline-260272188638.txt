@@ -1,0 +1,60 @@
+╔══════════════════════════════════════════════════════════╗
+║  Hand #260272188638
+║  Margo II | 5c/10c NL Hold'em
+║  Button: Seat 2 (Blurrr99)
+╠══════════════════════════════════════════════════════════╣
+║  Seats:
+║    Seat 0: Bandifull (AT) $20.05
+║    Seat 1: Skurj_poker (GB) $8.00
+║    Seat 2: Blurrr99 (UA) $11.55 [BTN]
+║    Seat 3: BoriSuizo (CH) $10.05
+║    Seat 4: Tragladit987 (UA) $21.01
+╚══════════════════════════════════════════════════════════╝
+  BoriSuizo posts SB 5c  [stack: $10.00]
+  Tragladit987 posts BB 10c  [stack: $20.91]
+  Skurj_poker calls 10c  [stack: $7.90]
+  ★ Hero cards: 4c 9c
+  Bandifull raises to 50c  [stack: $19.55]
+  Blurrr99 raises to $1.50  [stack: $10.05]
+  Bandifull calls $1.50  [stack: $18.55]
+  Skurj_poker checks {inferred}
+  BoriSuizo checks {inferred}
+  Tragladit987 checks {inferred}
+
+  ── FLOP [9h 2h 4s] ──  (5 players remaining)
+
+  ── TURN [9h 2h 4s 6h] ──  (5 players remaining)
+  Bandifull bets $1.80  [stack: $16.75]
+  Blurrr99 checks {inferred}
+
+  ── RIVER [9h 2h 4s 6h 3d] ──  (5 players remaining)
+
+  ★★ Bandifull wins $3.09 ★★
+  Result: Bandifull wins $3.09 (no showdown)
+  Board: 9h 2h 4s 6h 3d
+
+  Bandifull: Takes down main pot.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Loses main pot and mucks cards.
+
+┌── Final Stacks ──────────────────────────────────────────┐
+│  Seat 0: Bandifull        $19.84  (-21c)
+│  Seat 1: Skurj_poker       $7.90  (-10c)
+│  Seat 2: Blurrr99         $10.05  ($-1.50)
+│  Seat 3: BoriSuizo        $10.00  (-5c)
+│  Seat 4: Tragladit987     $20.91  (-10c)
+├── Accounting ────────────────────────────────────────────┤
+│  Pot (from actions):  $5.05
+│  Pot (from summary):  $3.09
+│  Total invested:      $5.05
+│  Total awarded:       $3.09
+│  Balance check:       FAIL ✗ (invested ≠ awarded)
+│  Pot mismatch:        actions=$5.05 vs summary=$3.09
+│    (expected: inferred folds don't carry amounts)
+│  Inferred events:     4
+│  Actions:             9
+│  Board:               9h 2h 4s 6h 3d
+│  Hero:                4c 9c
+└──────────────────────────────────────────────────────────┘
