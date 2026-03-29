@@ -323,13 +323,40 @@ HAND_START
 
 ---
 
+### 2.13 BET_RETURN
+
+Uncalled bet/blind returned to player.
+
+| Field | Type | Required | Source |
+|-------|------|----------|--------|
+| `seat` | int | yes | 0x77 F2 |
+| `player` | string | yes | Derived from state |
+| `amount` | int (cents) | yes | `Math.abs(delta)` from 0x77 F4 |
+
+**Detection**: Negative-delta ACTIONs are buffered. When the buffer is flushed:
+- **Single entry** (1 seat): uncalled bet return → emit BET_RETURN for `|delta|`
+- **Batch** (2+ seats): collect sweep → skip all
+- **Any entry with `amount > 0`**: always a return regardless of batch size
+
+---
+
 ## 5. Collect Sweep (Internal, Not a Normalized Event)
 
 Between streets, the server emits a batch of `ACTION` frames (opcode 0x77) with `amount=0, delta<0` for every seated player. These move chips from the per-seat bet display into the collected pot. They are **not player actions** and must be filtered.
 
-**Detection rule**: `delta < 0` on any ACTION event → collect sweep or blind return.
+**Detection rule**: Negative-delta ACTIONs arriving in batches (2+ seats) are collect sweeps. Single negative-delta ACTIONs are uncalled bet returns (emitted as BET_RETURN).
 
-A separate pattern: `amount>0, delta<0` — this is an **uncalled blind/bet return** (excess returned to the player when no one calls).
+A separate pattern: `amount>0, delta<0` — this is a **partial uncalled return** where `amount` shows what remains in the pot from this player and `|delta|` is the returned amount. Always emitted as BET_RETURN regardless of batch size.
+
+## 5.1 Rake
+
+The platform deducts rake from each pot. Rake is NOT an explicit event in the protocol — it is only observable as the difference between total invested and total awarded:
+
+```
+rake = sum(blinds + positive-delta actions) - sum(bet_returns) - sum(pot_awards)
+```
+
+Observed rates: 0% on very small pots, ~5% on larger pots (play-money micro stakes).
 
 ---
 
@@ -343,7 +370,7 @@ A separate pattern: `amount>0, delta<0` — this is an **uncalled blind/bet retu
 | 0x83 | HEARTBEAT_PING | — | Filtered |
 | 0x6c | PLAYER_UPDATE | PLAYER_STATE | Very frequent |
 | 0x72 | ROUND_TRANSITION | — | Consumed internally for action classification |
-| 0x77 | ACTION | BLIND_POST or PLAYER_ACTION or — (collect sweep) | Classification depends on 0x72 |
+| 0x77 | ACTION | BLIND_POST, PLAYER_ACTION, BET_RETURN, or — (collect sweep) | Classification depends on 0x72 + delta sign + batch size |
 | 0x8b | HERO_CARDS | HERO_CARDS | Deduplicate |
 | 0x71 | DEAL_BOARD | DEAL_COMMUNITY | Card array in F2 |
 | 0x5a | DEAL_NOTIFY | DEAL_COMMUNITY (sometimes) | Visible cards in F2 |
@@ -365,13 +392,13 @@ A separate pattern: `amount>0, delta<0` — this is an **uncalled blind/bet retu
 
 ## 7. Known Gaps
 
-### G1: Inferred Folds
+### G1: Inferred Folds (Resolved)
 
-When `ROUND_TRANSITION` fires with `roundId=10` for a seat, that player folded (or checked). But no explicit `ACTION` event follows — the server simply skips them. The current decoder does not emit a FOLD event for these implicit folds.
+`ROUND_TRANSITION` with `roundId=10` universally means "this seat is skipped" — the server uses it for folds, already-folded players, and skipped seats. The `betToCall` field is always 0 regardless of context and cannot distinguish fold from check.
 
-**Impact**: The timeline shows raises and calls but skips folds. The hand narrative is incomplete — you cannot reconstruct the exact action order without cross-referencing ROUND_TRANSITION events.
+**Resolution**: The emitter always emits `FOLD` for `roundId=10` with no following ACTION. This is correct: the server never sends `roundId=10` for a player who is actively checking. Checks happen through `roundId=11` (new street first action) with `amount=0`.
 
-**Evidence needed**: Compare ROUND_TRANSITION seat sequences with ACTION events to confirm that every `roundId=10` without a following ACTION is an implicit fold (vs. an implicit check). The `betToCall` field may distinguish: `betToCall > 0` → fold, `betToCall = 0` → check.
+All inferred folds carry `inferred: true` and can be cross-validated against `HAND_RESULT` text ("mucks cards" = folded).
 
 ---
 

@@ -14,10 +14,11 @@
   Bandifull posts BB 10c  [stack: $21.54]
   ★ Hero cards: 4h 6c
   BoriSuizo raises to 40c  [stack: $9.60]
-  Skurj_poker checks {inferred}
-  Blurrr99 checks {inferred}
-  Tragladit987 checks {inferred}
-  Bandifull checks {inferred}
+  BoriSuizo uncalled bet returned 30c  [stack: $9.90]
+  Skurj_poker folds {inferred}
+  Blurrr99 folds {inferred}
+  Tragladit987 folds {inferred}
+  Bandifull folds {inferred}
 
   ★★ BoriSuizo wins 25c ★★
   Result: BoriSuizo wins 25c (no showdown)
@@ -32,16 +33,19 @@
 │  Seat 0: Bandifull        $21.54  (-10c)
 │  Seat 1: Skurj_poker       $7.90  (+0c)
 │  Seat 2: Blurrr99         $10.05  (+0c)
-│  Seat 3: BoriSuizo         $9.85  (-15c)
+│  Seat 3: BoriSuizo        $10.15  (+15c)
 │  Seat 4: Tragladit987     $20.86  (-5c)
 ├── Accounting ────────────────────────────────────────────┤
-│  Pot (from actions):  55c
+│  Pot (from actions):  25c
 │  Pot (from summary):  25c
-│  Total invested:      55c
+│  Total invested:      25c
 │  Total awarded:       25c
-│  Balance check:       FAIL ✗ (invested ≠ awarded)
-│  Pot mismatch:        actions=55c vs summary=25c
-│    (expected: inferred folds don't carry amounts)
+│  Pot (from actions):  25c
+│  Pot (from summary):  25c
+│  Pot match:           PASS ✓
+│  Rake:                0c (0.0%) ✓
+│  Stack check:         PASS ✓
+│  Balance:             PASS ✓
 │  Inferred events:     4
 │  Actions:             5
 │  Board:               (none)

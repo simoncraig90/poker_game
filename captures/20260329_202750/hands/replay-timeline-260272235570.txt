@@ -16,15 +16,16 @@
   ★ Hero cards: Qc 9c
   Bandifull raises to 30c  [stack: $21.19]
   Skurj_poker calls 30c  [stack: $7.50]
-  BoriSuizo checks {inferred}
-  Tragladit987 checks {inferred}
-  Blurrr99 checks {inferred}
+  BoriSuizo folds {inferred}
+  Tragladit987 folds {inferred}
+  Blurrr99 folds {inferred}
 
-  ── FLOP [4h 5s 7s] ──  (6 players remaining)
+  ── FLOP [4h 5s 7s] ──  (3 players remaining)
   Bandifull bets 30c  [stack: $20.89]
-  Skurj_poker checks {inferred}
+  Bandifull uncalled bet returned 30c  [stack: $21.19]
+  Skurj_poker folds {inferred}
 
-  ── TURN [4h 5s 7s Ts Ad] ──  (6 players remaining)
+  ── TURN [4h 5s 7s Ts Ad] ──  (2 players remaining)
 
   ★★ Bandifull wins 66c ★★
   Result: Bandifull wins 66c (no showdown)
@@ -37,20 +38,23 @@
   Tragladit987: Loses main pot and mucks cards.
 
 ┌── Final Stacks ──────────────────────────────────────────┐
-│  Seat 0: Bandifull        $21.55  (+6c)
+│  Seat 0: Bandifull        $21.85  (+36c)
 │  Seat 1: Skurj_poker       $7.50  (-30c)
 │  Seat 2: Blurrr99          $9.90  (-10c)
 │  Seat 3: BoriSuizo        $11.90  (+0c)
 │  Seat 4: Tragladit987     $19.56  (+0c)
 │  Seat 5: Dante63s         $10.00  (+0c)
 ├── Accounting ────────────────────────────────────────────┤
-│  Pot (from actions):  $1.00
+│  Pot (from actions):  70c
 │  Pot (from summary):  66c
-│  Total invested:      $1.00
+│  Total invested:      70c
 │  Total awarded:       66c
-│  Balance check:       FAIL ✗ (invested ≠ awarded)
-│  Pot mismatch:        actions=$1.00 vs summary=66c
-│    (expected: inferred folds don't carry amounts)
+│  Pot (from actions):  70c
+│  Pot (from summary):  66c
+│  Pot match:           MISMATCH (actions=70c summary=66c)
+│  Rake:                4c (5.7%) ✓
+│  Stack check:         PASS ✓
+│  Balance:             SEE ABOVE
 │  Inferred events:     4
 │  Actions:             7
 │  Board:               4h 5s 7s Ts Ad

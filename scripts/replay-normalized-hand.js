@@ -266,6 +266,17 @@ function processPotUpdate(e) {
   // We track pot from actions, but record the server's view for comparison
 }
 
+function processBetReturn(e) {
+  const s = state.seats[e.seat];
+  if (!s) return;
+
+  s.stack += e.amount;
+  s.totalInvested -= e.amount;
+  state.pot -= e.amount;
+
+  tl(`  ${s.name} uncalled bet returned ${c$(e.amount)}  [stack: ${c$(s.stack)}]`);
+}
+
 function processPotAward(e) {
   state.winners = (e.awards || []).map((a) => ({
     seat: a.seat,
@@ -330,13 +341,26 @@ function processHandEnd(e) {
   tl(`│  Total invested:      ${c$(totalInvested)}`);
   tl(`│  Total awarded:       ${c$(totalWon)}`);
 
-  const balanceCheck = totalInvested === totalWon;
-  tl(`│  Balance check:       ${balanceCheck ? "PASS ✓" : "FAIL ✗ (invested ≠ awarded)"}`);
+  // Rake = invested - awarded. Positive rake is normal; negative or >10% is suspicious.
+  const rake = totalInvested - totalWon;
+  const rakePercent = totalInvested > 0 ? ((rake / totalInvested) * 100).toFixed(1) : "0.0";
+  const rakeOk = rake >= 0 && (totalInvested === 0 || rake / totalInvested < 0.10);
 
-  if (potFromActions !== potFromSummary) {
-    tl(`│  Pot mismatch:        actions=${c$(potFromActions)} vs summary=${c$(potFromSummary)}`);
-    tl(`│    (expected: inferred folds don't carry amounts)`);
-  }
+  const potMatch = potFromActions === potFromSummary;
+  const balanceCheck = potMatch && rakeOk;
+
+  tl(`│  Pot (from actions):  ${c$(potFromActions)}`);
+  tl(`│  Pot (from summary):  ${c$(potFromSummary)}`);
+  tl(`│  Pot match:           ${potMatch ? "PASS ✓" : "MISMATCH (actions=" + c$(potFromActions) + " summary=" + c$(potFromSummary) + ")"}`);
+  tl(`│  Rake:                ${c$(rake)} (${rakePercent}%)${rakeOk ? " ✓" : " ✗ SUSPICIOUS"}`);
+
+  // Stack delta check: sum of all stack changes should equal negative rake
+  const totalDelta = Object.values(state.seats).reduce((sum, s) => sum + (s.stack - s.startStack), 0);
+  const stackCheck = totalDelta === -rake;
+  tl(`│  Stack check:         ${stackCheck ? "PASS ✓" : "FAIL ✗ (stack net=" + c$(totalDelta) + " expected=" + c$(-rake) + ")"}`);
+
+  tl(`│  Balance:             ${balanceCheck && stackCheck ? "PASS ✓" : "SEE ABOVE"}`);
+
 
   tl(`│  Inferred events:     ${state.inferredCount}`);
   tl(`│  Actions:             ${state.actions.length}`);
@@ -362,6 +386,9 @@ for (const e of events) {
       break;
     case "PLAYER_ACTION":
       processPlayerAction(e);
+      break;
+    case "BET_RETURN":
+      processBetReturn(e);
       break;
     case "DEAL_COMMUNITY":
       processDealCommunity(e);

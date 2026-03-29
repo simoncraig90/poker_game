@@ -58,6 +58,8 @@ const lastRoundId = new Map();
 let pendingRounds = [];
 // Deferred HAND_END (because HAND_RESULT arrives after HAND_BOUNDARY in wire)
 let pendingHandEnd = null;
+// Buffer for negative-delta ACTIONs to distinguish collect sweeps from returns
+let negDeltaBuffer = [];
 
 // All normalized events (combined file)
 const allEvents = [];
@@ -105,12 +107,12 @@ function cleanCards(arr) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Inferred Fold / Check Detection
+//  Inferred Fold Detection
 //
 //  ROUND_TRANSITION with roundId=10 and no following ACTION for that seat
-//  means the player folded (betToCall > 0) or checked (betToCall = 0).
-//  We track pending RTs and flush inferred events when the next non-RT
-//  event arrives.
+//  means the player folded or was already out. The server uses roundId=10
+//  universally for "this seat is skipped" — betToCall is always 0 regardless
+//  of whether the player owes chips. We always emit FOLD for roundId=10.
 // ═══════════════════════════════════════════════════════════════════════════
 
 function flushInferredActions() {
@@ -118,43 +120,63 @@ function flushInferredActions() {
     if (pr.consumed) continue;
 
     if (pr.roundId === 10) {
-      if (pr.betToCall > 0) {
-        emit(
-          "PLAYER_ACTION",
-          {
-            seat: pr.seat,
-            player: playerName(pr.seat),
-            action: "FOLD",
-            totalBet: 0,
-            delta: 0,
-            street,
-            inferred: true,
-            inferredReason: "roundId=10 with betToCall > 0, no following ACTION",
-          },
-          { frameIdx: pr.frameIdx, opcode: "0x72", ts: pr.ts, inferred: true }
-        );
-      } else {
-        emit(
-          "PLAYER_ACTION",
-          {
-            seat: pr.seat,
-            player: playerName(pr.seat),
-            action: "CHECK",
-            totalBet: 0,
-            delta: 0,
-            street,
-            inferred: true,
-            inferredReason: "roundId=10 with betToCall=0, no following ACTION",
-          },
-          { frameIdx: pr.frameIdx, opcode: "0x72", ts: pr.ts, inferred: true }
-        );
-      }
+      emit(
+        "PLAYER_ACTION",
+        {
+          seat: pr.seat,
+          player: playerName(pr.seat),
+          action: "FOLD",
+          totalBet: 0,
+          delta: 0,
+          street,
+          inferred: true,
+          inferredReason: "roundId=10, no following ACTION (fold or already out)",
+        },
+        { frameIdx: pr.frameIdx, opcode: "0x72", ts: pr.ts, inferred: true }
+      );
     }
-    // roundIds 3,4,5+ etc. are consumed by ACTION events — if unconsumed,
-    // they represent actions we didn't see (player folded before acting).
-    // Only roundId=10 is reliably an inferred fold/check.
   }
   pendingRounds = [];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Negative-Delta ACTION Buffer
+//
+//  Collect sweeps arrive as batches of negative-delta ACTIONs (one per seated
+//  player). Uncalled bet returns arrive as single negative-delta ACTIONs.
+//  We buffer all negative-delta ACTIONs and classify on flush:
+//    - Single entry (1 seat): uncalled bet return → emit BET_RETURN
+//    - Batch (2+ seats): collect sweep → skip
+//    - Any entry with amount > 0: always a return regardless of batch size
+// ═══════════════════════════════════════════════════════════════════════════
+
+function flushNegDeltaBuffer() {
+  if (negDeltaBuffer.length === 0) return;
+
+  const isBatch = negDeltaBuffer.length >= 2;
+
+  for (const e of negDeltaBuffer) {
+    // amount > 0 means partial return (matched portion stays, excess returned)
+    // Single entry means full return (entire uncalled bet returned)
+    const isReturn = e.amount > 0 || !isBatch;
+
+    if (isReturn) {
+      const returnAmt = Math.abs(e.delta);
+      emit(
+        "BET_RETURN",
+        {
+          seat: e.seat,
+          player: playerName(e.seat),
+          amount: returnAmt,
+        },
+        sourceRef(e)
+      );
+    }
+  }
+
+  lastRoundId.clear();
+  flushInferredActions();
+  negDeltaBuffer = [];
 }
 
 function markRoundConsumed(seat) {
@@ -218,6 +240,11 @@ function classifyAction(seat, amount, delta, options) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 for (const e of raw) {
+  // Flush buffered negative-delta ACTIONs when any non-ACTION event arrives
+  if (e.type !== "ACTION" && negDeltaBuffer.length > 0) {
+    flushNegDeltaBuffer();
+  }
+
   switch (e.type) {
     // ── TABLE_SNAPSHOT ────────────────────────────────────────────────
     case "TABLE_SNAPSHOT": {
@@ -328,23 +355,21 @@ for (const e of raw) {
         (pr) => pr.seat === e.activeSeat && !pr.consumed && pr.roundId === 10
       );
       if (prevForSeat) {
-        // This seat got a new RT before consuming the old one — flush old
-        if (prevForSeat.betToCall > 0) {
-          emit(
-            "PLAYER_ACTION",
-            {
-              seat: prevForSeat.seat,
-              player: playerName(prevForSeat.seat),
-              action: "FOLD",
-              totalBet: 0,
-              delta: 0,
-              street,
-              inferred: true,
-              inferredReason: "roundId=10 with betToCall > 0, superseded by new RT",
-            },
-            { frameIdx: prevForSeat.frameIdx, opcode: "0x72", ts: prevForSeat.ts, inferred: true }
-          );
-        }
+        // This seat got a new RT before consuming the old one — flush as FOLD
+        emit(
+          "PLAYER_ACTION",
+          {
+            seat: prevForSeat.seat,
+            player: playerName(prevForSeat.seat),
+            action: "FOLD",
+            totalBet: 0,
+            delta: 0,
+            street,
+            inferred: true,
+            inferredReason: "roundId=10, superseded by new RT (fold or already out)",
+          },
+          { frameIdx: prevForSeat.frameIdx, opcode: "0x72", ts: prevForSeat.ts, inferred: true }
+        );
         prevForSeat.consumed = true;
       }
 
@@ -365,13 +390,15 @@ for (const e of raw) {
       if (e.seat == null) break;
       if (!handActive) break;
 
-      // Collect sweep / blind return
+      // Negative delta: buffer it. We classify as return vs collect sweep
+      // when the buffer is flushed (next non-negative-delta event).
       if (e.delta != null && e.delta < 0) {
-        lastRoundId.clear();
-        // Flush pending roundId=10 that haven't been consumed
-        flushInferredActions();
+        negDeltaBuffer.push(e);
         break;
       }
+
+      // A positive/zero-delta ACTION means the buffer (if any) is done
+      flushNegDeltaBuffer();
 
       if (handSummarySeen) break;
 
@@ -563,7 +590,7 @@ for (const e of raw) {
 
     // ── STACK_UPDATE ─────────────────────────────────────────────────
     case "STACK_UPDATE": {
-      // Absorbed: update internal state only
+      // Absorbed: update internal state only.
       const p = players.get(e.seat);
       if (p) p.stack = e.stack;
       break;
@@ -575,7 +602,8 @@ for (const e of raw) {
   }
 }
 
-// Flush any trailing inferred actions and deferred HAND_END
+// Flush any trailing buffers
+flushNegDeltaBuffer();
 flushInferredActions();
 if (pendingHandEnd) {
   emit("HAND_END", { tableId: pendingHandEnd.tableId }, pendingHandEnd.source);
