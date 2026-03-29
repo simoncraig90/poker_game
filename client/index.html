@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Lab</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Consolas', 'Monaco', monospace; background: #1a1a2e; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; }
+
+  /* Header */
+  #header { background: #16213e; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+  #header .title { font-size: 14px; font-weight: bold; color: #4ecca3; }
+  #header .info { font-size: 12px; color: #888; }
+  #status { font-size: 11px; padding: 2px 8px; border-radius: 3px; }
+  #status.connected { background: #2d6a4f; color: #b7e4c7; }
+  #status.disconnected { background: #6a2d2d; color: #e4b7b7; }
+
+  /* Main layout */
+  #main { flex: 1; display: flex; overflow: hidden; }
+
+  /* Table area */
+  #table-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; }
+
+  /* Seats arranged around table */
+  #table-felt { position: relative; width: 680px; height: 420px; background: #0f3d0f; border-radius: 160px; border: 3px solid #1a5c1a; }
+
+  .seat { position: absolute; width: 130px; background: #16213e; border: 2px solid #333; border-radius: 8px; padding: 6px 8px; font-size: 11px; cursor: pointer; transition: border-color 0.2s; }
+  .seat.active { border-color: #4ecca3; box-shadow: 0 0 8px rgba(78, 204, 163, 0.4); }
+  .seat.folded { opacity: 0.45; }
+  .seat.empty { border-style: dashed; border-color: #444; opacity: 0.5; }
+  .seat.empty:hover { opacity: 0.8; border-color: #4ecca3; }
+
+  .seat-name { font-weight: bold; color: #4ecca3; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seat-stack { color: #ccc; }
+  .seat-cards { color: #ffd700; margin-top: 2px; font-size: 13px; letter-spacing: 1px; }
+  .seat-bet { color: #e88; font-size: 10px; margin-top: 1px; }
+  .seat-badge { font-size: 9px; color: #888; margin-top: 1px; }
+
+  /* Seat positions (6-max oval layout) */
+  .seat[data-seat="0"] { bottom: -20px; left: 50%; transform: translateX(-50%); }
+  .seat[data-seat="1"] { bottom: 40px; left: -10px; }
+  .seat[data-seat="2"] { top: 40px; left: -10px; }
+  .seat[data-seat="3"] { top: -20px; left: 50%; transform: translateX(-50%); }
+  .seat[data-seat="4"] { top: 40px; right: -10px; }
+  .seat[data-seat="5"] { bottom: 40px; right: -10px; }
+
+  /* Board + pot center */
+  #board-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+  #board { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; }
+  .board-card { background: #fff; color: #111; padding: 4px 6px; border-radius: 4px; font-size: 14px; font-weight: bold; min-width: 28px; text-align: center; border: 1px solid #888; }
+  .board-card.empty { background: #2a2a4a; color: #555; border-color: #444; }
+  .board-card.red { color: #d33; }
+  #pot { font-size: 13px; color: #ffd700; font-weight: bold; }
+  #phase { font-size: 11px; color: #888; margin-top: 2px; }
+
+  /* Action bar */
+  #action-bar { background: #16213e; padding: 10px 16px; display: flex; gap: 8px; align-items: center; justify-content: center; border-top: 1px solid #333; }
+  #action-bar button { padding: 6px 16px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e; color: #e0e0e0; cursor: pointer; font-family: inherit; font-size: 12px; }
+  #action-bar button:hover:not(:disabled) { background: #2a2a4e; border-color: #4ecca3; }
+  #action-bar button:disabled { opacity: 0.3; cursor: not-allowed; }
+  #action-bar button.primary { background: #2d6a4f; border-color: #4ecca3; color: #fff; }
+  #bet-input { width: 70px; padding: 5px; border: 1px solid #444; border-radius: 4px; background: #1a1a2e; color: #ffd700; font-family: inherit; font-size: 12px; text-align: center; }
+  #start-btn { background: #4a3f00; border-color: #ffd700; color: #ffd700; }
+
+  /* Event log */
+  #log-panel { width: 280px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; }
+  #log-header { padding: 6px 10px; font-size: 11px; font-weight: bold; color: #4ecca3; border-bottom: 1px solid #333; }
+  #log { flex: 1; overflow-y: auto; padding: 4px 8px; font-size: 10px; line-height: 1.5; }
+  .log-entry { border-bottom: 1px solid #1a1a1a; padding: 2px 0; }
+  .log-entry .type { color: #4ecca3; }
+  .log-entry .detail { color: #888; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span class="title">Poker Lab</span>
+  <span class="info" id="table-info">—</span>
+  <span id="status" class="disconnected">Disconnected</span>
+</div>
+
+<div id="main">
+  <div id="table-area">
+    <div id="table-felt">
+      <!-- Seats rendered by JS -->
+      <div id="board-area">
+        <div id="board"></div>
+        <div id="pot"></div>
+        <div id="phase"></div>
+      </div>
+    </div>
+  </div>
+  <div id="log-panel">
+    <div id="log-header">Events</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div id="action-bar">
+  <button id="start-btn" onclick="sendStartHand()">Deal</button>
+  <button id="fold-btn" onclick="sendAction('FOLD')" disabled>Fold</button>
+  <button id="check-btn" onclick="sendAction('CHECK')" disabled>Check</button>
+  <button id="call-btn" onclick="sendAction('CALL')" disabled>Call</button>
+  <input id="bet-input" type="number" placeholder="amt" min="0">
+  <button id="bet-btn" onclick="sendBet()" disabled>Bet</button>
+  <button id="raise-btn" onclick="sendRaise()" disabled>Raise</button>
+</div>
+
+<script src="table.js"></script>
+</body>
+</html>

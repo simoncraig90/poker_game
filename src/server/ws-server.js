@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const http = require("http");
+const fs = require("fs");
 const { WebSocketServer } = require("ws");
 const path = require("path");
 const { Session } = require("../api/session");
@@ -34,11 +36,32 @@ function startServer(userConfig = {}) {
     logPath,
   });
 
-  // WebSocket server
-  const wss = new WebSocketServer({ port });
+  // HTTP server for static files + WebSocket upgrade
+  const clientDir = path.join(__dirname, "..", "..", "client");
+  const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png" };
+
+  const httpServer = http.createServer((req, res) => {
+    const url = req.url === "/" ? "/index.html" : req.url;
+    const filePath = path.join(clientDir, url);
+    const ext = path.extname(filePath);
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not found");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+      res.end(data);
+    });
+  });
+
+  httpServer.listen(port);
+
+  const wss = new WebSocketServer({ server: httpServer });
   const clients = new Set();
 
-  console.log(`Poker Lab WS server listening on ws://localhost:${port}`);
+  console.log(`Poker Lab server listening on http://localhost:${port}`);
   console.log(`Table: ${tableConfig.tableName} (${tableConfig.sb}/${tableConfig.bb})`);
   console.log(`Event log: ${logPath}`);
   console.log();
@@ -118,9 +141,11 @@ function startServer(userConfig = {}) {
   // Return server handle for testing
   return {
     wss,
+    httpServer,
     session,
     close() {
       wss.close();
+      httpServer.close();
     },
   };
 }
