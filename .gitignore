@@ -2,3 +2,4 @@ node_modules/
 .claude/
 __pycache__/
 *.pyc
+test-output/
