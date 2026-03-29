@@ -1,0 +1,130 @@
+DECODED HAND TIMELINE
+============================================================
+Session: captures/20260329_202750
+Decoded: 2026-03-29T19:59:18.624Z
+Frames:  733
+Hands:   8
+
+=== TABLE: Margo II | 5c/10c NL Hold'em | 6-max ===
+  Seat 0: Bandifull (AT) $20.05
+  Seat 1: Skurj_poker (GB) $8.00
+  Seat 2: Blurrr99 (UA) $11.45
+  Seat 3: BoriSuizo (CH) $10.00
+  Seat 4: Tragladit987 (UA) $21.01
+  ** Blurrr99 wins 10c **
+  Result: Blurrr99 wins 10c (no showdown)
+
+--- Hand #260272184658 | Button: Seat 0 (Bandifull) ---
+  Stacks: Bandifull $20.05 | Skurj_poker $8.00 | Blurrr99 $11.60 | BoriSuizo $10.00 | Tragladit987 $21.01
+  Blurrr99 posts SB 5c
+  BoriSuizo posts BB 10c
+  ** BoriSuizo wins 10c **
+  Result: BoriSuizo wins 10c (no showdown)
+  Bandifull: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Takes down main pot.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272188638 | Button: Seat 2 (Blurrr99) ---
+  Stacks: Bandifull $20.05 | Skurj_poker $8.00 | Blurrr99 $11.55 | BoriSuizo $10.05 | Tragladit987 $21.01
+  BoriSuizo posts SB 5c
+  Tragladit987 posts BB 10c
+  Skurj_poker calls 10c
+  ** Hero: 4c 9c **
+  Bandifull raises to 50c
+  Blurrr99 raises to $1.50
+  Bandifull calls $1.50
+  --- FLOP [9h 2h 4s] ---
+  --- TURN [9h 2h 4s 6h] ---
+  Bandifull bets $1.80
+  --- RIVER [9h 2h 4s 6h 3d] ---
+  ** Bandifull wins $3.09 **
+  Result: Bandifull wins $3.09 (no showdown)
+  Board: 9h 2h 4s 6h 3d
+  Bandifull: Takes down main pot.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272208552 | Button: Seat 3 (BoriSuizo) ---
+  Stacks: Bandifull $21.64 | Skurj_poker $7.90 | Blurrr99 $10.05 | BoriSuizo $10.00 | Tragladit987 $20.91
+  Tragladit987 posts SB 5c
+  Bandifull posts BB 10c
+  ** Hero: 4h 6c **
+  BoriSuizo raises to 40c
+  ** BoriSuizo wins 25c **
+  Result: BoriSuizo wins 25c (no showdown)
+  Bandifull: Loses main pot and mucks cards.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Takes down main pot.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272215935 | Button: Seat 4 (Tragladit987) ---
+  Stacks: Bandifull $21.54 | Skurj_poker $7.90 | Blurrr99 $10.05 | BoriSuizo $10.15 | Tragladit987 $20.86
+  Bandifull posts SB 5c
+  Skurj_poker posts BB 10c
+  ** Hero: 7d 8d **
+  Blurrr99 raises to 30c
+  BoriSuizo calls 30c
+  Tragladit987 raises to $1.30
+  BoriSuizo calls $3.50
+  ** BoriSuizo wins $3.05 **
+  Result: BoriSuizo wins $3.05 (no showdown)
+  Bandifull: Loses main pot and mucks cards.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Takes down main pot.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272235570 | Button: Seat 0 (Bandifull) ---
+  Stacks: Bandifull $21.49 | Skurj_poker $7.80 | Blurrr99 $10.00 | BoriSuizo $11.90 | Tragladit987 $19.56 | Dante63s $10.00
+  Skurj_poker posts SB 5c
+  Blurrr99 posts BB 10c
+  ** Hero: Qc 9c **
+  Bandifull raises to 30c
+  Skurj_poker calls 30c
+  --- FLOP [4h 5s 7s] ---
+  Bandifull bets 30c
+  ** Bandifull wins 66c **
+  Result: Bandifull wins 66c (no showdown)
+  Board: 4h 5s 7s
+  Bandifull: Takes down main pot.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272250068 | Button: Seat 1 (Skurj_poker) ---
+  Stacks: Bandifull $21.85 | Skurj_poker $7.50 | Blurrr99 $10.00 | BoriSuizo $11.90 | Tragladit987 $19.56 | Dante63s $10.00
+  Blurrr99 posts SB 5c
+  BoriSuizo posts BB 10c
+  ** Hero: 2c Jh **
+  Bandifull raises to 40c
+  ** Bandifull wins 25c **
+  Result: Bandifull wins 25c (no showdown)
+  Bandifull: Takes down main pot.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Loses main pot and mucks cards.
+
+--- Hand #260272256354 | Button: Seat 2 (Blurrr99) ---
+  Stacks: Bandifull $22.00 | Skurj_poker $7.50 | Blurrr99 $10.00 | BoriSuizo $11.80 | Tragladit987 $19.56 | Dante63s $10.00
+  BoriSuizo posts SB 5c
+  Tragladit987 posts BB 10c
+  ** Hero: 2h Ac **
+  ** Tragladit987 wins 10c **
+  Result: Tragladit987 wins 10c (no showdown)
+  Bandifull: Loses main pot and mucks cards.
+  Skurj_poker: Loses main pot and mucks cards.
+  Blurrr99: Loses main pot and mucks cards.
+  BoriSuizo: Loses main pot and mucks cards.
+  Tragladit987: Takes down main pot.
+
+--- Hand #260272264266 | Button: Seat 3 (BoriSuizo) ---
+  Stacks: Bandifull $22.00 | Skurj_poker $7.50 | Blurrr99 $10.00 | BoriSuizo $11.75 | Tragladit987 $19.61 | Dante63s $10.00
+  Tragladit987 posts SB 5c
+  Dante63s posts BB 10c
+  ** Hero: Qh Js **

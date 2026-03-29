@@ -1,0 +1,10 @@
+Session: lobby -> join table -> buy in -> one hand -> leave
+Start time: 03/29/2026 18:18:23
+Profile: Poker Research Chrome profile
+Table loaded with minimum play requirements modal visible: 03/29/2026 18:20:11
+
+- Session artifacts collected
+- 01-table-load.har = earlier table-load capture
+- 02-table-load-obs-twohands.har = later session/network capture
+- 02-table-load-obs-twohands_obs_.mkv = OBS gameplay recording
+- Workflow corrected for future sessions: start OBS, open DevTools Network with Preserve log, then join table and play
