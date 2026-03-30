@@ -1,12 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  Poker Lab Browser Client — Phase 5
+//  Poker Lab Browser Client — Phase 7
 // ═══════════════════════════════════════════════════════════════════════════
 
 let ws = null;
 let state = null;
 let msgId = 0;
 let sessionId = null;
+let voidedHandIds = new Set();
 let resultBannerTimeout = null;
+let recoveryBannerTimeout = null;
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -21,7 +23,18 @@ function connect() {
     if (msg.welcome) {
       sessionId = msg.sessionId;
       state = msg.state;
+      voidedHandIds = new Set(msg.voidedHands || []);
+
       logEvent({ type: "CONNECTED", detail: `session=${sessionId}, events=${msg.eventCount}` });
+
+      if (msg.recovered) {
+        logEvent({ type: "RECOVERY", detail: `Session recovered from disk (${msg.eventCount} events)` });
+        if (msg.voidedHands && msg.voidedHands.length > 0) {
+          logEvent({ type: "RECOVERY", detail: `Voided hands: ${msg.voidedHands.join(", ")}` });
+        }
+        showRecoveryBanner(msg);
+      }
+
       render();
       return;
     }
@@ -44,9 +57,9 @@ function connect() {
       handleEvents(msg.events);
     }
     if (msg.state) {
-      // Response to GET_STATE or GET_HAND_LIST
       state = msg.state.seats ? msg.state : state;
       if (msg.state.hands) renderHandList(msg.state.hands);
+      if (msg.state.sessions) renderSessionsList(msg.state.sessions);
       render();
     } else {
       refreshState();
@@ -79,12 +92,8 @@ function refreshState() { send("GET_STATE"); }
 
 function handleEvents(events) {
   for (const e of events) {
-    if (e.type === "HAND_RESULT") {
-      showResultBanner(e);
-    }
-    if (e.type === "HAND_START") {
-      clearResultBanner();
-    }
+    if (e.type === "HAND_RESULT") showResultBanner(e);
+    if (e.type === "HAND_START") clearResultBanner();
   }
 }
 
@@ -113,8 +122,7 @@ function sendRaise() {
 
 function seatClick(seatIndex) {
   if (!state) return;
-  const seat = state.seats[seatIndex];
-  if (seat.status !== "EMPTY") return;
+  if (state.seats[seatIndex].status !== "EMPTY") return;
   const name = prompt("Player name:");
   if (!name) return;
   const buyIn = parseInt(prompt("Buy-in (cents):", "1000"));
@@ -122,23 +130,22 @@ function seatClick(seatIndex) {
   send("SEAT_PLAYER", { seat: seatIndex, name, buyIn, country: "XX" });
 }
 
+function archiveSession() {
+  if (!confirm("Archive current session and start a new one?")) return;
+  send("ARCHIVE_SESSION");
+}
+
 // ── Keyboard Shortcuts ─────────────────────────────────────────────────────
 
 document.addEventListener("keydown", (e) => {
-  // Don't intercept when typing in an input
   if (e.target.tagName === "INPUT") return;
-
   const hand = state ? state.hand : null;
   const legal = hand ? (hand.legalActions ? hand.legalActions.actions : []) : [];
-
   switch (e.key.toLowerCase()) {
     case "f": if (legal.includes("FOLD")) sendAction("FOLD"); break;
     case "c": if (legal.includes("CALL")) sendAction("CALL"); break;
     case "x": if (legal.includes("CHECK")) sendAction("CHECK"); break;
-    case "d":
-    case "enter":
-      if (!hand || hand.phase === "COMPLETE") sendStartHand();
-      break;
+    case "d": case "enter": if (!hand || hand.phase === "COMPLETE") sendStartHand(); break;
   }
 });
 
@@ -158,17 +165,16 @@ function cardHtml(card) {
 function render() {
   if (!state) return;
 
-  // Header
   const hand = state.hand;
   const handActive = hand && hand.phase !== "COMPLETE";
   const handInfo = handActive ? `Hand #${hand.handId} | ${hand.phase}` : "Between hands";
+  const sidShort = sessionId ? sessionId.slice(-10) : "";
   document.getElementById("table-info").textContent =
-    `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | ${handInfo} | Played: ${state.handsPlayed}`;
+    `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | ${handInfo} | Played: ${state.handsPlayed} | ${sidShort}`;
 
   // Seats
   const felt = document.getElementById("table-felt");
   felt.querySelectorAll(".seat").forEach((el) => el.remove());
-
   for (let i = 0; i < state.maxSeats; i++) {
     const s = state.seats[i];
     const div = document.createElement("div");
@@ -182,41 +188,26 @@ function render() {
     } else {
       if (s.folded) div.classList.add("folded");
       if (handActive && hand.actionSeat === i) div.classList.add("active");
-
       const badges = [];
       if (state.button === i) badges.push("BTN");
       if (s.allIn) badges.push("ALL-IN");
       if (s.folded) badges.push("FOLD");
-
       const cardsHtml = s.holeCards
         ? `<div class="seat-cards">${s.holeCards.join(" ")}</div>`
         : (s.inHand && !s.folded ? '<div class="seat-cards" style="color:#555">[**]</div>' : "");
-
       const betHtml = s.bet > 0 ? `<div class="seat-bet">Bet: ${c$(s.bet)}</div>` : "";
       const badgeHtml = badges.length > 0 ? `<div class="seat-badge">${badges.join(" | ")}</div>` : "";
-
-      div.innerHTML =
-        `<div class="seat-name">${s.player.name}</div>` +
-        `<div class="seat-stack">${c$(s.stack)}</div>` +
-        cardsHtml + betHtml + badgeHtml;
+      div.innerHTML = `<div class="seat-name">${s.player.name}</div><div class="seat-stack">${c$(s.stack)}</div>${cardsHtml}${betHtml}${badgeHtml}`;
     }
-
     felt.appendChild(div);
   }
 
   // Board
-  const boardEl = document.getElementById("board");
   const board = (handActive && hand) ? hand.board : [];
   let boardHtml = "";
-  for (let i = 0; i < 5; i++) {
-    boardHtml += board[i] ? cardHtml(board[i]) : '<span class="board-card empty"></span>';
-  }
-  boardEl.innerHTML = boardHtml;
-
-  // Pot
+  for (let i = 0; i < 5; i++) boardHtml += board[i] ? cardHtml(board[i]) : '<span class="board-card empty"></span>';
+  document.getElementById("board").innerHTML = boardHtml;
   document.getElementById("pot").textContent = handActive && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
-
-  // Phase
   document.getElementById("phase").textContent = handActive ? hand.phase : "";
 
   updateActionButtons();
@@ -239,33 +230,22 @@ function updateActionButtons() {
     : 'Call <span class="key-hint">[C]</span>';
 
   const betInput = document.getElementById("bet-input");
-  if (actions.includes("BET") && legal) {
-    betInput.value = legal.minBet;
-    betInput.min = legal.minBet;
-  } else if (actions.includes("RAISE") && legal) {
-    betInput.value = legal.minRaise;
-    betInput.min = legal.minRaise;
-    betInput.max = legal.maxRaise;
-  }
+  if (actions.includes("BET") && legal) { betInput.value = legal.minBet; betInput.min = legal.minBet; }
+  else if (actions.includes("RAISE") && legal) { betInput.value = legal.minRaise; betInput.min = legal.minRaise; betInput.max = legal.maxRaise; }
 
   const occupied = state ? Object.values(state.seats).filter((s) => s.status === "OCCUPIED").length : 0;
   const handActive = hand && hand.phase !== "COMPLETE";
   document.getElementById("start-btn").disabled = handActive || occupied < 2;
 }
 
-// ── Result Banner ──────────────────────────────────────────────────────────
+// ── Banners ────────────────────────────────────────────────────────────────
 
 function showResultBanner(resultEvent) {
   const banner = document.getElementById("result-banner");
   const lines = [];
-  for (const r of resultEvent.results || []) {
-    if (r.won) lines.push(`${r.player} wins ${c$(r.amount)}`);
-  }
-  for (const r of resultEvent.results || []) {
-    if (r.text && r.won) lines.push(r.text);
-  }
+  for (const r of resultEvent.results || []) { if (r.won) lines.push(`${r.player} wins ${c$(r.amount)}`); }
+  for (const r of resultEvent.results || []) { if (r.text && r.won) lines.push(r.text); }
   banner.textContent = lines.join(" | ") || "";
-
   clearTimeout(resultBannerTimeout);
   resultBannerTimeout = setTimeout(() => { banner.textContent = ""; }, 5000);
 }
@@ -275,7 +255,17 @@ function clearResultBanner() {
   document.getElementById("result-banner").textContent = "";
 }
 
-// ── Error Toast ────────────────────────────────────────────────────────────
+function showRecoveryBanner(welcomeMsg) {
+  const banner = document.getElementById("recovery-banner");
+  let text = `Recovered session ${welcomeMsg.sessionId.slice(-15)} (${welcomeMsg.eventCount} events)`;
+  if (welcomeMsg.voidedHands && welcomeMsg.voidedHands.length > 0) {
+    text += ` | Voided: Hand ${welcomeMsg.voidedHands.join(", ")}`;
+  }
+  banner.textContent = text;
+  banner.style.display = "block";
+  clearTimeout(recoveryBannerTimeout);
+  recoveryBannerTimeout = setTimeout(() => { banner.style.display = "none"; }, 8000);
+}
 
 function showError(msg) {
   const toast = document.getElementById("error-toast");
@@ -290,7 +280,6 @@ function logEvent(e) {
   const log = document.getElementById("log");
   const div = document.createElement("div");
   div.className = "log-entry";
-
   let detail = "";
   if (e.player) detail += e.player + " ";
   if (e.action) detail += e.action + " ";
@@ -302,8 +291,9 @@ function logEvent(e) {
   if (e.awards) detail += e.awards.map((a) => a.player + " " + c$(a.amount)).join(", ") + " ";
   if (e.detail) detail += e.detail + " ";
   if (e.error) detail += e.error + " ";
-
-  div.innerHTML = `<span class="type">${e.type || "?"}</span> <span class="detail">${detail.trim()}</span>`;
+  if (e.void) detail += "[VOIDED] ";
+  const typeColor = e.type === "RECOVERY" ? "color:#8ecae6" : "";
+  div.innerHTML = `<span class="type" style="${typeColor}">${e.type || "?"}</span> <span class="detail">${detail.trim()}</span>`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
 }
@@ -313,40 +303,37 @@ function logEvent(e) {
 function switchTab(tab) {
   document.querySelectorAll(".panel-tab").forEach((t) => t.classList.remove("active"));
   document.querySelectorAll(".panel-content").forEach((p) => p.classList.remove("active"));
+  const idx = { events: 0, history: 1, sessions: 2 }[tab] || 0;
+  document.querySelectorAll(".panel-tab")[idx].classList.add("active");
 
-  if (tab === "events") {
-    document.querySelector('.panel-tab:nth-child(1)').classList.add("active");
-    document.getElementById("events-panel").classList.add("active");
-  } else {
-    document.querySelector('.panel-tab:nth-child(2)').classList.add("active");
-    document.getElementById("history-panel").classList.add("active");
-    loadHandList();
-  }
+  if (tab === "events") document.getElementById("events-panel").classList.add("active");
+  else if (tab === "history") { document.getElementById("history-panel").classList.add("active"); loadHandList(); }
+  else if (tab === "sessions") { document.getElementById("sessions-panel").classList.add("active"); loadSessionList(); }
 }
 
 // ── Hand History ───────────────────────────────────────────────────────────
 
 function loadHandList() {
   send("GET_HAND_LIST", {}, (resp) => {
-    if (resp.ok && resp.state && resp.state.hands) {
-      renderHandList(resp.state.hands);
-    }
+    if (resp.ok && resp.state && resp.state.hands) renderHandList(resp.state.hands);
   });
 }
 
-function renderHandList(hands) {
+function renderHandList(hands, readOnly) {
   const el = document.getElementById("hand-list");
   if (!hands || hands.length === 0) {
     el.innerHTML = '<div style="color:#555;padding:8px">No completed hands yet</div>';
     return;
   }
-  el.innerHTML = hands.map((h) =>
-    `<div class="hand-row" onclick="loadHandDetail('${h.handId}')">` +
-    `<span class="hid">#${h.handId}</span> ` +
-    `<span class="hwinner">${h.winner}</span> ` +
-    `<span class="hpot">${c$(h.pot)}</span>` +
-    `</div>`
-  ).join("");
+  el.innerHTML = hands.map((h) => {
+    if (h.voided) {
+      return `<div class="hand-row"><span class="hid">#${h.handId}</span> <span class="voided">[VOIDED - mid-hand recovery]</span></div>`;
+    }
+    const onclick = readOnly
+      ? `onclick="loadSessionHandDetail('${currentBrowseSessionId}','${h.handId}')"`
+      : `onclick="loadHandDetail('${h.handId}')"`;
+    return `<div class="hand-row" ${onclick}><span class="hid">#${h.handId}</span> <span class="hwinner">${h.winner}</span> <span class="hpot">${c$(h.pot)}</span></div>`;
+  }).join("");
   el.style.display = "block";
   document.getElementById("hand-detail").style.display = "none";
   document.getElementById("hand-detail-back").style.display = "none";
@@ -354,9 +341,7 @@ function renderHandList(hands) {
 
 function loadHandDetail(handId) {
   send("GET_HAND_EVENTS", { handId }, (resp) => {
-    if (resp.ok && resp.events) {
-      renderHandDetail(resp.events);
-    }
+    if (resp.ok && resp.events) renderHandDetail(resp.events);
   });
 }
 
@@ -374,31 +359,107 @@ function showHandList() {
   document.getElementById("hand-list").style.display = "block";
 }
 
-// ── Timeline Formatter (browser version of replay-normalized-hand.js) ─────
+// ── Sessions Tab ───────────────────────────────────────────────────────────
+
+let currentBrowseSessionId = null;
+
+function loadSessionList() {
+  send("GET_SESSION_LIST", {}, (resp) => {
+    if (resp.ok && resp.state && resp.state.sessions) renderSessionsList(resp.state.sessions);
+  });
+}
+
+function renderSessionsList(sessions) {
+  const el = document.getElementById("sessions-list");
+  document.getElementById("sessions-detail").style.display = "none";
+  document.getElementById("sessions-detail-back").style.display = "none";
+  el.style.display = "block";
+
+  if (!sessions || sessions.length === 0) {
+    el.innerHTML = '<div style="color:#555;padding:8px">No sessions</div>';
+    return;
+  }
+
+  let html = sessions.map((s) => {
+    const isActive = s.status === "active";
+    const dotCls = isActive ? "active" : "complete";
+    const rowCls = isActive ? "session-row active-session" : "session-row";
+    const created = s.createdAt ? new Date(s.createdAt).toLocaleString() : "?";
+    const onclick = isActive ? "" : `onclick="browseSession('${s.sessionId}')"`;
+    return `<div class="${rowCls}" ${onclick}>` +
+      `<span class="session-dot ${dotCls}"></span>` +
+      `<span class="session-id">${s.sessionId}</span><br>` +
+      `<span class="session-info">${s.status} | ${s.handsPlayed || 0} hands | ${created}</span>` +
+      `</div>`;
+  }).join("");
+
+  html += `<button class="session-archive-btn" onclick="archiveSession()">Archive & New Session</button>`;
+  el.innerHTML = html;
+}
+
+function browseSession(sid) {
+  currentBrowseSessionId = sid;
+  send("GET_HAND_LIST", { sessionId: sid }, (resp) => {
+    if (resp.ok && resp.state && resp.state.hands) {
+      renderSessionHandList(sid, resp.state.hands);
+    }
+  });
+}
+
+function renderSessionHandList(sid, hands) {
+  const el = document.getElementById("sessions-detail");
+  document.getElementById("sessions-list").style.display = "none";
+  document.getElementById("sessions-detail-back").style.display = "block";
+  el.style.display = "block";
+
+  let html = `<div style="padding:4px 8px; font-size:11px; color:#888; border-bottom:1px solid #333">${sid} (complete)</div>`;
+  if (!hands || hands.length === 0) {
+    html += '<div style="color:#555;padding:8px">No hands</div>';
+  } else {
+    html += hands.map((h) => {
+      if (h.voided) {
+        return `<div class="hand-row"><span class="hid">#${h.handId}</span> <span class="voided">[VOIDED]</span></div>`;
+      }
+      return `<div class="hand-row" onclick="loadSessionHandDetail('${sid}','${h.handId}')">` +
+        `<span class="hid">#${h.handId}</span> <span class="hwinner">${h.winner}</span> <span class="hpot">${c$(h.pot)}</span></div>`;
+    }).join("");
+  }
+  el.innerHTML = html;
+}
+
+function loadSessionHandDetail(sid, handId) {
+  send("GET_HAND_EVENTS", { sessionId: sid, handId }, (resp) => {
+    if (resp.ok && resp.events) {
+      const el = document.getElementById("sessions-detail");
+      const lines = formatTimeline(resp.events);
+      el.innerHTML = `<div style="padding:4px 8px; color:#4ecca3; cursor:pointer; font-size:11px; border-bottom:1px solid #333" onclick="browseSession('${sid}')">Back to hands</div>` +
+        `<pre style="padding:4px 8px; font-size:10px; line-height:1.6; white-space:pre-wrap; color:#ccc">${lines.join("\n")}</pre>`;
+    }
+  });
+}
+
+function showSessionsList() {
+  document.getElementById("sessions-detail").style.display = "none";
+  document.getElementById("sessions-detail-back").style.display = "none";
+  document.getElementById("sessions-list").style.display = "block";
+  loadSessionList();
+}
+
+// ── Timeline Formatter ─────────────────────────────────────────────────────
 
 function formatTimeline(events) {
   const lines = [];
-  let players = {};
   let board = [];
-
   for (const e of events) {
     switch (e.type) {
       case "HAND_START":
         lines.push(`Hand #${e.handId} | Button: Seat ${e.button}`);
-        players = e.players || {};
-        const stacks = Object.entries(players).map(([s, p]) => `${p.name} ${c$(p.stack)}`);
+        const stacks = Object.entries(e.players || {}).map(([s, p]) => `${p.name} ${c$(p.stack)}`);
         lines.push(`Stacks: ${stacks.join(" | ")}`);
         lines.push("");
         break;
-
-      case "BLIND_POST":
-        lines.push(`${e.player} posts ${e.blindType} ${c$(e.amount)}`);
-        break;
-
-      case "HERO_CARDS":
-        lines.push(`[${e.seat}] cards: ${e.cards.join(" ")}`);
-        break;
-
+      case "BLIND_POST": lines.push(`${e.player} posts ${e.blindType} ${c$(e.amount)}`); break;
+      case "HERO_CARDS": lines.push(`[${e.seat}] cards: ${e.cards.join(" ")}`); break;
       case "PLAYER_ACTION": {
         const inf = e.inferred ? " {inferred}" : "";
         if (e.action === "FOLD") lines.push(`${e.player} folds${inf}`);
@@ -409,38 +470,16 @@ function formatTimeline(events) {
         else lines.push(`${e.player} ${e.action} ${c$(e.totalBet)}${inf}`);
         break;
       }
-
-      case "BET_RETURN":
-        lines.push(`${e.player} returned ${c$(e.amount)}`);
-        break;
-
-      case "DEAL_COMMUNITY":
-        board = e.board || [];
-        lines.push("");
-        lines.push(`--- ${e.street} [${board.join(" ")}] ---`);
-        break;
-
-      case "POT_AWARD":
-        lines.push("");
-        for (const a of e.awards || []) {
-          lines.push(`** ${a.player} wins ${c$(a.amount)} **`);
-        }
-        break;
-
-      case "HAND_SUMMARY":
-        lines.push(`Result: ${e.winPlayer} wins ${c$(e.totalPot)} (${e.showdown ? "showdown" : "no showdown"})`);
-        if (board.length > 0) lines.push(`Board: ${board.join(" ")}`);
-        break;
-
-      case "HAND_RESULT":
-        lines.push("");
-        for (const r of e.results || []) {
-          lines.push(`${r.player}: ${r.text}`);
-        }
+      case "BET_RETURN": lines.push(`${e.player} returned ${c$(e.amount)}`); break;
+      case "DEAL_COMMUNITY": board = e.board || []; lines.push(""); lines.push(`--- ${e.street} [${board.join(" ")}] ---`); break;
+      case "POT_AWARD": lines.push(""); for (const a of e.awards || []) lines.push(`** ${a.player} wins ${c$(a.amount)} **`); break;
+      case "HAND_SUMMARY": lines.push(`Result: ${e.winPlayer} wins ${c$(e.totalPot)} (${e.showdown ? "showdown" : "no showdown"})`); if (board.length > 0) lines.push(`Board: ${board.join(" ")}`); break;
+      case "HAND_RESULT": lines.push(""); for (const r of e.results || []) lines.push(`${r.player}: ${r.text}`); break;
+      case "HAND_END":
+        if (e.void) { lines.push(""); lines.push("[HAND VOIDED - server recovered from mid-hand crash]"); lines.push("[Stacks restored to pre-hand values]"); }
         break;
     }
   }
-
   return lines;
 }
 

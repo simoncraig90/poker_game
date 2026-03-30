@@ -91,6 +91,23 @@
   #hand-detail { padding: 4px 8px; font-size: 10px; line-height: 1.6; white-space: pre-wrap; }
   #hand-detail-back { padding: 4px 8px; color: #4ecca3; cursor: pointer; font-size: 11px; border-bottom: 1px solid #333; }
   #hand-detail-back:hover { text-decoration: underline; }
+
+  /* Sessions tab */
+  #sessions { padding: 4px 8px; font-size: 11px; }
+  .session-row { padding: 6px 2px; border-bottom: 1px solid #1a1a1a; cursor: pointer; }
+  .session-row:hover { background: #1a1a2e; }
+  .session-row.active-session { border-left: 3px solid #4ecca3; padding-left: 6px; }
+  .session-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .session-dot.active { background: #4ecca3; }
+  .session-dot.complete { background: #555; }
+  .session-id { color: #4ecca3; font-size: 10px; }
+  .session-info { color: #888; font-size: 10px; }
+  .session-archive-btn { display: block; margin: 10px auto; padding: 6px 16px; border: 1px solid #ffd700; border-radius: 4px; background: #4a3f00; color: #ffd700; cursor: pointer; font-family: inherit; font-size: 11px; }
+  .session-archive-btn:hover { background: #6a5f00; }
+  .voided { color: #a44; font-style: italic; }
+
+  /* Recovery banner */
+  #recovery-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #1a3a4a; color: #8ecae6; padding: 6px 16px; border-radius: 4px; font-size: 11px; display: none; z-index: 10; border: 1px solid #4a8; }
 </style>
 </head>
 <body>
@@ -104,6 +121,7 @@
 <div id="main">
   <div id="table-area">
     <div id="error-toast"></div>
+    <div id="recovery-banner"></div>
     <div id="table-felt">
       <div id="board-area">
         <div id="board"></div>
@@ -117,6 +135,7 @@
     <div id="panel-tabs">
       <div class="panel-tab active" onclick="switchTab('events')">Events</div>
       <div class="panel-tab" onclick="switchTab('history')">History</div>
+      <div class="panel-tab" onclick="switchTab('sessions')">Sessions</div>
     </div>
     <div id="events-panel" class="panel-content active">
       <div id="log"></div>
@@ -125,6 +144,11 @@
       <div id="hand-detail-back" style="display:none" onclick="showHandList()">Back</div>
       <div id="hand-list"></div>
       <div id="hand-detail" style="display:none"></div>
+    </div>
+    <div id="sessions-panel" class="panel-content">
+      <div id="sessions-list"></div>
+      <div id="sessions-detail" style="display:none"></div>
+      <div id="sessions-detail-back" style="display:none; padding:4px 8px; color:#4ecca3; cursor:pointer; font-size:11px; border-bottom:1px solid #333;" onclick="showSessionsList()">Back to sessions</div>
     </div>
   </div>
 </div>
