@@ -3,182 +3,77 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Poker Bot — Spectator</title>
+<title>Poker Bot — Quick Start</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Consolas', 'Monaco', monospace; background: #1a1a2e; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; }
-
-  /* ── Header ──────────────────────────────────────────────────────────── */
-  #header { background: #16213e; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
-  #header .title { font-size: 14px; font-weight: bold; color: #4ecca3; }
-  #header .info { font-size: 12px; color: #888; }
-  #status { font-size: 11px; padding: 2px 8px; border-radius: 3px; }
-  #status.connected { background: #2d6a4f; color: #b7e4c7; }
-  #status.disconnected { background: #6a2d2d; color: #e4b7b7; }
-
-  /* ── Main layout ─────────────────────────────────────────────────────── */
-  #main { flex: 1; display: flex; overflow: hidden; }
-
-  /* ── Table area (left) ───────────────────────────────────────────────── */
-  #table-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; position: relative; }
-  #error-toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #6a2d2d; color: #e4b7b7; padding: 6px 16px; border-radius: 4px; font-size: 11px; display: none; z-index: 10; border: 1px solid #a44; }
-
-  #table-felt { position: relative; width: 680px; height: 420px; background: #0f3d0f; border-radius: 160px; border: 3px solid #1a5c1a; }
-
-  .seat { position: absolute; width: 130px; background: #16213e; border: 2px solid #333; border-radius: 8px; padding: 6px 8px; font-size: 11px; transition: border-color 0.2s; }
-  .seat.active { border-color: #4ecca3; box-shadow: 0 0 8px rgba(78, 204, 163, 0.4); }
-  .seat.folded { opacity: 0.45; }
-  .seat.empty { border-style: dashed; border-color: #444; opacity: 0.5; }
-  .seat-name { font-weight: bold; color: #4ecca3; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .seat-stack { color: #ccc; }
-  .seat-cards { color: #ffd700; margin-top: 2px; font-size: 13px; letter-spacing: 1px; }
-  .seat-bet { color: #e88; font-size: 10px; margin-top: 1px; }
-  .seat-badge { font-size: 9px; color: #888; margin-top: 1px; }
-
-  .seat[data-seat="0"] { bottom: -20px; left: 50%; transform: translateX(-50%); }
-  .seat[data-seat="1"] { bottom: 40px; left: -10px; }
-  .seat[data-seat="2"] { top: 40px; left: -10px; }
-  .seat[data-seat="3"] { top: -20px; left: 50%; transform: translateX(-50%); }
-  .seat[data-seat="4"] { top: 40px; right: -10px; }
-  .seat[data-seat="5"] { bottom: 40px; right: -10px; }
-
-  #board-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
-  #board { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; min-height: 30px; }
-  .board-card { background: #fff; color: #111; padding: 4px 6px; border-radius: 4px; font-size: 14px; font-weight: bold; min-width: 28px; text-align: center; border: 1px solid #888; }
-  .board-card.empty { background: #2a2a4a; color: #555; border-color: #444; }
-  .board-card.red { color: #d33; }
-  #pot { font-size: 13px; color: #ffd700; font-weight: bold; }
-  #phase { font-size: 11px; color: #888; margin-top: 2px; }
-  #result-banner { font-size: 13px; color: #4ecca3; margin-top: 6px; min-height: 20px; }
-
-  /* ── Right panel ─────────────────────────────────────────────────────── */
-  #right-panel { width: 320px; background: #111; border-left: 1px solid #333; display: flex; flex-direction: column; }
-  #panel-tabs { display: flex; border-bottom: 1px solid #333; }
-  .panel-tab { flex: 1; padding: 6px 10px; font-size: 11px; font-weight: bold; color: #888; text-align: center; cursor: pointer; border-bottom: 2px solid transparent; }
-  .panel-tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
-  .panel-content { flex: 1; overflow-y: auto; display: none; }
-  .panel-content.active { display: block; }
-
-  /* Bot controls tab */
-  #bot-controls { padding: 8px; }
-  .ctrl-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-  .ctrl-field { display: flex; flex-direction: column; gap: 1px; }
-  .ctrl-field label { font-size: 9px; color: #666; text-transform: uppercase; }
-  .ctrl-field input, .ctrl-field select { padding: 3px 6px; border: 1px solid #444; border-radius: 3px; background: #1a1a2e; color: #e0e0e0; font-family: inherit; font-size: 11px; width: 80px; }
-  .ctrl-field select { width: 100px; }
-
-  .ctrl-btn { padding: 4px 12px; border: 1px solid #444; border-radius: 3px; background: #1a1a2e; color: #e0e0e0; cursor: pointer; font-family: inherit; font-size: 11px; }
-  .ctrl-btn:hover { background: #2a2a4e; border-color: #4ecca3; }
-  .ctrl-btn.green { background: #2d6a4f; border-color: #4ecca3; color: #4ecca3; }
-  .ctrl-btn.red { background: #6a2d2d; border-color: #e44; color: #e4b7b7; }
-  .ctrl-btn.gold { background: #4a3f00; border-color: #ffd700; color: #ffd700; }
-
-  .bot-roster { margin-top: 6px; }
-  .bot-row { display: flex; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid #1a1a1a; font-size: 10px; }
-  .bot-row .bname { color: #4ecca3; width: 60px; }
-  .bot-row .bseat { color: #666; width: 40px; }
-  .bot-row .bstatus { width: 50px; }
-  .bot-row .bstats { color: #ffd700; }
-
-  .stats-bar { display: flex; gap: 12px; font-size: 10px; color: #666; padding: 4px 0; border-top: 1px solid #222; margin-top: 4px; }
-  .stats-bar span { color: #ffd700; }
-
-  /* Event log tab */
-  #log { padding: 4px 8px; font-size: 10px; line-height: 1.5; }
-  .log-entry { border-bottom: 1px solid #1a1a1a; padding: 2px 0; }
-  .log-entry .type { color: #4ecca3; }
-  .log-entry .detail { color: #888; }
-
-  /* Bot decision log tab */
-  #decision-log { padding: 4px 8px; font-size: 10px; line-height: 1.6; }
-  .dec-entry { padding: 2px 0; border-bottom: 1px solid #1a1a1a; }
-  .dec-entry .dec-name { color: #4ecca3; font-weight: bold; }
-  .dec-entry .dec-action { color: #ffd700; }
-  .dec-entry .dec-reason { color: #666; font-style: italic; }
-  .dec-entry .dec-cards { color: #c084fc; }
+  body { font-family: 'Consolas', 'Monaco', monospace; background: #1a1a2e; color: #e0e0e0; padding: 40px; max-width: 700px; margin: 0 auto; }
+  h1 { font-size: 18px; color: #4ecca3; margin-bottom: 20px; }
+  h2 { font-size: 14px; color: #888; margin: 20px 0 10px; }
+  pre { background: #111; border: 1px solid #333; border-radius: 6px; padding: 12px 16px; font-size: 12px; line-height: 1.6; overflow-x: auto; margin-bottom: 12px; }
+  code { color: #ffd700; }
+  .cmd { color: #4ecca3; }
+  .flag { color: #c084fc; }
+  .comment { color: #555; }
+  p { font-size: 13px; line-height: 1.6; margin-bottom: 10px; }
+  .note { background: #16213e; border-left: 3px solid #4ecca3; padding: 10px 14px; font-size: 12px; margin: 12px 0; border-radius: 0 4px 4px 0; }
 </style>
 </head>
 <body>
 
-<div id="header">
-  <span class="title">Poker Bot Spectator</span>
-  <span class="info" id="table-info">--</span>
-  <span id="status" class="disconnected">Disconnected</span>
+<h1>Poker Bot — Browser Automation</h1>
+
+<p>Each bot runs in its own Chrome window with a real mouse cursor.
+It clicks buttons, types bet amounts, and reads cards from the screen —
+exactly like a human player.</p>
+
+<h2>Quick Start</h2>
+<pre><span class="comment"># Start the poker server first</span>
+<span class="cmd">node src/server/ws-server.js</span>
+
+<span class="comment"># In another terminal, launch 3 bots</span>
+<span class="cmd">node src/bot/browser-bot.js</span> <span class="flag">--bots=3</span></pre>
+
+<p>Three Chrome windows will open, each navigating to the table.
+You'll see cursors moving to buttons and clicking them in real time.</p>
+
+<h2>Options</h2>
+<pre><span class="flag">--url</span>=http://localhost:9100   <span class="comment"># Server address</span>
+<span class="flag">--bots</span>=3                     <span class="comment"># Number of bots (2-6)</span>
+<span class="flag">--style</span>=TAG                  <span class="comment"># TAG, LAG, ROCK, FISH, or MIXED</span>
+<span class="flag">--delay</span>=1500                 <span class="comment"># Think time in ms</span>
+<span class="flag">--hands</span>=50                   <span class="comment"># Stop after N hands (0 = unlimited)</span>
+<span class="flag">--headless</span>                   <span class="comment"># No visible browser</span>
+<span class="flag">--chrome</span>="/path/to/chrome"   <span class="comment"># Chrome executable path</span></pre>
+
+<h2>Examples</h2>
+<pre><span class="comment"># 4 bots with mixed styles, slower for watching</span>
+<span class="cmd">node src/bot/browser-bot.js</span> <span class="flag">--bots=4 --style=MIXED --delay=2000</span>
+
+<span class="comment"># 2 tight bots, 20 hands only</span>
+<span class="cmd">node src/bot/browser-bot.js</span> <span class="flag">--bots=2 --style=TAG --hands=20</span>
+
+<span class="comment"># Specify Chrome path on Windows</span>
+<span class="cmd">node src/bot/browser-bot.js</span> <span class="flag">--chrome="C:\Program Files\Google\Chrome\Application\chrome.exe"</span></pre>
+
+<h2>Play Styles</h2>
+<pre><span class="flag">TAG</span>   — Tight-Aggressive (solid, selective, bets hard)
+<span class="flag">LAG</span>   — Loose-Aggressive (wider range, more bluffs)
+<span class="flag">ROCK</span>  — Ultra-tight (only premium hands)
+<span class="flag">FISH</span>  — Loose-passive (calls too much)
+<span class="flag">MIXED</span> — Each bot gets a different style</pre>
+
+<div class="note">
+  <strong>How it works:</strong> Each bot is a separate Chrome process controlled
+  by Puppeteer. It moves the mouse to buttons (Fold, Call, Raise), clicks at the
+  pixel coordinates, and types bet amounts character by character. The server
+  cannot distinguish a bot from a human — the input path is identical.
 </div>
 
-<div id="main">
-  <div id="table-area">
-    <div id="error-toast"></div>
-    <div id="table-felt">
-      <div id="board-area">
-        <div id="board"></div>
-        <div id="pot"></div>
-        <div id="phase"></div>
-        <div id="result-banner"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="right-panel">
-    <div id="panel-tabs">
-      <div class="panel-tab active" onclick="switchTab('bots')">Bots</div>
-      <div class="panel-tab" onclick="switchTab('decisions')">Decisions</div>
-      <div class="panel-tab" onclick="switchTab('events')">Events</div>
-    </div>
-
-    <div id="bots-panel" class="panel-content active">
-      <div id="bot-controls">
-        <div class="ctrl-row">
-          <div class="ctrl-field">
-            <label>Bots</label>
-            <input id="bot-count" type="number" value="3" min="2" max="6" style="width:40px" />
-          </div>
-          <div class="ctrl-field">
-            <label>Style</label>
-            <select id="bot-style">
-              <option value="TAG">Tight-Aggro</option>
-              <option value="LAG">Loose-Aggro</option>
-              <option value="ROCK">Rock</option>
-              <option value="FISH">Fish</option>
-              <option value="MIXED" selected>Mixed</option>
-            </select>
-          </div>
-          <div class="ctrl-field">
-            <label>Delay</label>
-            <input id="bot-delay" type="number" value="1200" min="200" max="5000" style="width:55px" />
-          </div>
-          <div class="ctrl-field">
-            <label>Buy-in</label>
-            <input id="bot-buyin" type="number" value="1000" style="width:55px" />
-          </div>
-        </div>
-        <div class="ctrl-row">
-          <button class="ctrl-btn gold" onclick="spawnBots()">Spawn & Seat</button>
-          <button class="ctrl-btn green" onclick="startBots()">Start All</button>
-          <button class="ctrl-btn red" onclick="stopBots()">Stop All</button>
-          <label style="font-size:10px; color:#888; display:flex; align-items:center; gap:4px;">
-            <input type="checkbox" id="auto-deal" checked /> Auto-deal
-          </label>
-        </div>
-        <div class="bot-roster" id="bot-roster"></div>
-        <div class="stats-bar">
-          Hands: <span id="stat-hands">0</span> &nbsp;
-          Actions: <span id="stat-actions">0</span> &nbsp;
-          Errors: <span id="stat-errors">0</span>
-        </div>
-      </div>
-    </div>
-
-    <div id="decisions-panel" class="panel-content">
-      <div id="decision-log"></div>
-    </div>
-
-    <div id="events-panel" class="panel-content">
-      <div id="log"></div>
-    </div>
-  </div>
+<div class="note">
+  <strong>Note:</strong> Showdown is not yet implemented in the engine (GAP-1).
+  Hands where 2+ players reach the river will error. This is an engine limitation,
+  not a bot issue.
 </div>
 
-<script src="bot.js"></script>
 </body>
 </html>
