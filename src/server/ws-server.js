@@ -9,6 +9,7 @@ const { Session } = require("../api/session");
 const { SessionStorage } = require("../api/storage");
 const { CMD, command } = require("../api/commands");
 const { parseClientMessage, formatResponse, formatBroadcast, formatWelcome, formatError } = require("./protocol");
+const { BotDetector } = require("../detection/analyzer");
 
 const DEFAULT_CONFIG = {
   port: 9100,
@@ -77,6 +78,24 @@ function startServer(userConfig = {}) {
 
   httpServer.listen(port);
 
+  // ── Bot detection ────────────────────────────────────────────────────
+  const detector = new BotDetector({
+    onWarn: (seat, score, signals) => {
+      const top = Object.entries(signals)
+        .filter(([_, v]) => v > 0.3)
+        .map(([k, v]) => `${k}=${v.toFixed(2)}`)
+        .join(", ");
+      console.log(`\x1b[33m[BOT-DETECT] WARN seat ${seat}: score=${score.toFixed(2)} (${top})\x1b[0m`);
+    },
+    onFlag: (seat, score, signals) => {
+      const top = Object.entries(signals)
+        .filter(([_, v]) => v > 0.3)
+        .map(([k, v]) => `${k}=${v.toFixed(2)}`)
+        .join(", ");
+      console.log(`\x1b[31m[BOT-DETECT] FLAG seat ${seat}: score=${score.toFixed(2)} (${top})\x1b[0m`);
+    },
+  });
+
   // ── WebSocket server ─────────────────────────────────────────────────
   const wss = new WebSocketServer({ server: httpServer });
   const clients = new Set();
@@ -108,6 +127,12 @@ function startServer(userConfig = {}) {
       const { id, cmd: cmdName, payload } = parsed;
 
       // ── Server-level commands ────────────────────────────────────────
+      if (cmdName === "GET_BOT_DETECTION") {
+        const profiles = detector.getAllProfiles();
+        ws.send(formatResponse(id, { ok: true, events: [], state: { botDetection: profiles }, error: null }));
+        return;
+      }
+
       if (cmdName === "GET_SESSION_LIST") {
         const list = storage.list();
         ws.send(formatResponse(id, { ok: true, events: [], state: { sessions: list }, error: null }));
@@ -204,8 +229,20 @@ function startServer(userConfig = {}) {
       const internalCmd = cmdMap[cmdName];
       if (!internalCmd) { ws.send(formatError(id, `Unknown command: ${cmdName}`)); return; }
 
+      // Extract and strip telemetry before dispatching to engine
+      let telemetry = null;
+      if (cmdName === "PLAYER_ACTION" && payload._telemetry) {
+        telemetry = payload._telemetry;
+        delete payload._telemetry;
+      }
+
       const result = session.dispatch(command(internalCmd, payload));
       ws.send(formatResponse(id, result));
+
+      // Run bot detection on player actions
+      if (cmdName === "PLAYER_ACTION" && result.ok && payload.seat != null) {
+        detector.analyze(payload.seat, telemetry);
+      }
 
       if (result.ok && result.events.length > 0) {
         const broadcast = formatBroadcast(result.events);
@@ -216,6 +253,11 @@ function startServer(userConfig = {}) {
         if (handsPlayed > 0 && handsPlayed % 5 === 0) {
           storage.updateMeta(session.sessionId, { handsPlayed, lastEventAt: new Date().toISOString() });
         }
+      }
+
+      // Reset detection profile when player leaves
+      if (cmdName === "LEAVE_TABLE" && result.ok && payload.seat != null) {
+        detector.resetSeat(payload.seat);
       }
 
       if (result.ok && result.events.length > 0) {
@@ -230,7 +272,7 @@ function startServer(userConfig = {}) {
   });
 
   return {
-    wss, httpServer, session, storage,
+    wss, httpServer, session, storage, detector,
     get wasRecovered() { return wasRecovered; },
     get voidedHands() { return voidedHands; },
     close() {

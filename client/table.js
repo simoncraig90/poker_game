@@ -103,21 +103,25 @@ function sendStartHand() { send("START_HAND"); }
 
 function sendAction(action) {
   if (!state || !state.hand) return;
-  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action });
+  const btnId = { FOLD: "fold-btn", CHECK: "check-btn", CALL: "call-btn" }[action];
+  const telemetry = window.Telemetry ? window.Telemetry.collectSnapshot(btnId) : null;
+  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action, _telemetry: telemetry });
 }
 
 function sendBet() {
   if (!state || !state.hand) return;
   const amount = parseInt(document.getElementById("bet-input").value);
   if (isNaN(amount)) return;
-  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action: "BET", amount });
+  const telemetry = window.Telemetry ? window.Telemetry.collectSnapshot("bet-btn") : null;
+  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action: "BET", amount, _telemetry: telemetry });
 }
 
 function sendRaise() {
   if (!state || !state.hand) return;
   const amount = parseInt(document.getElementById("bet-input").value);
   if (isNaN(amount)) return;
-  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action: "RAISE", amount });
+  const telemetry = window.Telemetry ? window.Telemetry.collectSnapshot("raise-btn") : null;
+  send("PLAYER_ACTION", { seat: state.hand.actionSeat, action: "RAISE", amount, _telemetry: telemetry });
 }
 
 function seatClick(seatIndex) {
