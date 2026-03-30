@@ -66,6 +66,12 @@ function startServer(userConfig = {}) {
   const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png" };
 
   const httpServer = http.createServer((req, res) => {
+    // ── REST API for n8n / external automation ────────────────────────
+    if (req.url.startsWith("/api/")) {
+      return handleApi(req, res);
+    }
+
+    // ── Static file serving ──────────────────────────────────────────
     const url = req.url === "/" ? "/index.html" : req.url;
     const filePath = path.join(clientDir, url);
     const ext = path.extname(filePath);
@@ -75,6 +81,135 @@ function startServer(userConfig = {}) {
       res.end(data);
     });
   });
+
+  function handleApi(req, res) {
+    const json = (data, status = 200) => {
+      res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify(data));
+    };
+
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT",
+        "Access-Control-Allow-Headers": "Content-Type",
+      });
+      res.end();
+      return;
+    }
+
+    // Read JSON body for POST/PUT
+    const readBody = () => new Promise((resolve) => {
+      if (req.method === "GET") { resolve({}); return; }
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => {
+        try { resolve(body ? JSON.parse(body) : {}); }
+        catch { resolve({}); }
+      });
+    });
+
+    readBody().then((body) => {
+      // GET /api/state — current table + hand state
+      if (req.url === "/api/state" && req.method === "GET") {
+        const state = session.getState();
+        return json({ ok: true, state });
+      }
+
+      // GET /api/detection — bot detection profiles for all seats
+      if (req.url === "/api/detection" && req.method === "GET") {
+        return json({ ok: true, profiles: detector.getAllProfiles() });
+      }
+
+      // GET /api/detection/:seat — single seat profile
+      const seatMatch = req.url.match(/^\/api\/detection\/(\d+)$/);
+      if (seatMatch && req.method === "GET") {
+        const profile = detector.getProfile(parseInt(seatMatch[1]));
+        return json({ ok: true, profile });
+      }
+
+      // POST /api/detection/thresholds — update detection thresholds
+      if (req.url === "/api/detection/thresholds" && req.method === "POST") {
+        for (const [key, val] of Object.entries(body)) {
+          if (key in detector.thresholds) {
+            detector.thresholds[key] = val;
+          }
+        }
+        return json({ ok: true, thresholds: detector.thresholds });
+      }
+
+      // POST /api/detection/reset — reset all profiles
+      if (req.url === "/api/detection/reset" && req.method === "POST") {
+        for (const seat of Object.keys(detector.profiles)) {
+          detector.resetSeat(parseInt(seat));
+        }
+        return json({ ok: true });
+      }
+
+      // POST /api/seat — seat a player
+      if (req.url === "/api/seat" && req.method === "POST") {
+        const { seat, name, buyIn, country } = body;
+        const result = session.dispatch(command(CMD.SEAT_PLAYER, { seat, name, buyIn, country: country || "XX" }));
+        return json(result, result.ok ? 200 : 400);
+      }
+
+      // POST /api/leave — remove a player
+      if (req.url === "/api/leave" && req.method === "POST") {
+        const result = session.dispatch(command(CMD.LEAVE_TABLE, { seat: body.seat }));
+        if (result.ok) detector.resetSeat(body.seat);
+        return json(result, result.ok ? 200 : 400);
+      }
+
+      // POST /api/deal — start a hand
+      if (req.url === "/api/deal" && req.method === "POST") {
+        const result = session.dispatch(command(CMD.START_HAND, {}));
+        broadcastEvents(result.events);
+        return json(result, result.ok ? 200 : 400);
+      }
+
+      // POST /api/action — player action with optional telemetry
+      if (req.url === "/api/action" && req.method === "POST") {
+        const { seat, action, amount, _telemetry } = body;
+        const result = session.dispatch(command(CMD.PLAYER_ACTION, { seat, action, amount }));
+        if (result.ok && seat != null) {
+          detector.analyze(seat, _telemetry || null);
+          broadcastEvents(result.events);
+        }
+        return json(result, result.ok ? 200 : 400);
+      }
+
+      // GET /api/events — full event log
+      if (req.url === "/api/events" && req.method === "GET") {
+        return json({ ok: true, events: session.getEventLog() });
+      }
+
+      // POST /api/adversarial/run — run a single adversarial round (for n8n)
+      if (req.url === "/api/adversarial/run" && req.method === "POST") {
+        const { runRound } = require("../detection/adversarial");
+        const roundConfig = { url: `http://localhost:${port}`, hands: 10, bots: 3, ...body };
+        runRound(roundConfig).then(report => json({ ok: true, report }))
+          .catch(err => json({ ok: false, error: err.message }, 500));
+        return;
+      }
+
+      // GET /api/detection/thresholds — current thresholds
+      if (req.url === "/api/detection/thresholds" && req.method === "GET") {
+        return json({ ok: true, thresholds: detector.thresholds });
+      }
+
+      json({ ok: false, error: "Unknown API endpoint" }, 404);
+    });
+  }
+
+  function broadcastEvents(events) {
+    if (!events || events.length === 0) return;
+    const { formatBroadcast } = require("./protocol");
+    const msg = formatBroadcast(events);
+    for (const client of clients) {
+      if (client.readyState === 1) client.send(msg);
+    }
+  }
 
   httpServer.listen(port);
 

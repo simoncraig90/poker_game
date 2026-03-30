@@ -1,0 +1,130 @@
+{
+  "name": "Poker Bot vs Detector — Adversarial Loop",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Initialize the adversarial loop state\nconst config = {\n  serverUrl: 'http://localhost:9100',\n  totalRounds: 5,\n  handsPerRound: 10,\n  bots: 3,\n  currentRound: 0,\n  results: []\n};\n\nreturn [{ json: config }];"
+      },
+      "id": "init",
+      "name": "Init Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.serverUrl }}/api/detection/reset",
+        "options": {}
+      },
+      "id": "reset-detection",
+      "name": "Reset Detection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Init Config').item.json.serverUrl }}/api/adversarial/run",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "evasionLevel", "value": "={{ $('Init Config').item.json.currentRound }}" },
+            { "name": "hands", "value": "={{ $('Init Config').item.json.handsPerRound }}" },
+            { "name": "bots", "value": "={{ $('Init Config').item.json.bots }}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "run-round",
+      "name": "Run Adversarial Round",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze round results and decide next steps\nconst config = $('Init Config').item.json;\nconst roundResult = $input.item.json;\n\nconst report = roundResult.report || roundResult;\nconst summary = report.summary || {};\n\nconfig.results.push({\n  round: config.currentRound + 1,\n  evasionLevel: Math.min(config.currentRound, 4),\n  detected: summary.detected || 0,\n  warned: summary.warned || 0,\n  evaded: summary.evaded || 0,\n  avgScore: summary.avgScore || 0\n});\n\nconfig.currentRound++;\n\n// Should we continue?\nconst continueLoop = config.currentRound < config.totalRounds;\n\nreturn [{ json: { ...config, continueLoop, latestReport: report } }];"
+      },
+      "id": "analyze",
+      "name": "Analyze Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.continueLoop }}", "value2": true }
+          ]
+        }
+      },
+      "id": "check-continue",
+      "name": "More Rounds?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Optionally adjust detector thresholds based on results\n// This is where the \"blue team\" adapts\nconst config = $('Analyze Results').item.json;\nconst latest = config.latestReport;\nconst summary = latest.summary || {};\n\n// If bots are evading (low detection rate), tighten thresholds\nlet newThresholds = {};\nif (summary.evaded > 0) {\n  // Lower the flag threshold to catch more\n  newThresholds.FLAG_SCORE = Math.max(0.35, 0.55 - (config.currentRound * 0.03));\n  newThresholds.WARN_SCORE = Math.max(0.25, 0.40 - (config.currentRound * 0.02));\n}\n\nreturn [{ json: { config, newThresholds, hasUpdates: Object.keys(newThresholds).length > 0 } }];"
+      },
+      "id": "adapt-detector",
+      "name": "Adapt Detector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Init Config').item.json.serverUrl }}/api/detection/thresholds",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.newThresholds) }}",
+        "options": {}
+      },
+      "id": "update-thresholds",
+      "name": "Update Thresholds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1600, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build final scorecard\nconst config = $('Analyze Results').item.json;\n\nconst scorecard = {\n  totalRounds: config.results.length,\n  rounds: config.results,\n  detectorImprovement: {\n    firstRoundAvgScore: config.results[0]?.avgScore || 0,\n    lastRoundAvgScore: config.results[config.results.length - 1]?.avgScore || 0\n  },\n  botEvasionSuccess: config.results.map(r => ({\n    level: r.evasionLevel,\n    evadeRate: r.evaded / (r.detected + r.warned + r.evaded || 1)\n  }))\n};\n\nreturn [{ json: scorecard }];"
+      },
+      "id": "scorecard",
+      "name": "Build Scorecard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 400]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Init Config", "type": "main", "index": 0 }]] },
+    "Init Config": { "main": [[{ "node": "Reset Detection", "type": "main", "index": 0 }]] },
+    "Reset Detection": { "main": [[{ "node": "Run Adversarial Round", "type": "main", "index": 0 }]] },
+    "Run Adversarial Round": { "main": [[{ "node": "Analyze Results", "type": "main", "index": 0 }]] },
+    "Analyze Results": { "main": [[{ "node": "More Rounds?", "type": "main", "index": 0 }]] },
+    "More Rounds?": {
+      "main": [
+        [{ "node": "Adapt Detector", "type": "main", "index": 0 }],
+        [{ "node": "Build Scorecard", "type": "main", "index": 0 }]
+      ]
+    },
+    "Adapt Detector": { "main": [[{ "node": "Update Thresholds", "type": "main", "index": 0 }]] },
+    "Update Thresholds": { "main": [[{ "node": "Run Adversarial Round", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
