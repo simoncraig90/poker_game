@@ -165,30 +165,9 @@ After capturing showdown evidence:
 
 ---
 
-## 5. Inferred Fold Validation (Gap G1)
+## 5. Inferred Fold Validation (Gap G1) — RESOLVED
 
-### 5.1 What Evidence Is Needed
-
-Confirm that every `ROUND_TRANSITION` with `roundId=10` and `betToCall > 0` that has no following ACTION for that seat is a fold.
-
-Confirm that `roundId=10` with `betToCall = 0` and no following ACTION is a check (i.e., the player's turn was skipped because they were already all-in or folded earlier).
-
-### 5.2 How to Validate
-
-```
-For each ROUND_TRANSITION with roundId=10:
-  1. Record the seat and betToCall.
-  2. Check if an ACTION with matching seat follows before the next ROUND_TRANSITION.
-  3. If no ACTION: classify as inferred fold (betToCall > 0) or inferred pass (betToCall = 0).
-  4. Cross-reference with HAND_RESULT text: does the seat show "Loses main pot and mucks cards"?
-  5. Cross-reference with PLAYER_STATE: does hasCards change to false?
-```
-
-### 5.3 Decoder Changes Needed
-
-1. Track `ROUND_TRANSITION` events with `roundId=10`.
-2. If no ACTION follows for that seat before the next RT, emit `INFERRED_FOLD` (if `betToCall > 0`) or `INFERRED_CHECK` (if `betToCall = 0`).
-3. Validate against HAND_RESULT — every inferred fold should appear as "Loses main pot and mucks cards."
+**Resolution**: `roundId=10` always emits FOLD (never CHECK). The `betToCall` field is always 0 for `roundId=10` regardless of context — it cannot distinguish fold from check. Every inferred FOLD player shows "Loses main pot and mucks cards" in HAND_RESULT, confirming correctness. See REPLAY_FIX_VALIDATION.md for full before/after proof.
 
 ---
 

@@ -1,5 +1,7 @@
 # Engine Phase 1 Plan
 
+**Status: COMPLETE** — All 12 modules built, 3 test suites pass (accounting, replay, consecutive hands).
+
 Build the deterministic common-path game engine from the validated reducer spec.
 
 ---

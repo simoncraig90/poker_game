@@ -2,7 +2,7 @@
 
 Real-time backend state contract for a PokerStars-like NL Hold'em cash-game table, derived from the replay-validated normalized event model.
 
-**Status**: Validated against 8 hands (1 session). Stack accounting and active-player tracking are correct. Showdown, side-pot, and player join/leave paths are specified but unvalidated.
+**Status**: v2 — Validated across captured hands + engine-generated hands through Phase 7. Stack accounting, active-player tracking, BET_RETURN, persistence, and recovery all proven. Player join/leave now emits discrete events (SEAT_PLAYER, LEAVE_TABLE). Showdown and side-pot paths specified but unvalidated.
 
 ---
 
@@ -623,13 +623,11 @@ The `hand.actions[]` array preserves provenance:
 
 **Reducer handling**: Multiple POT_AWARD events are applied sequentially. Each credits the winning seat's stack. The `potIndex` is stored but not interpreted.
 
-### SG4: Player Join/Leave
+### SG4: Player Join/Leave (Partially Resolved)
 
-**Status**: Join observed (Dante63s appeared mid-session). Leave not observed.
+**Status**: SEAT_PLAYER and LEAVE_TABLE events are now emitted by the engine (Phase 2). Basic sit-down and leave are fully covered. Sit-out/sit-in toggle and reconnection with state recovery remain unimplemented.
 
-**Impact**: The reducer receives HAND_START with a player roster and uses it as truth. Between-hand seat changes (joins, leaves, sit-out/sit-in) are visible in PLAYER_STATE events but not emitted as discrete normalized events.
-
-**Reducer handling**: The reducer trusts HAND_START for the roster at hand start. Seat status changes between hands are absorbed silently. This is correct for hand-level state but insufficient for a persistent lobby/table view.
+**Reducer handling**: SEAT_PLAYER and LEAVE_TABLE are handled by `reconstructState()` and the engine's Session class. The event log captures all seat changes.
 
 ### SG5: Ante / Straddle / Missed Blind
 

@@ -1,5 +1,7 @@
 # Engine Phase 6 Plan
 
+**Status: COMPLETE** — SessionStorage, Session.load, mid-hand void, recovery (52/52).
+
 Persistence, recovery, and session continuity.
 
 ---
@@ -122,11 +124,11 @@ If the log ends mid-hand, the partial hand is voided on recovery. No corrupt sta
 
 ## Success Criteria
 
-- [ ] Server creates session directory with meta.json + events.jsonl
-- [ ] Server restart recovers seated players, stacks, hand count
-- [ ] Clients reconnect after restart and see correct state
-- [ ] Mid-hand restart voids the partial hand cleanly
-- [ ] GET_SESSION_LIST returns all sessions from disk
-- [ ] Archived sessions are read-only
-- [ ] reconstructState(disk events) matches live state after recovery
-- [ ] All Phase 1-5 tests pass through the new storage layer
+- [x] Server creates session directory with meta.json + events.jsonl
+- [x] Server restart recovers seated players, stacks, hand count
+- [x] Clients reconnect after restart and see correct state
+- [x] Mid-hand restart voids the partial hand cleanly
+- [x] GET_SESSION_LIST returns all sessions from disk
+- [x] Archived sessions are read-only
+- [x] reconstructState(disk events) matches live state after recovery
+- [x] All Phase 1-5 tests pass through the new storage layer

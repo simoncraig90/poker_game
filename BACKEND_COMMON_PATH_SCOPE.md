@@ -171,6 +171,16 @@ The `_source` field is optional in engine-produced events (no wire protocol fram
 
 ## Out of Scope: Deferred
 
+> **Note**: Several items listed below as "deferred" were subsequently built in later phases:
+> - WebSocket server: built in Phase 3
+> - CLI harness: built in Phase 3
+> - Browser client: built in Phase 4
+> - Persistence/event-log to disk: built in Phase 6
+> - Session recovery: built in Phase 6
+> - Session browser/archive: built in Phase 7
+>
+> The items below that remain genuinely deferred are: showdown, side pots, sit-out/sit-in, ante/straddle, rake, multi-table.
+
 ### Showdown Reveal Logic
 
 The engine can deal all 5 board cards and track actions to the river. When 2+ players remain after the river betting round, the engine MUST NOT attempt to evaluate hands or reveal cards. Instead, it should:

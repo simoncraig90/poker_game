@@ -129,23 +129,28 @@ Deliverables:
 
 ## Success Criteria
 
-### Phase 1 Complete When:
-- [ ] All 8 reducer invariants (INV-1 through INV-8) are enforced in code
-- [ ] The 3 validated hands can be replayed through the engine with identical event output
+### Phase 1 Complete: ✓
+- [x] All 8 reducer invariants (INV-1 through INV-8) are enforced in code
+- [x] The 3 validated hands can be replayed through the engine with identical event output
 
-### Phase 2 Complete When:
-- [ ] A full hand can be played from start to settlement via scripted actions
-- [ ] No-showdown settlement produces correct POT_AWARD, HAND_SUMMARY, HAND_RESULT
+### Phase 2 Complete: ✓
+- [x] A full hand can be played from start to settlement via scripted actions
+- [x] No-showdown settlement produces correct POT_AWARD, HAND_SUMMARY, HAND_RESULT
 
-### Phase 3 Complete When:
-- [ ] Engine output passes `replay-normalized-hand.js` stack check for all test hands
-- [ ] Event log is append-only JSONL matching the normalized schema
+### Phase 3 Complete: ✓
+- [x] Engine output passes `replay-normalized-hand.js` stack check for all test hands
+- [x] Event log is append-only JSONL matching the normalized schema
 
-### Phase 4 Complete When:
-- [ ] Two humans can play a hand via CLI (or scripted inputs)
-- [ ] The event log from a played hand replays correctly
+### Phase 4 Complete: ✓
+- [x] Two humans can play a hand via CLI (or scripted inputs)
+- [x] The event log from a played hand replays correctly
 
-### Overall Bootstrap Complete When:
-- [ ] A 6-max table can run continuous hands (deal, play, settle, repeat)
-- [ ] Every hand's event log passes replay verification
-- [ ] No showdown required (all hands end by fold)
+### Overall Bootstrap Complete: ✓
+- [x] A 6-max table can run continuous hands (deal, play, settle, repeat)
+- [x] Every hand's event log passes replay verification
+- [x] No showdown required (all hands end by fold)
+
+### Post-Bootstrap (Phases 5-7) Also Complete: ✓
+- [x] Phase 5: Play loop hardening, keyboard shortcuts, hand history, E2E test (38/38)
+- [x] Phase 6: Persistence, recovery, session continuity (52/52 recovery tests)
+- [x] Phase 7: Session browser, recovery UX, archive flow (22/22)

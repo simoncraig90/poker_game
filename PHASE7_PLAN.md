@@ -1,5 +1,7 @@
 # Phase 7 Plan
 
+**Status: COMPLETE** — Sessions tab, recovery UX, archive flow (22/22).
+
 Make persistence and recovery visible and trustworthy to a human operator.
 
 ---

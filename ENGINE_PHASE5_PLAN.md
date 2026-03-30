@@ -1,5 +1,7 @@
 # Engine Phase 5 Plan
 
+**Status: COMPLETE** — Keyboard shortcuts, History tab, result banner, E2E test (38/38).
+
 Harden the playable loop and add minimal review/replay capability.
 
 ---

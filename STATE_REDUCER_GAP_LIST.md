@@ -60,20 +60,13 @@ Remaining blockers before the live table reducer can be treated as production-gr
 
 ## Medium (Blocks Table Lifecycle)
 
-### GAP-4: Player Join / Leave / Sit-Out Events
+### GAP-4: Player Join / Leave / Sit-Out Events (Partially Resolved)
 
-**What's missing**: Player join detected via PLAYER_STATE name change, but no discrete `PLAYER_JOIN` / `PLAYER_LEAVE` / `SIT_OUT` events are emitted. The wire-protocol opcodes for join (0xb2, 0x60) and leave (0x65) are decoded as raw events only.
+**Resolved**: The engine now emits `SEAT_PLAYER` and `LEAVE_TABLE` events (added in Phase 2). These are persisted in the event log and handled by `reconstructState()`. Basic join/leave is fully working.
 
-**Risk**: A persistent table view needs to track who sits down and who leaves. Between hands, the seat map can change. Without explicit events, the reducer relies on HAND_START diff to detect changes.
+**Still missing**: Sit-out / sit-in toggle, reconnection with state recovery, "wait for big blind" before being dealt in.
 
-**Evidence needed**:
-1. Capture a session where another player joins mid-session → verify PLAYER_STATE transition
-2. Capture hero sitting out and sitting back in → verify opcodes
-3. Capture hero leaving and returning → verify snapshot/reconnect flow
-
-**Capture effort**: 20 minutes. Sit out, sit in, leave table, rejoin.
-
-**Blocked**: Lobby/table management UI. Not blocked for hand replay.
+**Blocked**: Only the sit-out/sit-in edge cases. Core join/leave works.
 
 ---
 
@@ -114,7 +107,7 @@ Remaining blockers before the live table reducer can be treated as production-gr
 | GAP-1: Showdown | **Critical** | 15–30 min capture | Hand eval, card reveal, split pots |
 | GAP-2: CHECK path | **Critical** | Same session as GAP-1 | Action classifier completeness |
 | GAP-3: Side pots | **High** | 30–60 min capture | Multi-way all-in |
-| GAP-4: Join/leave | **Medium** | 20 min capture | Table lifecycle / lobby |
+| GAP-4: Join/leave | **Low** (partially resolved) | — | Sit-out/sit-in only |
 | GAP-5: Ante/straddle | **Low** | 30+ min, specific table | Specialized formats only |
 | GAP-6: Timeout | **Low** | 5 min | Cosmetic only |
 

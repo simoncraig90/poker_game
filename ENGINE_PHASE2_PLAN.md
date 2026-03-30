@@ -1,5 +1,7 @@
 # Engine Phase 2 Plan
 
+**Status: COMPLETE** — Session dispatch, reconstructState, SEAT_PLAYER/LEAVE_TABLE events. Conformance: 25/25.
+
 Formalize the command/API boundary on top of the Phase 1 engine.
 
 ---

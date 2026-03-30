@@ -42,28 +42,11 @@ The emitter is a pure consumer of decoded events. It does not re-parse raw WebSo
 
 28 inferred events were emitted for the current session. All are `PLAYER_ACTION` with `inferred: true`.
 
-### Detection Rule
+### Detection Rule (Updated — F2 Fix Applied)
 
-When `ROUND_TRANSITION` fires with `roundId=10` for a seat, and no `ACTION` event follows for that seat before the next `ROUND_TRANSITION` or collect sweep:
+`roundId=10` universally means "this seat is skipped." The `betToCall` field is always 0 regardless of context. The emitter always emits **FOLD** for `roundId=10` — never CHECK. This was validated: every inferred FOLD player shows "Loses main pot and mucks cards" in HAND_RESULT, confirming they folded.
 
-| `betToCall` | Inferred action |
-|-------------|-----------------|
-| > 0 | `FOLD` — player faced a bet and was skipped |
-| = 0 | `CHECK` — player had no bet to call and was skipped |
-
-### Known Ambiguity: CHECK vs Already-Folded
-
-`roundId=10` with `betToCall=0` is ambiguous. It could mean:
-
-1. **Check**: Player actively checked (no bet facing them).
-2. **Already folded**: Player folded on a prior street; the server skips them with `roundId=10, betToCall=0`.
-3. **Skipped**: Player is all-in and has no action available.
-
-In hand #260272188638, three players received `roundId=10, betToCall=0` during preflop after a raise to 150c. They had already called or were expected to fold — the `betToCall=0` doesn't match the game state where facing a 150c raise. These were likely folds, but the emitter classified them as `CHECK` because `betToCall=0`.
-
-**Current behavior**: Emits `CHECK` when `betToCall=0`, `FOLD` when `betToCall>0`. This is the conservative interpretation.
-
-**To resolve**: Cross-reference with `HAND_RESULT` text. A player who "Loses main pot and mucks cards" must have folded (or lost at showdown). Comparing inferred CHECKs against HAND_RESULT text could reclassify them as FOLDs post-hoc.
+> Original rule (pre-fix): `betToCall > 0 → FOLD, betToCall = 0 → CHECK`. This was incorrect — betToCall is always 0 for roundId=10. See REPLAY_FIX_VALIDATION.md for details.
 
 ---
 
@@ -162,8 +145,8 @@ Events emitted before the first `HAND_START` (like `TABLE_SNAPSHOT`) use the `ha
 
 ## Unresolved Items
 
-### 1. Inferred fold/check ambiguity (active)
-See the CHECK vs Already-Folded section above. Fixable with HAND_RESULT cross-reference — not yet implemented.
+### 1. ~~Inferred fold/check ambiguity~~ (RESOLVED)
+Fixed: roundId=10 always emits FOLD. See REPLAY_FIX_VALIDATION.md.
 
 ### 2. Showdown path (blocked)
 No showdown hands in this session. `HAND_SUMMARY.showdown` is always `false`, `handRank` and `winCards` are always null. The emitter passes these through as-is.

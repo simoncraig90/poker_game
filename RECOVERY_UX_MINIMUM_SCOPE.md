@@ -104,22 +104,22 @@ This fades after 10 seconds.
 
 ---
 
-## Implementation Checklist
+## Implementation Checklist (All Complete)
 
 ### Server (ws-server.js)
 
-- [ ] Track `wasRecovered` boolean on startup
-- [ ] Scan event log for voided hands (events with `void: true`)
-- [ ] Include `recovered` and `voidedHands` in formatWelcome()
+- [x] Track `wasRecovered` boolean on startup
+- [x] Scan event log for voided hands (events with `void: true`)
+- [x] Include `recovered` and `voidedHands` in formatWelcome()
 
 ### Client (table.js)
 
-- [ ] On welcome: check `recovered` flag, show recovery banner if true
-- [ ] On welcome: store `voidedHands` array
-- [ ] In hand list rendering: mark voided hands
-- [ ] In hand detail rendering: show void message for voided hands
-- [ ] In event log: add RECOVERY entry on recovered welcome
+- [x] On welcome: check `recovered` flag, show recovery banner if true
+- [x] On welcome: store `voidedHands` array
+- [x] In hand list rendering: mark voided hands
+- [x] In hand detail rendering: show void message for voided hands
+- [x] In event log: add RECOVERY entry on recovered welcome
 
 ### Protocol (protocol.js)
 
-- [ ] Update formatWelcome() signature to include recovered + voidedHands
+- [x] Update formatWelcome() signature to include recovered + voidedHands

@@ -2,7 +2,7 @@
 
 Canonical event model for representing one observed PokerStars-style cash-game hand, derived from CDP-captured WebSocket frames decoded via Apache Thrift Binary Protocol.
 
-**Status**: v1 — based on 1 session, 8 hands, all no-showdown. Showdown and side-pot paths are modeled but unvalidated.
+**Status**: v2 — validated across 8 captured hands + engine-generated hands through Phase 7. Stack accounting, active-player tracking, BET_RETURN, inferred folds, persistence, and recovery all proven. Showdown and side-pot paths modeled but unvalidated.
 
 ---
 
@@ -340,6 +340,34 @@ Uncalled bet/blind returned to player.
 
 ---
 
+### 2.14 SEAT_PLAYER
+
+Player sits down at the table. Added in Phase 2 to close the event log gap where seat mutations were invisible.
+
+| Field | Type | Required | Source |
+|-------|------|----------|--------|
+| `seat` | int | yes | Command payload |
+| `player` | string | yes | Player name |
+| `buyIn` | int (cents) | yes | Initial stack |
+| `country` | string | optional | ISO 2-letter |
+
+**Source**: Engine command `SEAT_PLAYER`.
+
+---
+
+### 2.15 LEAVE_TABLE
+
+Player leaves the table.
+
+| Field | Type | Required | Source |
+|-------|------|----------|--------|
+| `seat` | int | yes | Command payload |
+| `player` | string | optional | Player name at departure |
+
+**Source**: Engine command `LEAVE_TABLE`.
+
+---
+
 ## 5. Collect Sweep (Internal, Not a Normalized Event)
 
 Between streets, the server emits a batch of `ACTION` frames (opcode 0x77) with `amount=0, delta<0` for every seated player. These move chips from the per-seat bet display into the collected pot. They are **not player actions** and must be filtered.
@@ -387,6 +415,8 @@ Observed rates: 0% on very small pots, ~5% on larger pots (play-money micro stak
 | 0x7c | ROUND_BET_SUMMARY | — | Audit / verification |
 | 0x70 | BET_ORDER | — | Audit / verification |
 | 0x48 | TABLE_CONFIG | — | Reference |
+| — | (engine) | SEAT_PLAYER | Emitted by engine on sit-down |
+| — | (engine) | LEAVE_TABLE | Emitted by engine on leave |
 
 ---
 

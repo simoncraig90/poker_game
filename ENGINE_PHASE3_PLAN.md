@@ -1,5 +1,7 @@
 # Engine Phase 3 Plan
 
+**Status: COMPLETE** — WebSocket server + CLI harness. WS conformance: 31/31.
+
 Build the thinnest external control surface on top of the Phase 2 Session API.
 
 ---

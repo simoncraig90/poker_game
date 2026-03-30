@@ -2,7 +2,9 @@
 
 Results from replaying normalized hand events through `scripts/replay-normalized-hand.js`.
 
-**Verdict**: The normalized event stream is sufficient to reconstruct the hand *narrative* (who did what, in what order, who won). It is **not yet sufficient** for correct stack accounting due to two identified gaps.
+**Verdict** (updated): Both gaps (F1, F2) have been resolved. The normalized event stream is now sufficient for both narrative reconstruction AND correct stack accounting. See REPLAY_FIX_VALIDATION.md for before/after proof.
+
+> Original verdict (pre-fix): "not yet sufficient for correct stack accounting due to two identified gaps." This was fixed by adding BET_RETURN events and changing inferred CHECK to FOLD.
 
 ---
 
@@ -174,7 +176,7 @@ All failures are due to F1 (missing uncalled bet returns). The hand narrative (w
 
 ## 6. Recommended Next Steps
 
-1. **Add BET_RETURN event** to the emitter — emit when `amount > 0, delta < 0`.
-2. **Post-hoc fold correction** — cross-reference inferred CHECKs with HAND_RESULT "mucks" text.
-3. **Re-run replay** — verify balance check passes after fixes.
-4. **Capture showdown hands** — validate the showdown path end-to-end.
+1. ~~**Add BET_RETURN event**~~ — **DONE** (batch detection: single negative-delta = return, batch = collect sweep).
+2. ~~**Post-hoc fold correction**~~ — **DONE** (roundId=10 always emits FOLD, never CHECK).
+3. ~~**Re-run replay**~~ — **DONE** (all 3 hands pass Stack check after fixes).
+4. **Capture showdown hands** — validate the showdown path end-to-end. (Still open — GAP-1)

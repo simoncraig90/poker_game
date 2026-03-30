@@ -1,5 +1,7 @@
 # Protocol Baseline Freeze Plan
 
+**Status**: Baseline frozen. Tag `protocol-baseline-v1` applied at commit `76cc8aa`. Implementation proceeded on `main` through Phase 7.
+
 How to freeze the current protocol understanding before starting implementation, so future changes are measurable diffs against a known-good state.
 
 ---
