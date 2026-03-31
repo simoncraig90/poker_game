@@ -47,7 +47,7 @@ function reconstructState(events) {
         if (!table) break;
         const s = table.seats[e.seat];
         s.status = SEAT_STATUS.OCCUPIED;
-        s.player = { name: e.player, country: e.country || "XX" };
+        s.player = { name: e.player, country: e.country || "XX", actorId: e.actorId || null };
         s.stack = e.buyIn;
         break;
       }
@@ -148,6 +148,11 @@ function reconstructState(events) {
         // Informational, no state mutation
         break;
 
+      case "SHOWDOWN_REVEAL":
+        // Informational for replay — card reveals don't mutate reconstructed state.
+        // POT_AWARD handles the stack changes.
+        break;
+
       case "POT_AWARD": {
         if (!table) break;
         for (const a of e.awards || []) {
@@ -170,6 +175,23 @@ function reconstructState(events) {
 
       case "HAND_END": {
         if (!table) break;
+
+        // Void hand: restore stacks from HAND_START and decrement handsPlayed
+        if (e.void) {
+          // Find the matching HAND_START to restore stacks
+          const matchingStart = events.find(
+            (ev) => ev.type === "HAND_START" && ev.handId === e.handId
+          );
+          if (matchingStart && matchingStart.players) {
+            for (const [seatStr, p] of Object.entries(matchingStart.players)) {
+              const idx = parseInt(seatStr);
+              const s = table.seats[idx];
+              if (s) s.stack = p.stack;
+            }
+          }
+          table.handsPlayed = Math.max(0, table.handsPlayed - 1);
+        }
+
         if (hand) hand.phase = PHASE.COMPLETE;
         // Clear per-hand state
         for (const s of Object.values(table.seats)) {
@@ -198,7 +220,7 @@ function reconstructState(events) {
       seats[i] = {
         seat: i,
         status: s.status,
-        player: s.player ? { name: s.player.name, country: s.player.country } : null,
+        player: s.player ? { name: s.player.name, country: s.player.country, actorId: s.player.actorId || null } : null,
         stack: s.stack,
         inHand: s.inHand,
         folded: s.folded,

@@ -33,6 +33,10 @@ function createGame(config, options = {}) {
     getActionSeat() { return orch ? orch.getActionSeat() : null; },
     isHandComplete() { return orch ? orch.isHandComplete() : true; },
     getState() { return { table: { ...table, seats: { ...table.seats } }, hand: table.hand }; },
+    getLegalActions(seatIndex) {
+      if (!orch) return { actions: [], callAmount: 0, minBet: 0, minRaise: 0, maxRaise: 0 };
+      return orch.getLegalActions(seatIndex);
+    },
     getEvents() { return log.getEvents(); },
     getHandEvents(handId) { return log.getHandEvents(handId); },
     ACTION,

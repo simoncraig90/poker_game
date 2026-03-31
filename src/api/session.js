@@ -16,6 +16,7 @@ class Session {
     this.logPath = options.logPath || null;
     this.rng = options.rng || null;
     this.status = "active"; // "active" or "complete"
+    this.actors = options.actors || null; // ActorRegistry instance (optional)
 
     this.table = createTable(config);
     this.log = new EventLog(this.logPath);
@@ -37,6 +38,7 @@ class Session {
     session.logPath = eventsPath;
     session.rng = options.rng || null;
     session.status = options.status || "active";
+    session.actors = options.actors || null;
     session.commandLog = [];
     session.orch = null;
 
@@ -61,7 +63,7 @@ class Session {
       if (rs && rs.status === SEAT_STATUS.OCCUPIED && rs.player) {
         const seat = session.table.seats[i];
         seat.status = SEAT_STATUS.OCCUPIED;
-        seat.player = { name: rs.player.name, country: rs.player.country, avatarId: null };
+        seat.player = { name: rs.player.name, country: rs.player.country, actorId: rs.player.actorId || null };
         seat.stack = rs.stack;
       }
     }
@@ -172,6 +174,14 @@ class Session {
           return this._getHandEvents(command.payload);
         case CMD.GET_HAND_LIST:
           return this._getHandList();
+        case CMD.CREATE_ACTOR:
+          return this._createActor(command.payload);
+        case CMD.GET_ACTOR:
+          return this._getActor(command.payload);
+        case CMD.LIST_ACTORS:
+          return this._listActors();
+        case CMD.UPDATE_ACTOR:
+          return this._updateActor(command.payload);
         default:
           return fail(`Unknown command: ${command.type}`);
       }
@@ -186,12 +196,20 @@ class Session {
     return ok([this.log.getEvents()[0]]);
   }
 
-  _seatPlayer({ seat, name, buyIn, country }) {
+  _seatPlayer({ seat, name, buyIn, country, actorId }) {
     if (seat == null || !name || buyIn == null) {
       return fail("SEAT_PLAYER requires seat, name, buyIn");
     }
-    sitDown(this.table, seat, name, buyIn, country);
-    const event = this.log.append(ev.seatPlayer(this.sessionId, seat, name, buyIn, country));
+
+    // Resolve actorId via registry if available
+    let resolvedActorId = actorId || null;
+    if (this.actors) {
+      const result = this.actors.resolve(name, actorId);
+      resolvedActorId = result.actorId;
+    }
+
+    sitDown(this.table, seat, name, buyIn, country, resolvedActorId);
+    const event = this.log.append(ev.seatPlayer(this.sessionId, seat, name, buyIn, country, resolvedActorId));
     return ok([event]);
   }
 
@@ -238,7 +256,7 @@ class Session {
       seats[i] = {
         seat: i,
         status: s.status,
-        player: s.player ? { name: s.player.name, country: s.player.country } : null,
+        player: s.player ? { name: s.player.name, country: s.player.country, actorId: s.player.actorId || null } : null,
         stack: s.stack,
         inHand: s.inHand,
         folded: s.folded,
@@ -287,6 +305,36 @@ class Session {
       }
     }
     return ok([], { hands });
+  }
+
+  // ── Actor Commands ─────────────────────────────────────────────────────
+
+  _createActor({ name, notes }) {
+    if (!this.actors) return fail("No actor registry configured");
+    if (!name) return fail("CREATE_ACTOR requires name");
+    const actor = this.actors.create(name, notes);
+    return ok([], { actor });
+  }
+
+  _getActor({ actorId }) {
+    if (!this.actors) return fail("No actor registry configured");
+    if (!actorId) return fail("GET_ACTOR requires actorId");
+    const actor = this.actors.get(actorId);
+    if (!actor) return fail(`Actor not found: ${actorId}`);
+    return ok([], { actor });
+  }
+
+  _listActors() {
+    if (!this.actors) return fail("No actor registry configured");
+    return ok([], { actors: this.actors.list() });
+  }
+
+  _updateActor({ actorId, name, notes }) {
+    if (!this.actors) return fail("No actor registry configured");
+    if (!actorId) return fail("UPDATE_ACTOR requires actorId");
+    const actor = this.actors.update(actorId, { name, notes });
+    if (!actor) return fail(`Actor not found: ${actorId}`);
+    return ok([], { actor });
   }
 
   // ── Direct Accessors ───────────────────────────────────────────────────

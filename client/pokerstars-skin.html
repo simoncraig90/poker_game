@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Poker Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1c1c1c; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; font-family: 'Roboto Condensed', Helvetica, sans-serif;
+}
+#table {
+  position: relative;
+  width: min(100vw, 98.6vh); height: min(100vh, 101.4vw);
+  background: url('ps-table.png') center/100% 100% no-repeat;
+  background-color: #1c1c1c;
+}
+
+/*
+  PS seat layout from screenshot:
+  - Panel: dark grey rounded rect, ~120px wide
+  - Avatar: square image LEFT of name (we skip avatar)
+  - Name: white bold text, centered in panel
+  - Stack: green text below name
+  - Card backs: TWO small red rectangles ABOVE the panel, slightly overlapping, angled
+  - Dealer button: small red circle with white border, NOT yellow
+  - Bet chip: green circle + white text, positioned between seat and center
+  - Hero cards: large cards to the LEFT of hero panel, not centered below
+*/
+
+/* ── Seat panel ── */
+.sp {
+  position: absolute; text-align: center; z-index: 4;
+}
+.sp .panel {
+  background: rgba(30,30,30,0.93); border: 1.5px solid #555; border-radius: 4px;
+  padding: 1px 8px; min-width: 11vh;
+}
+.sp .n { font-weight: 700; font-size: 1.2vh; color: #fff; white-space: nowrap; }
+.sp .st { font-weight: 700; font-size: 1.2vh; color: #4ddb7a; }
+
+/* ── Card backs — ABOVE the panel ── */
+.sp .cb-row {
+  position: absolute; top: -3vh; left: 50%; transform: translateX(-50%);
+  display: flex; z-index: 5;
+}
+.cb {
+  width: 1.8vh; height: 2.8vh; border-radius: 2px;
+  background: linear-gradient(145deg, #c41e3a, #8b0000 50%, #c41e3a);
+  border: 1px solid #888; box-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+}
+.cb:nth-child(2) { margin-left: -0.6vh; transform: rotate(6deg); }
+
+/* Grey card backs (for when cards not dealt yet) */
+.cb-grey {
+  width: 1.6vh; height: 2.4vh; border-radius: 2px;
+  background: #555; border: 1px solid #777;
+}
+
+/* ── Hero cards — large, LEFT of hero seat ── */
+.hero-cards {
+  position: absolute; display: flex; gap: 0.3vh; z-index: 5;
+}
+.hc {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 5.5vh; height: 7.5vh; background: #fff; border-radius: 0.5vh;
+  border: 1px solid #ccc; font-weight: bold;
+  box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+}
+.hc .r { font-size: 3.2vh; line-height: 1; }
+.hc .s { font-size: 2.8vh; line-height: 1; margin-top: -0.4vh; }
+.hc.red { color: #cc0000; }
+.hc.black { color: #111; }
+
+/* ── Board cards ── */
+.bc {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 4.5vh; height: 6.2vh; background: #fff; border-radius: 0.4vh;
+  border: 1px solid #ccc; font-weight: bold;
+  box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+.bc .r { font-size: 2.4vh; line-height: 1; }
+.bc .s { font-size: 2vh; line-height: 1; margin-top: -0.2vh; }
+.bc.red { color: #cc0000; }
+.bc.black { color: #111; }
+
+/* ── Pot ── */
+.pot {
+  position: absolute; text-align: center;
+  font-weight: 700; font-size: 1.5vh; color: #fff;
+  background: rgba(0,0,0,0.5); padding: 0.2vh 1.2vh; border-radius: 1vh;
+}
+
+/* ── Bet chip — green circle + text ── */
+.chip {
+  position: absolute; display: flex; align-items: center; gap: 0.3vh;
+  font-size: 1vh; color: #fff; font-weight: 700;
+}
+.chip .circle {
+  width: 1.6vh; height: 1.6vh; border-radius: 50%;
+  background: linear-gradient(135deg, #2a8a3a, #1a6a2a);
+  border: 1.5px solid #4ddb7a;
+}
+
+/* ── Dealer button — small RED circle (not yellow!) ── */
+.dbtn {
+  position: absolute; width: 1.8vh; height: 1.8vh;
+  background: #cc2222; border-radius: 50%;
+  border: 2px solid #fff; z-index: 6;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+</style>
+</head>
+<body>
+
+<div id="table">
+
+  <!-- Seat 3 — top center -->
+  <div class="sp" style="left:45%;top:9%">
+    <div class="cb-row"><div class="cb"></div><div class="cb"></div></div>
+    <div class="panel"><div class="n">TasteYurFlav</div><div class="st">$9.95</div></div>
+  </div>
+
+  <!-- Seat 2 — upper left -->
+  <div class="sp" style="left:13%;top:22%">
+    <div class="cb-row"><div class="cb"></div><div class="cb"></div></div>
+    <div class="panel"><div class="n">MyCVVis911</div><div class="st">$9.75</div></div>
+  </div>
+
+  <!-- Seat 4 — upper right -->
+  <div class="sp" style="left:62%;top:22%">
+    <div class="cb-row"><div class="cb"></div><div class="cb"></div></div>
+    <div class="panel"><div class="n">UBaHbl4_641</div><div class="st">$9.90</div></div>
+  </div>
+
+  <!-- Seat 1 — lower left -->
+  <div class="sp" style="left:13%;top:56%">
+    <div class="cb-row"><div class="cb"></div><div class="cb"></div></div>
+    <div class="panel"><div class="n">Check</div><div class="st">$9.93</div></div>
+  </div>
+
+  <!-- Seat 5 — lower right -->
+  <div class="sp" style="left:62%;top:56%">
+    <div class="panel"><div class="n">ramsesthesphnyx</div><div class="st">$10</div></div>
+  </div>
+
+  <!-- Seat 0 — hero -->
+  <div class="sp" style="left:45%;top:72%">
+    <div class="panel"><div class="n">Skurj_poker</div><div class="st">$7.70</div></div>
+  </div>
+
+  <!-- Hero cards — to the LEFT of hero seat -->
+  <div class="hero-cards" style="left:33%;top:71%">
+    <div class="hc black"><span class="r">5</span><span class="s">♠</span></div>
+    <div class="hc red"><span class="r">8</span><span class="s">♦</span></div>
+  </div>
+
+  <!-- Board cards -->
+  <div style="position:absolute;left:32%;top:27%;display:flex;gap:0.4vh;z-index:3">
+    <div class="bc black"><span class="r">8</span><span class="s">♠</span></div>
+    <div class="bc black"><span class="r">K</span><span class="s">♣</span></div>
+    <div class="bc red"><span class="r">7</span><span class="s">♦</span></div>
+  </div>
+
+  <!-- Pot -->
+  <div class="pot" style="left:40%;top:23%">Pot: $0.71</div>
+
+  <!-- Bet chips -->
+  <div class="chip" style="left:48%;top:16%"><div class="circle"></div>$0.05</div>
+  <div class="chip" style="left:38%;top:60%"><div class="circle"></div>$0.71</div>
+
+  <!-- Dealer button — red circle -->
+  <div class="dbtn" style="left:20%;top:62%"></div>
+
+</div>
+
+</body>
+</html>

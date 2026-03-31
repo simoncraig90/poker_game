@@ -40,7 +40,7 @@ function createTable({ tableId, tableName, maxSeats = 6, sb, bb, minBuyIn, maxBu
   };
 }
 
-function sitDown(table, seatIndex, playerName, buyIn, country) {
+function sitDown(table, seatIndex, playerName, buyIn, country, actorId) {
   if (seatIndex < 0 || seatIndex >= table.maxSeats) {
     throw new Error(`Invalid seat index: ${seatIndex}`);
   }
@@ -57,7 +57,7 @@ function sitDown(table, seatIndex, playerName, buyIn, country) {
   }
 
   seat.status = SEAT_STATUS.OCCUPIED;
-  seat.player = { name: playerName, country: country || "XX", avatarId: null };
+  seat.player = { name: playerName, country: country || "XX", actorId: actorId || null };
   seat.stack = buyIn;
 }
 

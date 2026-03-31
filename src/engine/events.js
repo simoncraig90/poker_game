@@ -90,12 +90,18 @@ function potAward(sessionId, handId, potIndex, awards) {
   };
 }
 
-function handSummary(sessionId, handId, winSeat, winPlayer, showdown, totalPot, board) {
+function showdownReveal(sessionId, handId, reveals) {
+  // reveals: [{ seat, player, cards: ["As","Kh"], handName, bestFive: ["As",...] }]
+  return { ...base(sessionId, handId, EVENT.SHOWDOWN_REVEAL), reveals };
+}
+
+function handSummary(sessionId, handId, winSeat, winPlayer, showdown, totalPot, board, handRank, winCards) {
   return {
     ...base(sessionId, handId, EVENT.HAND_SUMMARY),
     winSeat, winPlayer, showdown, totalPot,
-    handRank: null, winCards: null,
-    board: board.length > 0 ? board.map((c) => c.display) : null,
+    handRank: handRank || null,
+    winCards: winCards || null,
+    board: board.length > 0 ? board.map((c) => c.display || c) : null,
   };
 }
 
@@ -110,10 +116,11 @@ function handEnd(sessionId, handId, tableId) {
   return { ...base(sessionId, handId, EVENT.HAND_END), tableId };
 }
 
-function seatPlayer(sessionId, seatIndex, playerName, buyIn, country) {
+function seatPlayer(sessionId, seatIndex, playerName, buyIn, country, actorId) {
   return {
     ...base(sessionId, null, EVENT.SEAT_PLAYER),
     seat: seatIndex, player: playerName, buyIn, country: country || "XX",
+    actorId: actorId || null,
   };
 }
 
@@ -126,6 +133,6 @@ function leaveTable(sessionId, seatIndex, playerName) {
 
 module.exports = {
   resetSeq, tableSnapshot, handStart, blindPost, heroCards,
-  playerAction, betReturn, dealCommunity, potAward, handSummary, handResult, handEnd,
+  playerAction, betReturn, dealCommunity, potAward, showdownReveal, handSummary, handResult, handEnd,
   seatPlayer, leaveTable,
 };

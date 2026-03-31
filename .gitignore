@@ -5,3 +5,16 @@ __pycache__/
 test-output/
 data/
 session-events.jsonl
+
+# Vision pipeline data (large binaries)
+vision/captures/
+vision/card_crops/
+vision/dataset/
+vision/data/
+vision/runs/
+vision/models/
+vision/templates/
+vision/analysis_results.json
+
+# Hand histories (personal data)
+hands/

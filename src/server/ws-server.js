@@ -9,6 +9,9 @@ const { Session } = require("../api/session");
 const { SessionStorage } = require("../api/storage");
 const { CMD, command } = require("../api/commands");
 const { parseClientMessage, formatResponse, formatBroadcast, formatWelcome, formatError } = require("./protocol");
+const { ActorRegistry } = require("../api/actors");
+const { queryHands, getActorStats } = require("../api/query");
+const { AnnotationStore } = require("../api/annotations");
 
 const DEFAULT_CONFIG = {
   port: 9100,
@@ -18,8 +21,8 @@ const DEFAULT_CONFIG = {
     maxSeats: 6,
     sb: 5,
     bb: 10,
-    minBuyIn: 400,
-    maxBuyIn: 1000,
+    minBuyIn: 100,
+    maxBuyIn: 50000,
   },
 };
 
@@ -30,6 +33,9 @@ function startServer(userConfig = {}) {
   const dataDir = config.dataDir || path.join(process.cwd(), "data", "sessions");
 
   const storage = new SessionStorage(dataDir);
+  const actorsDir = config.actorsDir || path.join(path.dirname(dataDir), "actors");
+  const actors = new ActorRegistry(actorsDir);
+  const annotations = new AnnotationStore(storage);
   let session;
   let wasRecovered = false;
   let voidedHands = [];
@@ -42,7 +48,7 @@ function startServer(userConfig = {}) {
     if (active) {
       console.log(`Recovering session ${active.sessionId}...`);
       session = Session.load(active.meta.config, active.sessionId, active.eventsPath, {
-        status: active.meta.status,
+        status: active.meta.status, actors,
       });
       wasRecovered = true;
       // Find voided hands in the event log
@@ -55,7 +61,7 @@ function startServer(userConfig = {}) {
     } else {
       const sessionId = config.sessionId || `session-${Date.now()}`;
       const info = storage.create(sessionId, tableConfig);
-      session = new Session(tableConfig, { sessionId, logPath: info.eventsPath });
+      session = new Session(tableConfig, { sessionId, logPath: info.eventsPath, actors });
       console.log(`Created new session ${sessionId}`);
     }
   }
@@ -121,7 +127,7 @@ function startServer(userConfig = {}) {
 
         const newId = `session-${Date.now()}`;
         const info = storage.create(newId, tableConfig);
-        session = new Session(tableConfig, { sessionId: newId, logPath: info.eventsPath });
+        session = new Session(tableConfig, { sessionId: newId, logPath: info.eventsPath, actors });
         wasRecovered = false;
         voidedHands = [];
         console.log(`Archived old session. New session: ${newId}`);
@@ -188,6 +194,69 @@ function startServer(userConfig = {}) {
         return;
       }
 
+      // ── Actor + Query commands (server-level, cross-session) ──────────
+      if (cmdName === "CREATE_ACTOR") {
+        if (!payload.name) { ws.send(formatError(id, "CREATE_ACTOR requires name")); return; }
+        const actor = actors.create(payload.name, payload.notes);
+        ws.send(formatResponse(id, { ok: true, events: [], state: { actor }, error: null }));
+        return;
+      }
+      if (cmdName === "GET_ACTOR") {
+        if (!payload.actorId) { ws.send(formatError(id, "GET_ACTOR requires actorId")); return; }
+        const actor = actors.get(payload.actorId);
+        if (!actor) { ws.send(formatError(id, `Actor not found: ${payload.actorId}`)); return; }
+        ws.send(formatResponse(id, { ok: true, events: [], state: { actor }, error: null }));
+        return;
+      }
+      if (cmdName === "LIST_ACTORS") {
+        ws.send(formatResponse(id, { ok: true, events: [], state: { actors: actors.list() }, error: null }));
+        return;
+      }
+      if (cmdName === "UPDATE_ACTOR") {
+        if (!payload.actorId) { ws.send(formatError(id, "UPDATE_ACTOR requires actorId")); return; }
+        const actor = actors.update(payload.actorId, { name: payload.name, notes: payload.notes });
+        if (!actor) { ws.send(formatError(id, `Actor not found: ${payload.actorId}`)); return; }
+        ws.send(formatResponse(id, { ok: true, events: [], state: { actor }, error: null }));
+        return;
+      }
+      if (cmdName === "QUERY_HANDS") {
+        const results = queryHands(storage, payload || {});
+        ws.send(formatResponse(id, { ok: true, events: [], state: { hands: results }, error: null }));
+        return;
+      }
+      if (cmdName === "GET_ACTOR_STATS") {
+        if (!payload.actorId) { ws.send(formatError(id, "GET_ACTOR_STATS requires actorId")); return; }
+        const stats = getActorStats(storage, payload.actorId, payload.sessionId);
+        ws.send(formatResponse(id, { ok: true, events: [], state: { stats }, error: null }));
+        return;
+      }
+      if (cmdName === "ADD_ANNOTATION") {
+        if (!payload.sessionId || !payload.handId) { ws.send(formatError(id, "ADD_ANNOTATION requires sessionId, handId")); return; }
+        try {
+          const ann = annotations.add(payload.sessionId, payload.handId, payload);
+          ws.send(formatResponse(id, { ok: true, events: [], state: { annotation: ann }, error: null }));
+        } catch (e) { ws.send(formatError(id, e.message)); }
+        return;
+      }
+      if (cmdName === "GET_ANNOTATIONS") {
+        if (!payload.sessionId || !payload.handId) { ws.send(formatError(id, "GET_ANNOTATIONS requires sessionId, handId")); return; }
+        const anns = annotations.getForHand(payload.sessionId, payload.handId);
+        ws.send(formatResponse(id, { ok: true, events: [], state: { annotations: anns }, error: null }));
+        return;
+      }
+      if (cmdName === "GET_ANNOTATION_COUNTS") {
+        if (!payload.sessionId) { ws.send(formatError(id, "GET_ANNOTATION_COUNTS requires sessionId")); return; }
+        const counts = annotations.getCountsByHand(payload.sessionId);
+        ws.send(formatResponse(id, { ok: true, events: [], state: { counts }, error: null }));
+        return;
+      }
+      if (cmdName === "DELETE_ANNOTATION") {
+        if (!payload.sessionId || !payload.annotationId) { ws.send(formatError(id, "DELETE_ANNOTATION requires sessionId, annotationId")); return; }
+        annotations.delete(payload.sessionId, payload.annotationId);
+        ws.send(formatResponse(id, { ok: true, events: [], state: null, error: null }));
+        return;
+      }
+
       // ── Session-level commands ───────────────────────────────────────
       const cmdMap = {
         CREATE_TABLE: CMD.CREATE_TABLE,
@@ -200,6 +269,7 @@ function startServer(userConfig = {}) {
         GET_HAND_EVENTS: CMD.GET_HAND_EVENTS,
         GET_HAND_LIST: CMD.GET_HAND_LIST,
       };
+
 
       const internalCmd = cmdMap[cmdName];
       if (!internalCmd) { ws.send(formatError(id, `Unknown command: ${cmdName}`)); return; }

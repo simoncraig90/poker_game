@@ -2,10 +2,10 @@
 
 const { PHASE, ACTION, SEAT_STATUS } = require("./types");
 const { createDeck, dealCards } = require("./deck");
-const { nextButton, assignBlinds, preflopActionOrder, postflopActionOrder } = require("./dealer");
+const { nextButton, assignBlinds, preflopActionOrder, postflopActionOrder, nextOccupied } = require("./dealer");
 const { validateAction } = require("./betting");
 const { BettingRound } = require("./round");
-const { settleNoShowdown } = require("./settle");
+const { settleNoShowdown, settleShowdown } = require("./settle");
 const { checkInvariants, checkAccountingClosure } = require("./invariants");
 const { resetHandState } = require("./table");
 const ev = require("./events");
@@ -84,7 +84,7 @@ class HandOrchestrator {
     const playerMap = {};
     for (const seat of occupied) {
       this.startStacks[seat.seat] = seat.stack;
-      playerMap[seat.seat] = { name: seat.player.name, stack: seat.stack, country: seat.player.country };
+      playerMap[seat.seat] = { name: seat.player.name, stack: seat.stack, country: seat.player.country, actorId: seat.player.actorId || null };
     }
 
     table.handsPlayed++;
@@ -243,10 +243,10 @@ class HandOrchestrator {
       case PHASE.FLOP:    newPhase = PHASE.TURN; cardCount = 1; break;
       case PHASE.TURN:    newPhase = PHASE.RIVER; cardCount = 1; break;
       case PHASE.RIVER:
-        // 2+ players at river end → showdown (deferred)
         hand.phase = PHASE.SHOWDOWN;
         hand.actionSeat = null;
-        throw new Error("SHOWDOWN not implemented (deferred — GAP-1)");
+        this._showdown();
+        return;
       default:
         throw new Error(`Cannot advance from phase ${hand.phase}`);
     }
@@ -288,10 +288,9 @@ class HandOrchestrator {
       hand.phase = street;
       this.emit(ev.dealCommunity(this.sessionId, hand.handId, street, newCards, hand.board));
     }
-    // All board dealt — now need showdown. For common path (deferred), throw.
     hand.phase = PHASE.SHOWDOWN;
     hand.actionSeat = null;
-    throw new Error("SHOWDOWN not implemented (deferred — GAP-1)");
+    this._showdown();
   }
 
   // ── Settlement ─────────────────────────────────────────────────────────
@@ -328,7 +327,49 @@ class HandOrchestrator {
     }
   }
 
+  // ── Showdown ───────────────────────────────────────────────────────────
+
+  _showdown() {
+    const hand = this.table.hand;
+    const table = this.table;
+
+    hand.phase = PHASE.SETTLING;
+    hand.showdown = true;
+
+    // Build seat order: clockwise from button (for odd-chip allocation)
+    const seatOrder = postflopActionOrder(table.button, table.seats, table.maxSeats);
+
+    const settleEvents = settleShowdown(this.sessionId, hand.handId, table, hand, seatOrder);
+    for (const e of settleEvents) {
+      this.emit(e);
+    }
+
+    hand.phase = PHASE.COMPLETE;
+    hand.rake = 0;
+
+    // Clear per-hand state
+    for (const seat of Object.values(table.seats)) {
+      if (seat.inHand) resetHandState(seat);
+    }
+
+    // Accounting check
+    const acctCheck = checkAccountingClosure(table, this.startStacks, hand.rake);
+    if (!acctCheck.passed) {
+      console.error("ACCOUNTING VIOLATION:", acctCheck.violations);
+    }
+  }
+
   // ── Query ──────────────────────────────────────────────────────────────
+
+  getLegalActions(seatIdx) {
+    const seat = this.table.seats[seatIdx];
+    if (!seat || !seat.inHand || seat.folded || seat.allIn) {
+      return { actions: [], callAmount: 0, minBet: 0, minRaise: 0, maxRaise: 0 };
+    }
+    const handState = this.round ? this.round.getHandState() : { currentBet: 0, lastRaiseSize: 0 };
+    const { getLegalActions: gla } = require("./betting");
+    return gla(seat, handState, this.table.bb);
+  }
 
   getActionSeat() {
     return this.table.hand ? this.table.hand.actionSeat : null;

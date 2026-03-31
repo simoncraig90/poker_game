@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  Poker Lab Browser Client — Phase 7
+//  Poker Lab Browser Client — Phase 8
 // ═══════════════════════════════════════════════════════════════════════════
 
 let ws = null;
@@ -9,6 +9,9 @@ let sessionId = null;
 let voidedHandIds = new Set();
 let resultBannerTimeout = null;
 let recoveryBannerTimeout = null;
+let showdownReveals = null;     // current hand's SHOWDOWN_REVEAL data
+let pendingResults = [];        // accumulated HAND_RESULT events for current hand
+let showdownBoard = null;       // board cards cached at showdown (persists until next HAND_START)
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -36,6 +39,8 @@ function connect() {
       }
 
       render();
+      // Auto-seat players if table is empty
+      autoSeatIfEmpty();
       return;
     }
 
@@ -92,8 +97,25 @@ function refreshState() { send("GET_STATE"); }
 
 function handleEvents(events) {
   for (const e of events) {
-    if (e.type === "HAND_RESULT") showResultBanner(e);
-    if (e.type === "HAND_START") clearResultBanner();
+    if (e.type === "HAND_START") {
+      clearResultBanner();
+      showdownReveals = null;
+      showdownBoard = null;
+      pendingResults = [];
+    }
+    if (e.type === "SHOWDOWN_REVEAL") {
+      showdownReveals = e.reveals || [];
+      // Snapshot the board at showdown time so render() can hold it
+      if (state && state.hand && state.hand.board) {
+        showdownBoard = state.hand.board.slice();
+      }
+    }
+    if (e.type === "HAND_RESULT") {
+      pendingResults.push(e);
+    }
+    if (e.type === "HAND_END") {
+      showResultBannerMulti(pendingResults, showdownReveals);
+    }
   }
 }
 
@@ -123,11 +145,60 @@ function sendRaise() {
 function seatClick(seatIndex) {
   if (!state) return;
   if (state.seats[seatIndex].status !== "EMPTY") return;
-  const name = prompt("Player name:");
-  if (!name) return;
-  const buyIn = parseInt(prompt("Buy-in (cents):", "1000"));
-  if (isNaN(buyIn)) return;
-  send("SEAT_PLAYER", { seat: seatIndex, name, buyIn, country: "XX" });
+
+  // Try to load actors for picker
+  send("LIST_ACTORS", {}, (resp) => {
+    const actors = (resp.ok && resp.state && resp.state.actors) ? resp.state.actors : [];
+    let choice;
+    if (actors.length > 0) {
+      const list = actors.map((a, i) => `${i + 1}. ${a.name}`).join("\n");
+      choice = prompt(`Select actor (number) or type new name:\n${list}\n\nEnter number or name:`);
+    } else {
+      choice = prompt("Player name:");
+    }
+    if (!choice) return;
+
+    let name, actorId;
+    const num = parseInt(choice);
+    if (!isNaN(num) && num >= 1 && num <= actors.length) {
+      const actor = actors[num - 1];
+      name = actor.name;
+      actorId = actor.actorId;
+    } else {
+      name = choice.trim();
+    }
+
+    const buyIn = parseInt(prompt("Buy-in (cents):", "1000"));
+    if (isNaN(buyIn)) return;
+    send("SEAT_PLAYER", { seat: seatIndex, name, buyIn, country: "XX", actorId });
+  });
+}
+
+function autoSeatIfEmpty() {
+  if (!state) return;
+  const occupied = Object.values(state.seats).filter((s) => s.status === "OCCUPIED").length;
+  if (occupied > 0) return;
+  if (state.handsPlayed > 0) return; // don't re-seat after a hand
+  const players = [
+    { seat: 0, name: "Skurj_poker", buyIn: 800 },
+    { seat: 1, name: "m_skeet27", buyIn: 1000 },
+    { seat: 2, name: "MyCVVis911", buyIn: 1000 },
+    { seat: 3, name: "drumpfen85", buyIn: 1050 },
+    { seat: 4, name: "UBaHbl4_641", buyIn: 1000 },
+    { seat: 5, name: "KAELO_08", buyIn: 1000 },
+  ];
+  let seated = 0;
+  for (const p of players) {
+    send("SEAT_PLAYER", { seat: p.seat, name: p.name, buyIn: p.buyIn, country: "XX" }, () => {
+      seated++;
+      if (seated === players.length) {
+        // All seated — refresh state then deal
+        send("GET_STATE", {}, () => {
+          send("START_HAND");
+        });
+      }
+    });
+  }
 }
 
 function archiveSession() {
@@ -139,6 +210,16 @@ function archiveSession() {
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
+
+  // Replay keyboard shortcuts
+  if (replayFrames.length > 0 && studyQueueIndex >= 0) {
+    // Queue navigation: Shift+Arrow
+    if (e.shiftKey && e.key === "ArrowLeft") { e.preventDefault(); queuePrev(); return; }
+    if (e.shiftKey && e.key === "ArrowRight") { e.preventDefault(); queueNext(); return; }
+    // Next unanswered hero decision: N (quiz mode only)
+    if (e.key.toLowerCase() === "n" && replayQuizMode) { e.preventDefault(); jumpNextUnanswered(); return; }
+  }
+
   const hand = state ? state.hand : null;
   const legal = hand ? (hand.legalActions ? hand.legalActions.actions : []) : [];
   switch (e.key.toLowerCase()) {
@@ -153,13 +234,31 @@ document.addEventListener("keydown", (e) => {
 
 function c$(v) {
   if (v == null) return "--";
-  return Math.abs(v) >= 100 ? "$" + (v / 100).toFixed(2) : v + "c";
+  return "$" + (v / 100).toFixed(2);
 }
 
+const SUIT_SYMBOLS = { s: "♠", h: "♥", d: "♦", c: "♣" };
+
 function cardHtml(card) {
-  if (!card) return '<span class="board-card empty"></span>';
-  const isRed = card.includes("h") || card.includes("d");
-  return `<span class="board-card${isRed ? " red" : ""}">${card}</span>`;
+  if (!card) return '<span class="card empty-slot"></span>';
+  const rank = card.slice(0, -1);
+  const suit = card.slice(-1);
+  const isRed = suit === "h" || suit === "d";
+  const symbol = SUIT_SYMBOLS[suit] || suit;
+  return `<span class="card ${isRed ? "red" : "black"}"><span class="rank">${rank}</span><span class="suit">${symbol}</span></span>`;
+}
+
+function facedownCardHtml() {
+  return '<span class="card facedown"><span class="rank">?</span><span class="suit">?</span></span>';
+}
+
+function seatCardHtml(card) {
+  if (!card) return '';
+  const rank = card.slice(0, -1);
+  const suit = card.slice(-1);
+  const isRed = suit === "h" || suit === "d";
+  const symbol = SUIT_SYMBOLS[suit] || suit;
+  return `<span class="card sm ${isRed ? "red" : "black"}"><span class="rank">${rank}</span><span class="suit">${symbol}</span></span>`;
 }
 
 function render() {
@@ -175,6 +274,7 @@ function render() {
   // Seats
   const felt = document.getElementById("table-felt");
   felt.querySelectorAll(".seat").forEach((el) => el.remove());
+  felt.querySelectorAll(".hero-cards").forEach((el) => el.remove());
   for (let i = 0; i < state.maxSeats; i++) {
     const s = state.seats[i];
     const div = document.createElement("div");
@@ -188,27 +288,82 @@ function render() {
     } else {
       if (s.folded) div.classList.add("folded");
       if (handActive && hand.actionSeat === i) div.classList.add("active");
-      const badges = [];
-      if (state.button === i) badges.push("BTN");
-      if (s.allIn) badges.push("ALL-IN");
-      if (s.folded) badges.push("FOLD");
-      const cardsHtml = s.holeCards
-        ? `<div class="seat-cards">${s.holeCards.join(" ")}</div>`
-        : (s.inHand && !s.folded ? '<div class="seat-cards" style="color:#555">[**]</div>' : "");
-      const betHtml = s.bet > 0 ? `<div class="seat-bet">Bet: ${c$(s.bet)}</div>` : "";
-      const badgeHtml = badges.length > 0 ? `<div class="seat-badge">${badges.join(" | ")}</div>` : "";
-      div.innerHTML = `<div class="seat-name">${s.player.name}</div><div class="seat-stack">${c$(s.stack)}</div>${cardsHtml}${betHtml}${badgeHtml}`;
+      // Status handled inline now (dealer button, ALL IN, FOLD)
+
+      // Check if this seat has a showdown reveal to display
+      const reveal = showdownReveals ? showdownReveals.find((r) => r.seat === i) : null;
+      const isHero = (i === 0); // seat 0 is always the hero/bottom seat
+      let cardsHtml = "";
+      let heroCardsHtml = "";
+      let handNameHtml = "";
+      if (reveal) {
+        cardsHtml = `<div class="seat-cards">${reveal.cards.map(seatCardHtml).join("")}</div>`;
+        handNameHtml = `<div style="font-size:9px;color:#8ecae6;margin-top:2px;">${reveal.handName}</div>`;
+      } else if (s.holeCards && isHero) {
+        // Hero: show cards large, below the seat
+        heroCardsHtml = `<div class="hero-cards">${s.holeCards.map(seatCardHtml).join("")}</div>`;
+      } else if (s.holeCards && !isHero) {
+        // Opponent: show facedown card backs
+        cardsHtml = `<div class="seat-cards">${facedownCardHtml()}${facedownCardHtml()}</div>`;
+      } else if (s.inHand && !s.folded) {
+        cardsHtml = `<div class="seat-cards">${facedownCardHtml()}${facedownCardHtml()}</div>`;
+      }
+
+      const statusBadge = s.allIn ? '<div style="color:#ff6b6b;font-size:10px;font-weight:bold;margin-top:1px">ALL IN</div>' : (s.folded ? '<div style="color:#666;font-size:10px;margin-top:1px">FOLD</div>' : "");
+      div.innerHTML = `<div class="seat-name">${s.player.name}</div><div class="seat-stack">${c$(s.stack)}</div>${cardsHtml}${handNameHtml}${statusBadge}${heroCardsHtml}`;
+
+      // Dealer button — positioned outside the seat panel
+      if (state.button === i) {
+        const btn = document.createElement("div");
+        btn.className = "dealer-btn";
+        btn.textContent = "D";
+        const btnPositions = {
+          0: "top:-12px;right:-12px",
+          1: "top:-8px;right:-12px",
+          2: "bottom:-8px;right:-12px",
+          3: "bottom:-12px;right:-12px",
+          4: "bottom:-8px;left:-12px",
+          5: "top:-8px;left:-12px",
+        };
+        btn.style.cssText = (btnPositions[i] || "") + ";position:absolute";
+        div.style.position = "absolute";
+        div.appendChild(btn);
+      }
+
+      // Bet chip — positioned outside the seat panel toward center
+      if (s.bet > 0) {
+        const chip = document.createElement("div");
+        chip.className = "bet-chip";
+        chip.textContent = c$(s.bet);
+        const chipPositions = {
+          0: "top:-24px;left:50%;transform:translateX(-50%)",
+          1: "top:30%;right:-60px",
+          2: "bottom:30%;right:-60px",
+          3: "bottom:-24px;left:50%;transform:translateX(-50%)",
+          4: "bottom:30%;left:-60px",
+          5: "top:30%;left:-60px",
+        };
+        chip.style.cssText = chipPositions[i] || "";
+        div.appendChild(chip);
+      }
     }
     felt.appendChild(div);
+    // Hero cards — render as separate element
+    if (heroCardsHtml && isHero) {
+      const hc = document.createElement("div");
+      hc.className = "hero-cards";
+      hc.innerHTML = s.holeCards.map(seatCardHtml).join("");
+      felt.appendChild(hc);
+    }
   }
 
-  // Board
-  const board = (handActive && hand) ? hand.board : [];
+  // Board — show during active hand, or hold showdown board after completion
+  const board = (handActive && hand) ? hand.board : (showdownBoard || []);
   let boardHtml = "";
-  for (let i = 0; i < 5; i++) boardHtml += board[i] ? cardHtml(board[i]) : '<span class="board-card empty"></span>';
+  for (let i = 0; i < 5; i++) boardHtml += board[i] ? cardHtml(board[i]) : '<span class="card empty-slot"></span>';
   document.getElementById("board").innerHTML = boardHtml;
   document.getElementById("pot").textContent = handActive && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
-  document.getElementById("phase").textContent = handActive ? hand.phase : "";
+  document.getElementById("phase").textContent = handActive ? hand.phase : (showdownReveals ? "SHOWDOWN" : "");
 
   updateActionButtons();
 }
@@ -241,13 +396,32 @@ function updateActionButtons() {
 // ── Banners ────────────────────────────────────────────────────────────────
 
 function showResultBanner(resultEvent) {
+  // Legacy single-event path (kept for backwards compat if called directly)
+  showResultBannerMulti([resultEvent], null);
+}
+
+function showResultBannerMulti(resultEvents, reveals) {
   const banner = document.getElementById("result-banner");
+  if (!resultEvents || resultEvents.length === 0) { banner.innerHTML = ""; return; }
+
   const lines = [];
-  for (const r of resultEvent.results || []) { if (r.won) lines.push(`${r.player} wins ${c$(r.amount)}`); }
-  for (const r of resultEvent.results || []) { if (r.text && r.won) lines.push(r.text); }
-  banner.textContent = lines.join(" | ") || "";
+  const isShowdown = reveals && reveals.length > 0;
+  const potNames = resultEvents.length === 1 ? [""] : resultEvents.map((_, i) => i === 0 ? "Main: " : `Side ${i}: `);
+
+  for (let i = 0; i < resultEvents.length; i++) {
+    const re = resultEvents[i];
+    const prefix = potNames[i];
+    for (const r of re.results || []) {
+      if (!r.won) continue;
+      const revealInfo = isShowdown && reveals ? reveals.find((rv) => rv.seat === r.seat) : null;
+      const handDesc = revealInfo ? ` (${revealInfo.handName})` : "";
+      lines.push(`${prefix}${r.player} wins ${c$(r.amount)}${handDesc}`);
+    }
+  }
+
+  banner.innerHTML = lines.map((l) => `<div>${l}</div>`).join("");
   clearTimeout(resultBannerTimeout);
-  resultBannerTimeout = setTimeout(() => { banner.textContent = ""; }, 5000);
+  resultBannerTimeout = setTimeout(() => { banner.innerHTML = ""; }, resultEvents.length > 1 ? 8000 : 5000);
 }
 
 function clearResultBanner() {
@@ -289,6 +463,8 @@ function logEvent(e) {
   if (e.newCards) detail += e.newCards.join(" ") + " ";
   if (e.street && e.type === "DEAL_COMMUNITY") detail += "(" + e.street + ") ";
   if (e.awards) detail += e.awards.map((a) => a.player + " " + c$(a.amount)).join(", ") + " ";
+  if (e.potIndex != null && e.type === "POT_AWARD") detail = `[pot ${e.potIndex}] ` + detail;
+  if (e.reveals) detail += e.reveals.map((r) => `${r.player}: ${r.cards.join(" ")} (${r.handName})`).join(" | ") + " ";
   if (e.detail) detail += e.detail + " ";
   if (e.error) detail += e.error + " ";
   if (e.void) detail += "[VOIDED] ";
@@ -303,12 +479,13 @@ function logEvent(e) {
 function switchTab(tab) {
   document.querySelectorAll(".panel-tab").forEach((t) => t.classList.remove("active"));
   document.querySelectorAll(".panel-content").forEach((p) => p.classList.remove("active"));
-  const idx = { events: 0, history: 1, sessions: 2 }[tab] || 0;
+  const idx = { events: 0, history: 1, sessions: 2, study: 3 }[tab] || 0;
   document.querySelectorAll(".panel-tab")[idx].classList.add("active");
 
   if (tab === "events") document.getElementById("events-panel").classList.add("active");
   else if (tab === "history") { document.getElementById("history-panel").classList.add("active"); loadHandList(); }
   else if (tab === "sessions") { document.getElementById("sessions-panel").classList.add("active"); loadSessionList(); }
+  else if (tab === "study") { document.getElementById("study-panel").classList.add("active"); loadActorList(); }
 }
 
 // ── Hand History ───────────────────────────────────────────────────────────
@@ -332,7 +509,8 @@ function renderHandList(hands, readOnly) {
     const onclick = readOnly
       ? `onclick="loadSessionHandDetail('${currentBrowseSessionId}','${h.handId}')"`
       : `onclick="loadHandDetail('${h.handId}')"`;
-    return `<div class="hand-row" ${onclick}><span class="hid">#${h.handId}</span> <span class="hwinner">${h.winner}</span> <span class="hpot">${c$(h.pot)}</span></div>`;
+    const sdTag = h.showdown ? ' <span style="color:#8ecae6;font-size:9px">[SD]</span>' : '';
+    return `<div class="hand-row" ${onclick}><span class="hid">#${h.handId}</span> <span class="hwinner">${h.winner}</span> <span class="hpot">${c$(h.pot)}</span>${sdTag}</div>`;
   }).join("");
   el.style.display = "block";
   document.getElementById("hand-detail").style.display = "none";
@@ -450,6 +628,11 @@ function showSessionsList() {
 function formatTimeline(events) {
   const lines = [];
   let board = [];
+  let potCount = 0;
+  // Count POT_AWARDs to know if multi-pot
+  for (const e of events) { if (e.type === "POT_AWARD") potCount++; }
+  const isMultiPot = potCount > 1;
+
   for (const e of events) {
     switch (e.type) {
       case "HAND_START":
@@ -472,15 +655,1238 @@ function formatTimeline(events) {
       }
       case "BET_RETURN": lines.push(`${e.player} returned ${c$(e.amount)}`); break;
       case "DEAL_COMMUNITY": board = e.board || []; lines.push(""); lines.push(`--- ${e.street} [${board.join(" ")}] ---`); break;
-      case "POT_AWARD": lines.push(""); for (const a of e.awards || []) lines.push(`** ${a.player} wins ${c$(a.amount)} **`); break;
-      case "HAND_SUMMARY": lines.push(`Result: ${e.winPlayer} wins ${c$(e.totalPot)} (${e.showdown ? "showdown" : "no showdown"})`); if (board.length > 0) lines.push(`Board: ${board.join(" ")}`); break;
-      case "HAND_RESULT": lines.push(""); for (const r of e.results || []) lines.push(`${r.player}: ${r.text}`); break;
+      case "SHOWDOWN_REVEAL":
+        lines.push("");
+        lines.push("--- SHOWDOWN ---");
+        for (const r of e.reveals || []) {
+          lines.push(`${r.player}: ${r.cards.join(" ")} (${r.handName})`);
+        }
+        break;
+      case "POT_AWARD": {
+        lines.push("");
+        const potLabel = isMultiPot ? (e.potIndex === 0 ? "Main pot" : `Side pot ${e.potIndex}`) : "Pot";
+        for (const a of e.awards || []) lines.push(`** ${a.player} wins ${c$(a.amount)} [${potLabel}] **`);
+        break;
+      }
+      case "HAND_SUMMARY": {
+        const rankStr = e.handRank ? ` with ${e.handRank}` : "";
+        const sdStr = e.showdown ? "showdown" : "no showdown";
+        lines.push(`Result: ${e.winPlayer} wins ${c$(e.totalPot)}${rankStr} (${sdStr})`);
+        if (board.length > 0) lines.push(`Board: ${board.join(" ")}`);
+        break;
+      }
+      case "HAND_RESULT": {
+        const potLabel = isMultiPot ? (e.potIndex === 0 ? " [Main]" : ` [Side ${e.potIndex}]`) : "";
+        lines.push("");
+        for (const r of e.results || []) lines.push(`${r.player}: ${r.text}${potLabel}`);
+        break;
+      }
       case "HAND_END":
         if (e.void) { lines.push(""); lines.push("[HAND VOIDED - server recovered from mid-hand crash]"); lines.push("[Stacks restored to pre-hand values]"); }
         break;
     }
   }
   return lines;
+}
+
+// ── Study Tab ─────────────────────────────────────────────────────────────
+
+let studyActorId = null;
+let blindReviewMode = false;
+let blindRevealed = new Set(); // sessionId/handId keys for hands whose outcomes have been revealed
+
+function toggleBlindReview() {
+  blindReviewMode = !blindReviewMode;
+  blindRevealed.clear();
+  loadStudyHands();
+}
+
+function blindRevealHand() {
+  if (replaySessionId && replayHandId) {
+    blindRevealed.add(replaySessionId + "/" + replayHandId);
+    renderReplayFrame();
+  }
+}
+
+function isBlindHidden(sessionId, handId) {
+  return blindReviewMode && !blindRevealed.has(sessionId + "/" + handId);
+}
+
+function loadActorList() {
+  send("LIST_ACTORS", {}, (resp) => {
+    if (resp.ok && resp.state && resp.state.actors) renderActorList(resp.state.actors);
+    else renderActorList([]);
+  });
+}
+
+function renderActorList(actorList) {
+  const el = document.getElementById("study-actors");
+  document.getElementById("study-stats").style.display = "none";
+  document.getElementById("study-hands").style.display = "none";
+  el.style.display = "block";
+
+  if (actorList.length === 0) {
+    el.innerHTML = '<div style="color:#555;padding:8px">No actors registered. Seat a player to create one.</div>';
+    return;
+  }
+
+  let html = actorList.map((a) =>
+    `<div class="actor-row" onclick="viewActor('${a.actorId}')">` +
+    `<span class="actor-name">${a.name}</span>` +
+    `<span class="actor-id">${a.actorId}</span>` +
+    (a.notes ? `<br><span class="actor-notes">${a.notes}</span>` : "") +
+    `</div>`
+  ).join("");
+  html += `<button class="study-new-btn" onclick="createActorDialog()">+ New Actor</button>`;
+  el.innerHTML = html;
+}
+
+function createActorDialog() {
+  const name = prompt("Actor name:");
+  if (!name) return;
+  const notes = prompt("Notes (optional):", "");
+  send("CREATE_ACTOR", { name, notes }, (resp) => {
+    if (resp.ok) loadActorList();
+  });
+}
+
+function viewActor(actorId) {
+  studyActorId = actorId;
+  send("GET_ACTOR_STATS", { actorId }, (resp) => {
+    if (!resp.ok) return;
+    const stats = resp.state.stats;
+    send("GET_ACTOR", { actorId }, (aResp) => {
+      const actor = aResp.ok ? aResp.state.actor : { name: actorId, notes: "" };
+      renderActorStats(actor, stats);
+    });
+  });
+}
+
+function renderActorStats(actor, stats) {
+  document.getElementById("study-actors").style.display = "none";
+  document.getElementById("study-hands").style.display = "none";
+  const el = document.getElementById("study-stats");
+  el.style.display = "block";
+
+  const pct = (v) => v != null ? (v * 100).toFixed(1) + "%" : "—";
+  const af = stats.aggFactor != null ? stats.aggFactor.toFixed(2) : "—";
+
+  el.innerHTML =
+    `<div class="study-back" onclick="loadActorList()">Back to actors</div>` +
+    `<div style="padding:4px 0"><span class="actor-name">${actor.name}</span><span class="actor-id">${actor.actorId}</span></div>` +
+    (actor.notes ? `<div class="actor-notes" style="margin-bottom:4px">${actor.notes}</div>` : "") +
+    `<table class="stat-table">` +
+    `<tr><td>Hands dealt</td><td>${stats.handsDealt}</td></tr>` +
+    `<tr><td>Hands won</td><td>${stats.handsWon}</td></tr>` +
+    `<tr><td>VPIP</td><td>${pct(stats.vpip)}</td></tr>` +
+    `<tr><td>PFR</td><td>${pct(stats.pfr)}</td></tr>` +
+    `<tr><td>WTSD</td><td>${pct(stats.wtsd)}</td></tr>` +
+    `<tr><td>W$SD</td><td>${pct(stats.wsd)}</td></tr>` +
+    `<tr><td>Agg Factor</td><td>${af}</td></tr>` +
+    `<tr><td>Net result</td><td>${c$(stats.netResult)}</td></tr>` +
+    `<tr><td>Avg pot won</td><td>${c$(stats.avgPotWon)}</td></tr>` +
+    `</table>` +
+    `<div class="study-filter-bar">` +
+    `<select id="study-session-filter"><option value="">All sessions</option></select>` +
+    `<select id="study-sd-filter"><option value="">All</option><option value="true">Showdown</option><option value="false">Fold-out</option></select>` +
+    `<select id="study-result-filter"><option value="">All</option><option value="won">Won</option><option value="lost">Lost</option></select>` +
+    `<select id="study-pos-filter"><option value="">Any pos</option><option value="BTN">BTN</option><option value="SB">SB</option><option value="BB">BB</option><option value="UTG">UTG</option><option value="MP">MP</option><option value="CO">CO</option></select>` +
+    `<input id="study-after" type="date" title="After date" style="width:100px">` +
+    `<input id="study-before" type="date" title="Before date" style="width:100px">` +
+    `<label style="font-size:9px;color:#888;white-space:nowrap"><input type="checkbox" id="study-noted-filter"> Noted</label>` +
+    `<select id="study-tag-filter" style="font-size:9px"><option value="">Any tag</option><option value="mistake">mistake</option><option value="interesting">interesting</option><option value="question">question</option><option value="good">good</option><option value="review">review</option></select>` +
+    `<button class="rp-btn${blindReviewMode ? " rp-active" : ""}" onclick="toggleBlindReview()" title="${blindReviewMode ? "Show outcomes" : "Hide outcomes to reduce bias"}" style="font-size:9px">Blind</button>` +
+    `<button onclick="loadStudyHands()">Filter</button>` +
+    `<button onclick="exportStudyHands()" title="Copy results to clipboard">Export</button>` +
+    `</div>`;
+
+  // Populate session dropdown
+  send("GET_SESSION_LIST", {}, (resp) => {
+    const sel = document.getElementById("study-session-filter");
+    if (!sel || !resp.ok || !resp.state || !resp.state.sessions) return;
+    for (const s of resp.state.sessions) {
+      const opt = document.createElement("option");
+      opt.value = s.sessionId;
+      opt.textContent = s.sessionId.slice(-12) + ` (${s.handsPlayed || 0}h)`;
+      sel.appendChild(opt);
+    }
+  });
+
+  loadStudyHands();
+}
+
+function loadStudyHands() {
+  if (!studyActorId) return;
+  const filters = { actorId: studyActorId };
+  const sessEl = document.getElementById("study-session-filter");
+  const sdEl = document.getElementById("study-sd-filter");
+  const resEl = document.getElementById("study-result-filter");
+  const posEl = document.getElementById("study-pos-filter");
+  const afterEl = document.getElementById("study-after");
+  const beforeEl = document.getElementById("study-before");
+  if (sessEl && sessEl.value) filters.sessionId = sessEl.value;
+  if (sdEl && sdEl.value) filters.showdown = sdEl.value === "true";
+  if (resEl && resEl.value) filters.result = resEl.value;
+  if (posEl && posEl.value) filters.position = posEl.value;
+  if (afterEl && afterEl.value) filters.after = new Date(afterEl.value).getTime();
+  if (beforeEl && beforeEl.value) filters.before = new Date(beforeEl.value + "T23:59:59").getTime();
+
+  send("QUERY_HANDS", filters, (resp) => {
+    if (!resp.ok) return;
+    const hands = resp.state.hands || [];
+    // Fetch annotation counts for each involved session
+    const sessionIds = [...new Set(hands.map((h) => h.sessionId))];
+    if (sessionIds.length === 0) { renderStudyHands(hands, {}); return; }
+
+    let pending = sessionIds.length;
+    const allCounts = {}; // { sessionId: { handId: count } }
+    for (const sid of sessionIds) {
+      send("GET_ANNOTATION_COUNTS", { sessionId: sid }, (cr) => {
+        allCounts[sid] = (cr.ok && cr.state && cr.state.counts) ? cr.state.counts : {};
+        if (--pending === 0) renderStudyHands(hands, allCounts);
+      });
+    }
+  });
+}
+
+function renderStudyHands(hands, annotationCounts) {
+  const el = document.getElementById("study-hands");
+  el.style.display = "block";
+
+  // Apply annotation filters
+  const notedEl = document.getElementById("study-noted-filter");
+  const tagEl = document.getElementById("study-tag-filter");
+  const notedOnly = notedEl && notedEl.checked;
+  const tagFilter = tagEl ? tagEl.value : "";
+  const counts = annotationCounts || {};
+
+  // Helper: get hand's annotation info { count, tags } from counts map
+  function handAnn(h) {
+    const sc = counts[h.sessionId] || {};
+    const info = sc[h.handId];
+    if (!info) return { count: 0, tags: [] };
+    return typeof info === "number" ? { count: info, tags: [] } : info;
+  }
+
+  let filtered = hands;
+  if (notedOnly) {
+    filtered = filtered.filter((h) => handAnn(h).count > 0);
+  }
+  if (tagFilter) {
+    filtered = filtered.filter((h) => handAnn(h).tags.includes(tagFilter));
+  }
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="color:#555;padding:4px">No matching hands</div>';
+    studyHandCache = [];
+    return;
+  }
+
+  // Cache for click-through (filtered set)
+  studyHandCache = filtered;
+  studyAnnotationCounts = counts;
+  queueQuizAccum = {}; // new queue = fresh accumulator
+
+  el.innerHTML = filtered.map((h, i) => {
+    const hidden = isBlindHidden(h.sessionId, h.handId);
+    const resCls = hidden ? "" : (h.result === "won" ? "s-won" : (h.result === "lost" ? "s-lost" : ""));
+    const resLabel = hidden ? "---" : h.result;
+    const netLabel = hidden ? "---" : c$(h.netResult);
+    const sdTag = h.showdown ? " [SD]" : "";
+    const rank = hidden ? "" : (h.handRank ? ` (${h.handRank})` : "");
+    const ann = handAnn(h);
+    const noteBadge = ann.count > 0 ? ` <span class="ann-tag" title="${ann.count} note${ann.count > 1 ? "s" : ""}">${ann.count}n</span>` : "";
+    const tagBadges = ann.tags.length > 0 ? " " + ann.tags.map((t) => `<span class="ann-tag">${t}</span>`).join(" ") : "";
+    const rs = handReviewState(h.sessionId, h.handId);
+    const rsMark = rs === "completed" ? '<span style="color:#4ecca3;font-size:9px" title="Completed">&#10003;</span> '
+                 : rs === "in-progress" ? '<span style="color:#ffd700;font-size:9px" title="In progress">&#9679;</span> '
+                 : rs === "visited" ? '<span style="color:#555;font-size:9px" title="Visited">&#9675;</span> '
+                 : "";
+    return `<div class="study-hand-row" style="cursor:pointer" onclick="viewStudyHand(${i})">` +
+      `${rsMark}<span style="color:#4ecca3">${h.sessionId.slice(-8)}/#${h.handId}</span> ` +
+      `<span class="s-result ${resCls}">${resLabel}</span> ` +
+      `${netLabel} | ${h.position}${sdTag}${rank}${noteBadge}${tagBadges}` +
+      `</div>`;
+  }).join("");
+}
+
+let studyHandCache = [];
+let studyAnnotationCounts = {};
+let studyQueueIndex = -1;
+let queueQuizAccum = {};     // { "sessionId/handId": { answered, matches, diffs, totalHero } }
+
+/**
+ * Derive review state for a hand from the queue accumulator.
+ * Returns "untouched" | "visited" | "in-progress" | "completed".
+ */
+function handReviewState(sessionId, handId) {
+  const key = sessionId + "/" + handId;
+  const entry = queueQuizAccum[key];
+  if (!entry) return "untouched";
+  if (entry.answered === 0) return "visited";
+  if (entry.totalHero > 0 && entry.answered >= entry.totalHero) return "completed";
+  return "in-progress";
+}
+
+function exportStudyHands() {
+  if (!studyHandCache || studyHandCache.length === 0) return;
+  const header = "session\thand\tposition\tresult\tnet\tshowdown\thandRank\tstartStack\tinvested\twon";
+  const rows = studyHandCache.map((h) =>
+    [h.sessionId, h.handId, h.position, h.result, h.netResult, h.showdown, h.handRank || "", h.startStack, h.totalInvested, h.totalWon].join("\t")
+  );
+  const text = header + "\n" + rows.join("\n");
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.study-filter-bar button[onclick="exportStudyHands()"]');
+    if (btn) { const orig = btn.textContent; btn.textContent = "Copied!"; setTimeout(() => { btn.textContent = orig; }, 1500); }
+  }).catch(() => {
+    // Fallback: prompt with text
+    prompt("Copy this data:", text);
+  });
+}
+
+// ── Replay State ──────────────────────────────────────────────────────────
+
+let replayFrames = [];
+let replayCursor = 0;
+let replayDecisionOnly = false;
+let replayHandEvents = [];
+let replaySessionId = null;
+let replayHandId = null;
+let replayAnnotations = [];
+let replayStudyMode = false;
+let replayHeroSeat = null;
+let replayQuizMode = false;
+let replayQuizRevealed = false;
+let quizAnswer = null;       // "fold" | "passive" | "aggressive" | null
+let quizResult = null;       // "match" | "different" | null
+let quizLedger = {};         // { frameIndex: { chosen, actual, result } }
+
+function resetReplayState() {
+  replayFrames = [];
+  replayCursor = 0;
+  replayDecisionOnly = false;
+  replayHandEvents = [];
+  replaySessionId = null;
+  replayHandId = null;
+  replayAnnotations = [];
+  replayStudyMode = false;
+  replayHeroSeat = null;
+  replayQuizMode = false;
+  replayQuizRevealed = false;
+  quizAnswer = null;
+  quizResult = null;
+  quizLedger = {};
+}
+
+// ── Frame Compiler ────────────────────────────────────────────────────────
+
+/**
+ * Compile hand events into deterministic replay frames.
+ * Each frame is a snapshot of the visible state after processing that event.
+ * Pure function — no side effects.
+ */
+function compileFrames(events) {
+  const frames = [];
+  let street = "";
+  let board = [];
+  let pot = 0;
+  let players = {};      // seat → { name, stack, invested, folded, allIn }
+  let handId = "";
+  let button = -1;
+
+  for (const e of events) {
+    switch (e.type) {
+      case "HAND_START": {
+        handId = e.handId;
+        button = e.button;
+        street = "PREFLOP";
+        board = [];
+        pot = 0;
+        players = {};
+        for (const [s, p] of Object.entries(e.players || {})) {
+          players[s] = { name: p.name, stack: p.stack, invested: 0, folded: false, allIn: false, cards: null };
+        }
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `Hand #${e.handId} — Button: Seat ${e.button}`,
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "BLIND_POST": {
+        const p = players[e.seat];
+        if (p) {
+          p.stack -= e.amount;
+          p.invested += e.amount;
+        }
+        pot += e.amount;
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `${e.player} posts ${e.blindType} ${c$(e.amount)}`,
+          actingSeat: e.seat, actionLabel: `${e.blindType} ${c$(e.amount)}`, isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "HERO_CARDS": {
+        const p = players[e.seat];
+        if (p) p.cards = e.cards;
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `${e.player || "Seat " + e.seat} dealt ${e.cards.join(" ")}`,
+          actingSeat: e.seat, actionLabel: "dealt cards", isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "PLAYER_ACTION": {
+        const p = players[e.seat];
+        if (p) {
+          p.stack -= (e.delta || 0);
+          p.invested += (e.delta || 0);
+          if (e.action === "FOLD") p.folded = true;
+          if (p.stack <= 0 && e.action !== "FOLD" && e.action !== "CHECK") p.allIn = true;
+        }
+        pot += (e.delta || 0);
+
+        let label;
+        if (e.action === "FOLD") label = `${e.player} folds`;
+        else if (e.action === "CHECK") label = `${e.player} checks`;
+        else if (e.action === "CALL") label = `${e.player} calls ${c$(e.totalBet)}`;
+        else if (e.action === "BET") label = `${e.player} bets ${c$(e.totalBet)}`;
+        else if (e.action === "RAISE") label = `${e.player} raises to ${c$(e.totalBet)}`;
+        else label = `${e.player} ${e.action} ${c$(e.totalBet)}`;
+
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label,
+          actingSeat: e.seat, actionLabel: e.action, isDecision: true, isTerminal: false,
+        });
+        break;
+      }
+
+      case "BET_RETURN": {
+        const p = players[e.seat];
+        if (p) {
+          p.stack += e.amount;
+          p.invested -= e.amount;
+        }
+        pot -= e.amount;
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `${e.player} returned ${c$(e.amount)}`,
+          actingSeat: e.seat, actionLabel: "return", isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "DEAL_COMMUNITY": {
+        street = e.street;
+        board = e.board || [];
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `--- ${e.street} [${board.join(" ")}] ---`,
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "SHOWDOWN_REVEAL": {
+        street = "SHOWDOWN";
+        for (const r of e.reveals || []) {
+          const p = players[r.seat];
+          if (p) p.cards = r.cards;
+        }
+        const revealText = (e.reveals || []).map((r) => `${r.player}: ${r.cards.join(" ")} (${r.handName})`).join(" | ");
+        frames.push({
+          index: frames.length, handId, street, board: [...board], pot,
+          players: clonePlayers(players),
+          event: e.type, label: `SHOWDOWN: ${revealText}`,
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "POT_AWARD": {
+        for (const a of e.awards || []) {
+          const p = players[a.seat];
+          if (p) p.stack += a.amount;
+        }
+        const awardText = (e.awards || []).map((a) => `${a.player} wins ${c$(a.amount)}`).join(", ");
+        frames.push({
+          index: frames.length, handId, street: "SETTLE", board: [...board], pot: 0,
+          players: clonePlayers(players),
+          event: e.type, label: `Award: ${awardText}`,
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: false,
+        });
+        pot = 0;
+        break;
+      }
+
+      case "HAND_SUMMARY": {
+        const rankStr = e.handRank ? ` with ${e.handRank}` : "";
+        frames.push({
+          index: frames.length, handId, street: "SETTLE", board: [...board], pot: 0,
+          players: clonePlayers(players),
+          event: e.type, label: `Result: ${e.winPlayer} wins ${c$(e.totalPot)}${rankStr}`,
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: false,
+        });
+        break;
+      }
+
+      case "HAND_RESULT": {
+        // Informational — skip separate frame, already covered by POT_AWARD + SUMMARY
+        break;
+      }
+
+      case "HAND_END": {
+        frames.push({
+          index: frames.length, handId, street: "COMPLETE", board: [...board], pot: 0,
+          players: clonePlayers(players),
+          event: e.type, label: e.void ? "[VOIDED]" : "Hand complete",
+          actingSeat: null, actionLabel: null, isDecision: false, isTerminal: true,
+        });
+        break;
+      }
+    }
+  }
+
+  return frames;
+}
+
+function clonePlayers(players) {
+  const out = {};
+  for (const [s, p] of Object.entries(players)) {
+    out[s] = { ...p, cards: p.cards ? [...p.cards] : null };
+  }
+  return out;
+}
+
+/**
+ * Get indices for decision-point frames only.
+ */
+function getDecisionIndices(frames) {
+  return frames.map((f, i) => f.isDecision ? i : -1).filter((i) => i >= 0);
+}
+
+/**
+ * Find the first frame index for a given street.
+ */
+function getStreetStartIndex(frames, targetStreet) {
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].street === targetStreet) return i;
+  }
+  return -1;
+}
+
+// ── Study Visibility Policy ───────────────────────────────────────────────
+
+/**
+ * Find the frame index of the SHOWDOWN_REVEAL event in the frame list.
+ * Returns -1 if no showdown in this hand.
+ */
+function getShowdownRevealIndex(frames) {
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i].event === "SHOWDOWN_REVEAL") return i;
+  }
+  return -1;
+}
+
+/**
+ * Apply study-mode visibility to a frame.
+ * Returns a new frame object with hidden information masked for the hero's perspective.
+ *
+ * Rules:
+ *   - Hero's own cards: visible if set (HERO_CARDS processed for hero seat)
+ *   - Opponent cards: hidden ("??") unless current frame is at or past SHOWDOWN_REVEAL
+ *   - Board: already correct in compiled frames (only dealt-so-far cards)
+ *   - Labels: HERO_CARDS events for opponents are redacted
+ *
+ * Pure function — does not mutate the input frame.
+ */
+function applyStudyVisibility(frame, heroSeat, showdownRevealIdx) {
+  const out = {
+    ...frame,
+    players: {},
+    board: [...frame.board],
+    label: frame.label,
+  };
+
+  const pastShowdown = showdownRevealIdx >= 0 && frame.index >= showdownRevealIdx;
+
+  for (const [s, p] of Object.entries(frame.players)) {
+    const seatNum = parseInt(s);
+    if (seatNum === heroSeat) {
+      // Hero sees own cards
+      out.players[s] = { ...p, cards: p.cards ? [...p.cards] : null };
+    } else if (pastShowdown) {
+      // After showdown reveal: all cards visible
+      out.players[s] = { ...p, cards: p.cards ? [...p.cards] : null };
+    } else {
+      // Opponent before showdown: hide cards
+      out.players[s] = { ...p, cards: null };
+    }
+  }
+
+  // Redact HERO_CARDS labels for opponents
+  if (frame.event === "HERO_CARDS" && frame.actingSeat !== heroSeat) {
+    out.label = `${frame.players[String(frame.actingSeat)]?.name || "Opponent"} dealt cards`;
+  }
+
+  return out;
+}
+
+/**
+ * Infer hero seat from the study hand cache entry (the actor being studied).
+ */
+function inferHeroSeat(frames) {
+  // Use studyActorId if available — find the seat with that actorId in HAND_START
+  if (studyActorId && replayHandEvents.length > 0) {
+    const hs = replayHandEvents.find((e) => e.type === "HAND_START");
+    if (hs && hs.players) {
+      for (const [s, p] of Object.entries(hs.players)) {
+        if (p.actorId === studyActorId) return parseInt(s);
+      }
+    }
+  }
+  // Fallback: seat 0
+  return frames.length > 0 ? parseInt(Object.keys(frames[0].players)[0]) : 0;
+}
+
+function replayToggleStudyMode() {
+  replayStudyMode = !replayStudyMode;
+  if (replayStudyMode && replayHeroSeat === null) {
+    replayHeroSeat = inferHeroSeat(replayFrames);
+  }
+  renderReplayFrame();
+}
+
+function replaySetHero(seat) {
+  replayHeroSeat = seat;
+  quizLedger = {}; // hero change invalidates prior answers
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+// ── Quiz Mode ─────────────────────────────────────────────────────────────
+
+function replayToggleQuizMode() {
+  replayQuizMode = !replayQuizMode;
+  quizLedger = {}; // mode toggle invalidates prior answers
+  quizFrameTransition(replayCursor);
+  // Quiz mode implies study mode
+  if (replayQuizMode && !replayStudyMode) {
+    replayStudyMode = true;
+    if (replayHeroSeat === null) replayHeroSeat = inferHeroSeat(replayFrames);
+  }
+  renderReplayFrame();
+}
+
+function quizReveal() {
+  replayQuizRevealed = true;
+  const rawFrame = replayFrames[Math.min(replayCursor, replayFrames.length - 1)];
+  const actualBucket = actionToBucket(rawFrame.actionLabel);
+  if (quizAnswer) {
+    quizResult = quizAnswer === actualBucket ? "match" : "different";
+    quizLedger[rawFrame.index] = { chosen: quizAnswer, actual: actualBucket, result: quizResult };
+    // Live-update queue accumulator for current hand
+    snapshotQuizToQueue();
+    // Auto-reveal outcome when all hero decisions answered
+    if (blindReviewMode && replayHeroSeat !== null) {
+      const heroDecs = getDecisionIndices(replayFrames).filter((i) => replayFrames[i].actingSeat === replayHeroSeat);
+      if (heroDecs.length > 0 && Object.keys(quizLedger).length >= heroDecs.length) {
+        blindRevealed.add(replaySessionId + "/" + replayHandId);
+      }
+    }
+  } else {
+    quizResult = null;
+  }
+  renderReplayFrame();
+}
+
+function quizSelectAnswer(bucket) {
+  quizAnswer = bucket;
+  renderReplayFrame();
+}
+
+/**
+ * Reset per-frame quiz state, restoring from ledger if available for the target frame.
+ */
+function quizFrameTransition(targetFrameIdx) {
+  const entry = quizLedger[targetFrameIdx];
+  if (entry) {
+    quizAnswer = entry.chosen;
+    quizResult = entry.result;
+    replayQuizRevealed = true;
+  } else {
+    quizAnswer = null;
+    quizResult = null;
+    replayQuizRevealed = false;
+  }
+}
+
+/**
+ * Reset the current hand's quiz progress for retry.
+ * Clears the hand ledger, removes queue contribution, re-hides outcome,
+ * and moves cursor to the first frame.
+ */
+function resetHandQuiz() {
+  if (!replaySessionId || !replayHandId) return;
+
+  // Clear per-frame quiz state
+  quizLedger = {};
+  quizAnswer = null;
+  quizResult = null;
+  replayQuizRevealed = false;
+
+  // Update queue accumulator: keep the entry (visited) but zero the answers
+  const key = replaySessionId + "/" + replayHandId;
+  const totalHero = replayHeroSeat !== null
+    ? getDecisionIndices(replayFrames).filter((i) => replayFrames[i].actingSeat === replayHeroSeat).length
+    : 0;
+  queueQuizAccum[key] = { answered: 0, matches: 0, diffs: 0, totalHero };
+
+  // Re-hide outcome in blind mode
+  blindRevealed.delete(replaySessionId + "/" + replayHandId);
+
+  // Reset cursor to first hero decision (or frame 0 if none)
+  replayCursor = firstHeroDecisionIndex(replayFrames, replayHeroSeat);
+  renderReplayFrame();
+}
+
+/**
+ * Clear the current frame's quiz answer for re-answering.
+ * Removes just this frame from the ledger, resets per-frame state,
+ * and updates the queue accumulator.
+ */
+function clearSpotQuiz() {
+  const rawFrame = replayFrames[Math.min(replayCursor, replayFrames.length - 1)];
+  delete quizLedger[rawFrame.index];
+  quizAnswer = null;
+  quizResult = null;
+  replayQuizRevealed = false;
+
+  // Re-hide blind outcome if this makes the hand no longer fully answered
+  if (blindReviewMode && replayHeroSeat !== null) {
+    const heroDecs = getDecisionIndices(replayFrames).filter((i) => replayFrames[i].actingSeat === replayHeroSeat);
+    if (Object.keys(quizLedger).length < heroDecs.length) {
+      blindRevealed.delete(replaySessionId + "/" + replayHandId);
+    }
+  }
+
+  snapshotQuizToQueue();
+  renderReplayFrame();
+}
+
+/**
+ * Map a concrete action to a coarse bucket.
+ *   FOLD → "fold"
+ *   CHECK, CALL → "passive"
+ *   BET, RAISE → "aggressive"
+ */
+function actionToBucket(action) {
+  if (!action) return null;
+  const a = action.toUpperCase();
+  if (a === "FOLD") return "fold";
+  if (a === "CHECK" || a === "CALL") return "passive";
+  if (a === "BET" || a === "RAISE") return "aggressive";
+  return null;
+}
+
+/**
+ * Determine if the current frame should be quiz-masked.
+ * A frame is masked when:
+ *   - quiz mode is on
+ *   - the frame is a hero decision (isDecision && actingSeat === heroSeat)
+ *   - the reveal button has not been pressed
+ */
+function isQuizMasked(frame, heroSeat) {
+  return replayQuizMode && !replayQuizRevealed &&
+         frame.isDecision && frame.actingSeat === heroSeat;
+}
+
+/**
+ * Build a pre-action view of a hero decision frame.
+ * Shows the state before the hero acted: use the previous frame's player
+ * state (stacks/invested/folded) with a "Your action?" prompt.
+ * Board and pot are from the previous frame (identical for PLAYER_ACTION).
+ */
+function applyQuizMask(frame, heroSeat, allFrames) {
+  const prevIdx = frame.index > 0 ? frame.index - 1 : 0;
+  const prev = allFrames[prevIdx];
+
+  return {
+    ...frame,
+    players: clonePlayers(prev.players),
+    pot: prev.pot,
+    board: [...prev.board],
+    label: `${prev.players[String(heroSeat)]?.name || "Hero"}'s action?`,
+    actionLabel: "?",
+  };
+}
+
+/**
+ * Find the first hero decision frame index, or 0 if none.
+ */
+function firstHeroDecisionIndex(frames, heroSeat) {
+  if (heroSeat === null) return 0;
+  const decs = getDecisionIndices(frames).filter((i) => frames[i].actingSeat === heroSeat);
+  return decs.length > 0 ? decs[0] : 0;
+}
+
+/**
+ * Find the next unanswered hero decision frame index.
+ * Scans forward from startIdx+1, wraps to 0 if needed.
+ * Returns -1 if all hero decisions are answered.
+ */
+function nextUnansweredHeroIndex(frames, heroSeat, ledger, startIdx) {
+  if (heroSeat === null) return -1;
+  const heroDecs = getDecisionIndices(frames).filter((i) => frames[i].actingSeat === heroSeat);
+  if (heroDecs.length === 0) return -1;
+
+  // Forward from current position
+  for (const idx of heroDecs) {
+    if (idx > startIdx && !ledger[idx]) return idx;
+  }
+  // Wrap: check from start up to current position
+  for (const idx of heroDecs) {
+    if (idx <= startIdx && !ledger[idx]) return idx;
+  }
+  return -1; // all answered
+}
+
+function jumpNextUnanswered() {
+  const idx = nextUnansweredHeroIndex(replayFrames, replayHeroSeat, quizLedger, replayCursor);
+  if (idx >= 0) {
+    replayCursor = idx;
+    quizFrameTransition(replayCursor);
+    renderReplayFrame();
+  }
+}
+
+/**
+ * Find the index of the last frame before any settlement/outcome event.
+ * Returns the frame just before the first SHOWDOWN_REVEAL or POT_AWARD.
+ */
+function findPreOutcomeIndex(frames) {
+  const settlement = new Set(["SHOWDOWN_REVEAL", "POT_AWARD", "HAND_SUMMARY", "HAND_END"]);
+  for (let i = 0; i < frames.length; i++) {
+    if (settlement.has(frames[i].event)) return i > 0 ? i - 1 : 0;
+  }
+  return frames.length - 1;
+}
+
+// ── Replay Navigation ─────────────────────────────────────────────────────
+
+function replayFirst() {
+  replayCursor = 0;
+  if (replayDecisionOnly) {
+    const decs = getDecisionIndices(replayFrames);
+    replayCursor = decs.length > 0 ? decs[0] : 0;
+  }
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+function replayPrev() {
+  if (replayDecisionOnly) {
+    const decs = getDecisionIndices(replayFrames);
+    const prev = decs.filter((i) => i < replayCursor);
+    if (prev.length > 0) replayCursor = prev[prev.length - 1];
+  } else {
+    if (replayCursor > 0) replayCursor--;
+  }
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+function replayNext() {
+  if (replayDecisionOnly) {
+    const decs = getDecisionIndices(replayFrames);
+    const next = decs.filter((i) => i > replayCursor);
+    if (next.length > 0) replayCursor = next[0];
+  } else {
+    if (replayCursor < replayFrames.length - 1) replayCursor++;
+  }
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+function replayLast() {
+  if (replayDecisionOnly) {
+    const decs = getDecisionIndices(replayFrames);
+    replayCursor = decs.length > 0 ? decs[decs.length - 1] : replayFrames.length - 1;
+  } else {
+    replayCursor = replayFrames.length - 1;
+  }
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+function replayJumpStreet(street) {
+  const idx = getStreetStartIndex(replayFrames, street);
+  if (idx >= 0) replayCursor = idx;
+  quizFrameTransition(replayCursor);
+  renderReplayFrame();
+}
+
+function replayToggleDecisionOnly() {
+  replayDecisionOnly = !replayDecisionOnly;
+  renderReplayFrame();
+}
+
+// ── Replay Rendering ──────────────────────────────────────────────────────
+
+function renderReplayFrame() {
+  const el = document.getElementById("study-hands");
+  if (!replayFrames || replayFrames.length === 0) return;
+
+  const rawFrame = replayFrames[Math.min(replayCursor, replayFrames.length - 1)];
+  const showdownIdx = getShowdownRevealIndex(replayFrames);
+  let f = replayStudyMode && replayHeroSeat !== null
+    ? applyStudyVisibility(rawFrame, replayHeroSeat, showdownIdx)
+    : rawFrame;
+
+  // Quiz masking: show pre-action state for hero decisions
+  const quizMasked = replayHeroSeat !== null && isQuizMasked(rawFrame, replayHeroSeat);
+  if (quizMasked) {
+    f = applyQuizMask(f, replayHeroSeat, replayFrames);
+    // Also apply study visibility to the masked frame
+    if (replayStudyMode) f = applyStudyVisibility(f, replayHeroSeat, showdownIdx);
+  }
+
+  // Blind review: mask outcome frame labels
+  const blindHidden = isBlindHidden(replaySessionId, replayHandId);
+  const outcomeEvents = new Set(["POT_AWARD", "HAND_SUMMARY", "HAND_END"]);
+  let displayLabel = f.label;
+  if (blindHidden && outcomeEvents.has(rawFrame.event)) {
+    displayLabel = "[outcome hidden]";
+  }
+  // Also mask SHOWDOWN_REVEAL label (reveals winning hand info)
+  if (blindHidden && rawFrame.event === "SHOWDOWN_REVEAL") {
+    displayLabel = "SHOWDOWN: [cards revealed — outcome hidden]";
+  }
+
+  const total = replayFrames.length;
+  const decCount = getDecisionIndices(replayFrames).length;
+
+  // Available streets for jump buttons
+  const streets = [];
+  const seen = new Set();
+  for (const fr of replayFrames) {
+    if (!seen.has(fr.street) && ["PREFLOP", "FLOP", "TURN", "RIVER", "SHOWDOWN"].includes(fr.street)) {
+      streets.push(fr.street);
+      seen.add(fr.street);
+    }
+  }
+
+  // Player state table — freeze to pre-outcome state when blind-hidden on settlement frames
+  const settlementEvents = new Set(["POT_AWARD", "HAND_SUMMARY", "HAND_END", "SHOWDOWN_REVEAL"]);
+  let tablePlayers = f.players;
+  if (blindHidden && settlementEvents.has(rawFrame.event)) {
+    // Find last pre-settlement frame's player state
+    const preOutcomeIdx = findPreOutcomeIndex(replayFrames);
+    if (preOutcomeIdx >= 0) {
+      const preFrame = replayStudyMode && replayHeroSeat !== null
+        ? applyStudyVisibility(replayFrames[preOutcomeIdx], replayHeroSeat, showdownIdx)
+        : replayFrames[preOutcomeIdx];
+      tablePlayers = preFrame.players;
+    }
+  }
+
+  let playerRows = "";
+  for (const [s, p] of Object.entries(tablePlayers)) {
+    const active = parseInt(s) === f.actingSeat ? ' style="color:#4ecca3;font-weight:bold"' : "";
+    const cards = p.cards ? p.cards.join(" ") : "??";
+    const status = p.folded ? " [FOLD]" : (p.allIn ? " [ALL-IN]" : "");
+    playerRows += `<tr${active}><td>${p.name}</td><td>${c$(p.stack)}</td><td>${cards}</td><td>${c$(p.invested)}${status}</td></tr>`;
+  }
+
+  // Board display
+  const boardStr = f.board.length > 0 ? f.board.join(" ") : "—";
+
+  const decOnLabel = replayDecisionOnly ? "All" : "Decisions";
+  const decOnTitle = replayDecisionOnly ? "Show all frames" : "Show decision points only";
+
+  // Queue navigation
+  const qTotal = studyHandCache.length;
+  const qPos = studyQueueIndex + 1;
+  const qPrevDis = studyQueueIndex <= 0 ? " disabled" : "";
+  const qNextDis = studyQueueIndex >= qTotal - 1 ? " disabled" : "";
+
+  el.innerHTML =
+    `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;border-bottom:1px solid #222">` +
+    `<span class="study-back" onclick="loadStudyHands(); resetReplayState();" style="margin:0">Back</span>` +
+    `<span style="flex:1"></span>` +
+    `<button class="rp-btn" onclick="queuePrev()" title="Previous hand [Shift+←]"${qPrevDis}>&laquo;</button>` +
+    `<span style="color:#888;font-size:9px">${qPos} / ${qTotal}</span>` +
+    `<button class="rp-btn" onclick="queueNext()" title="Next hand [Shift+→]"${qNextDis}>&raquo;</button>` +
+    (replayQuizMode ? `<button class="rp-btn" onclick="queueNextIncomplete()" title="Skip to next incomplete hand" style="font-size:8px">Next &#9744;</button>` : "") +
+    `</div>` +
+    // Frame navigation
+    `<div style="display:flex;gap:3px;padding:4px 0;flex-wrap:wrap;align-items:center">` +
+    `<button class="rp-btn" onclick="replayFirst()" title="First frame">|&lt;</button>` +
+    `<button class="rp-btn" onclick="replayPrev()" title="Previous frame">&lt;</button>` +
+    `<button class="rp-btn" onclick="replayNext()" title="Next frame">&gt;</button>` +
+    `<button class="rp-btn" onclick="replayLast()" title="Last frame">&gt;|</button>` +
+    `<span style="color:#888;font-size:9px;margin:0 4px">${f.index + 1}/${total}</span>` +
+    `<button class="rp-btn" onclick="replayToggleDecisionOnly()" title="${decOnTitle}">${decOnLabel}</button>` +
+    (replayQuizMode ? (() => {
+      const nxt = nextUnansweredHeroIndex(replayFrames, replayHeroSeat, quizLedger, replayCursor);
+      return nxt >= 0
+        ? `<button class="rp-btn" onclick="jumpNextUnanswered()" title="Jump to next unanswered hero decision [N]" style="font-size:8px;color:#ffd700">Next &#9671;</button>`
+        : "";
+    })() : "") +
+    `<span style="border-left:1px solid #333;height:14px;margin:0 2px"></span>` +
+    streets.map((s) => `<button class="rp-btn${f.street === s ? " rp-active" : ""}" onclick="replayJumpStreet('${s}')">${s.slice(0, 3)}</button>`).join("") +
+    `<span style="border-left:1px solid #333;height:14px;margin:0 2px"></span>` +
+    `<button class="rp-btn${replayStudyMode ? " rp-active" : ""}" onclick="replayToggleStudyMode()" title="${replayStudyMode ? "Show all info" : "Hide unknown cards"}">${replayStudyMode ? "Full" : "Study"}</button>` +
+    (replayStudyMode ? Object.entries(rawFrame.players).map(([s, p]) =>
+      `<button class="rp-btn${parseInt(s) === replayHeroSeat ? " rp-active" : ""}" onclick="replaySetHero(${s})" title="Study as ${p.name}" style="font-size:8px">${p.name.slice(0, 5)}</button>`
+    ).join("") : "") +
+    `<button class="rp-btn${replayQuizMode ? " rp-active" : ""}" onclick="replayToggleQuizMode()" title="${replayQuizMode ? "Disable quiz" : "Quiz: hide hero actions"}">Quiz</button>` +
+    `</div>` +
+    // Frame summary
+    `<div style="background:${quizMasked ? "#1a1a0d" : "#111"};border:1px solid ${quizMasked ? "#554400" : "#333"};border-radius:4px;padding:6px;margin:4px 0;font-size:10px">` +
+    `<div style="color:#888;margin-bottom:2px">${f.street} | Board: ${boardStr} | Pot: ${c$(f.pot)}</div>` +
+    (quizMasked
+      ? `<div style="color:#ffd700;font-size:12px;font-weight:bold;margin:3px 0">${displayLabel}</div>` +
+        `<div style="display:flex;gap:4px;margin:4px 0;align-items:center">` +
+        `<span style="color:#888;font-size:9px">Your play:</span>` +
+        `<button class="rp-btn${quizAnswer === "fold" ? " rp-active" : ""}" onclick="quizSelectAnswer('fold')" style="font-size:9px">Fold</button>` +
+        `<button class="rp-btn${quizAnswer === "passive" ? " rp-active" : ""}" onclick="quizSelectAnswer('passive')" style="font-size:9px">Check/Call</button>` +
+        `<button class="rp-btn${quizAnswer === "aggressive" ? " rp-active" : ""}" onclick="quizSelectAnswer('aggressive')" style="font-size:9px">Bet/Raise</button>` +
+        `<button class="rp-btn" onclick="quizReveal()" style="color:#ffd700;border-color:#ffd700;margin-left:4px;font-size:9px">Reveal</button>` +
+        `</div>`
+      : (quizResult
+        ? `<div style="color:#e0e0e0;font-size:11px;font-weight:bold;margin:3px 0">${displayLabel} ` +
+          `<span style="color:${quizResult === "match" ? "#4ecca3" : "#e88"};font-size:10px;margin-left:6px">${quizResult === "match" ? "Match" : "Different"}</span>` +
+          (quizAnswer ? ` <span style="color:#888;font-size:9px">(you: ${quizAnswer})</span>` : "") +
+          (replayQuizMode && rawFrame.isDecision && rawFrame.actingSeat === replayHeroSeat
+            ? ` <button class="rp-btn" onclick="clearSpotQuiz()" style="font-size:8px;margin-left:4px" title="Clear and re-answer this spot">Redo</button>`
+            : "") +
+          `</div>`
+        : `<div style="color:#e0e0e0;font-size:11px;font-weight:bold;margin:3px 0">${displayLabel}</div>`)) +
+    (blindHidden && outcomeEvents.has(rawFrame.event)
+      ? `<div><button class="rp-btn" onclick="blindRevealHand()" style="font-size:9px;color:#ffd700;border-color:#ffd700;margin:2px 0">Reveal outcome</button></div>`
+      : "") +
+    `<table class="stat-table" style="margin-top:4px"><tr style="color:#666"><td>Player</td><td>Stack</td><td>Cards</td><td>Invested</td></tr>` +
+    playerRows +
+    `</table></div>` +
+    // Quiz summary (if quiz mode active)
+    (replayQuizMode ? renderQuizSummary() : "") +
+    // Annotation panel
+    renderAnnotationPanel(f) +
+    // Full timeline (collapsed reference) — hidden in blind mode until revealed
+    (blindHidden
+      ? `<div style="color:#555;font-size:9px;margin-top:4px">[timeline hidden — blind review]</div>`
+      : `<details style="margin-top:4px"><summary style="color:#555;font-size:9px;cursor:pointer">Full timeline</summary>` +
+        `<pre style="padding:4px 0; font-size:9px; line-height:1.4; white-space:pre-wrap; color:#888">${formatTimeline(replayHandEvents).join("\n")}</pre>` +
+        `</details>`);
+}
+
+function renderQuizSummary() {
+  if (!replayFrames || replayFrames.length === 0 || replayHeroSeat === null) return "";
+
+  const heroDecisions = getDecisionIndices(replayFrames).filter((i) => replayFrames[i].actingSeat === replayHeroSeat);
+  const totalHero = heroDecisions.length;
+  const answered = Object.keys(quizLedger).length;
+  const matches = Object.values(quizLedger).filter((e) => e.result === "match").length;
+  const diffs = Object.values(quizLedger).filter((e) => e.result === "different").length;
+
+  if (totalHero === 0) return "";
+
+  const matchColor = matches > 0 ? "#4ecca3" : "#888";
+  const diffColor = diffs > 0 ? "#e88" : "#888";
+
+  // Per-hand summary
+  let html = `<div style="display:flex;gap:8px;padding:3px 6px;font-size:9px;color:#888;border:1px solid #222;border-radius:3px;margin:2px 0;align-items:center">` +
+    `<span>Hand: ${answered}/${totalHero}</span>` +
+    `<span style="color:${matchColor}">${matches} match</span>` +
+    `<span style="color:${diffColor}">${diffs} diff</span>` +
+    (answered === totalHero && totalHero > 0
+      ? `<span style="color:#ffd700">${matches}/${totalHero} = ${Math.round(100 * matches / totalHero)}%</span>`
+      : "") +
+    (answered > 0 ? `<button class="rp-btn" onclick="resetHandQuiz()" style="font-size:8px;margin-left:auto" title="Clear answers and retry this hand">Retry</button>` : "") +
+    `</div>`;
+
+  // Queue-level summary (aggregate across all hands in current queue)
+  const qVals = Object.values(queueQuizAccum);
+  if (qVals.length > 0) {
+    const qHands = qVals.length;
+    const qAnswered = qVals.reduce((s, v) => s + v.answered, 0);
+    const qMatches = qVals.reduce((s, v) => s + v.matches, 0);
+    const qDiffs = qVals.reduce((s, v) => s + v.diffs, 0);
+    const qTotal = studyHandCache.length;
+    const qPct = qAnswered > 0 ? Math.round(100 * qMatches / qAnswered) : 0;
+
+    const qCompleted = qVals.filter((v) => v.totalHero > 0 && v.answered >= v.totalHero).length;
+    html += `<div style="display:flex;gap:8px;padding:3px 6px;font-size:9px;color:#666;border:1px solid #1a1a1a;border-radius:3px;margin:1px 0;align-items:center">` +
+      `<span>Queue: ${qHands}/${qTotal} hands (${qCompleted} done)</span>` +
+      `<span>${qAnswered} ans</span>` +
+      `<span style="color:${qMatches > 0 ? "#4ecca3" : "#666"}">${qMatches} match</span>` +
+      `<span style="color:${qDiffs > 0 ? "#e88" : "#666"}">${qDiffs} diff</span>` +
+      (qAnswered > 0 ? `<span style="color:#aaa;margin-left:auto">${qPct}%</span>` : "") +
+      `</div>`;
+  }
+
+  return html;
+}
+
+function renderAnnotationPanel(currentFrame) {
+  // Existing notes for this hand
+  let notesHtml = "";
+  if (replayAnnotations.length > 0) {
+    notesHtml = replayAnnotations.map((a) => {
+      const frameBadge = a.frameIndex != null
+        ? `<span style="color:#4ecca3;cursor:pointer" onclick="replayCursor=${a.frameIndex};renderReplayFrame()" title="Jump to frame">#${a.frameIndex} ${a.street || ""}</span> `
+        : '<span style="color:#555">hand</span> ';
+      const tagBadge = a.tag ? `<span class="ann-tag">${a.tag}</span> ` : "";
+      return `<div class="ann-entry">` +
+        `${frameBadge}${tagBadge}` +
+        `<span class="ann-text">${a.text}</span>` +
+        `<span class="ann-del" onclick="deleteAnnotation('${a.id}')" title="Delete">x</span>` +
+        `</div>`;
+    }).join("");
+  } else {
+    notesHtml = '<div style="color:#555;font-size:9px;padding:2px 0">No notes yet</div>';
+  }
+
+  // Count notes on current frame
+  const frameNotes = replayAnnotations.filter((a) => a.frameIndex === currentFrame.index);
+  const frameNoteBadge = frameNotes.length > 0 ? ` <span style="color:#ffd700;font-size:9px">(${frameNotes.length} note${frameNotes.length > 1 ? "s" : ""} on this frame)</span>` : "";
+
+  return `<div style="border:1px solid #333;border-radius:4px;padding:4px 6px;margin:4px 0;font-size:10px;background:#0d0d1a">` +
+    `<div style="color:#888;margin-bottom:3px">Notes${frameNoteBadge}</div>` +
+    notesHtml +
+    `<div style="display:flex;gap:3px;margin-top:4px;align-items:center">` +
+    `<select id="ann-tag" style="font-size:9px;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:2px;padding:1px 2px">` +
+    `<option value="">—</option><option value="mistake">mistake</option><option value="interesting">interesting</option><option value="question">question</option><option value="good">good</option><option value="review">review</option></select>` +
+    `<input id="ann-text" type="text" placeholder="Add note..." style="flex:1;font-size:9px;background:#1a1a2e;color:#ccc;border:1px solid #444;border-radius:2px;padding:2px 4px;font-family:inherit">` +
+    `<label style="font-size:9px;color:#888;white-space:nowrap"><input type="checkbox" id="ann-frame-link" checked> frame</label>` +
+    `<button class="rp-btn" onclick="addAnnotation()" style="font-size:9px">+</button>` +
+    `</div></div>`;
+}
+
+// ── viewStudyHand with replay ─────────────────────────────────────────────
+
+function snapshotQuizToQueue() {
+  if (replaySessionId && replayHandId) {
+    const key = replaySessionId + "/" + replayHandId;
+    const vals = Object.values(quizLedger);
+    const totalHero = replayHeroSeat !== null
+      ? getDecisionIndices(replayFrames).filter((i) => replayFrames[i].actingSeat === replayHeroSeat).length
+      : 0;
+    // Always write: even 0 answered means "visited"
+    queueQuizAccum[key] = {
+      answered: vals.length,
+      matches: vals.filter((e) => e.result === "match").length,
+      diffs: vals.filter((e) => e.result === "different").length,
+      totalHero,
+    };
+  }
+}
+
+function viewStudyHand(index) {
+  const h = studyHandCache[index];
+  if (!h) return;
+
+  // Snapshot outgoing hand's quiz results before resetting
+  snapshotQuizToQueue();
+
+  studyQueueIndex = index;
+
+  send("GET_HAND_EVENTS", { sessionId: h.sessionId, handId: h.handId }, (resp) => {
+    if (!resp.ok || !resp.events || resp.events.length === 0) return;
+
+    resetReplayState();
+    replaySessionId = h.sessionId;
+    replayHandId = h.handId;
+    replayHandEvents = resp.events;
+    replayFrames = compileFrames(resp.events);
+    replayHeroSeat = inferHeroSeat(replayFrames);
+    replayCursor = replayQuizMode ? firstHeroDecisionIndex(replayFrames, replayHeroSeat) : 0;
+
+    // Register this hand in the queue accumulator (marks as visited)
+    snapshotQuizToQueue();
+
+    // Load annotations then render
+    loadReplayAnnotations(() => renderReplayFrame());
+  });
+}
+
+function queuePrev() {
+  if (studyQueueIndex > 0) viewStudyHand(studyQueueIndex - 1);
+}
+
+function queueNext() {
+  if (studyQueueIndex < studyHandCache.length - 1) viewStudyHand(studyQueueIndex + 1);
+}
+
+function queueNextIncomplete() {
+  for (let i = studyQueueIndex + 1; i < studyHandCache.length; i++) {
+    const h = studyHandCache[i];
+    if (handReviewState(h.sessionId, h.handId) !== "completed") {
+      viewStudyHand(i);
+      return;
+    }
+  }
+  // Wrap around from start
+  for (let i = 0; i < studyQueueIndex; i++) {
+    const h = studyHandCache[i];
+    if (handReviewState(h.sessionId, h.handId) !== "completed") {
+      viewStudyHand(i);
+      return;
+    }
+  }
+}
+
+function loadReplayAnnotations(callback) {
+  if (!replaySessionId || !replayHandId) { replayAnnotations = []; if (callback) callback(); return; }
+  send("GET_ANNOTATIONS", { sessionId: replaySessionId, handId: replayHandId }, (resp) => {
+    replayAnnotations = (resp.ok && resp.state && resp.state.annotations) ? resp.state.annotations : [];
+    if (callback) callback();
+  });
+}
+
+function addAnnotation() {
+  if (!replaySessionId || !replayHandId) return;
+  const textEl = document.getElementById("ann-text");
+  const tagEl = document.getElementById("ann-tag");
+  const frameEl = document.getElementById("ann-frame-link");
+  if (!textEl || !textEl.value.trim()) return;
+
+  const f = replayFrames[replayCursor];
+  const useFrame = frameEl && frameEl.checked;
+  const payload = {
+    sessionId: replaySessionId,
+    handId: replayHandId,
+    text: textEl.value.trim(),
+    tag: tagEl ? tagEl.value : "",
+    frameIndex: useFrame ? replayCursor : null,
+    street: useFrame && f ? f.street : null,
+  };
+
+  send("ADD_ANNOTATION", payload, (resp) => {
+    if (!resp.ok) return;
+    textEl.value = "";
+    loadReplayAnnotations(() => renderReplayFrame());
+  });
+}
+
+function deleteAnnotation(annotationId) {
+  if (!replaySessionId) return;
+  send("DELETE_ANNOTATION", { sessionId: replaySessionId, annotationId }, (resp) => {
+    if (!resp.ok) return;
+    loadReplayAnnotations(() => renderReplayFrame());
+  });
 }
 
 // ── Status ─────────────────────────────────────────────────────────────────
