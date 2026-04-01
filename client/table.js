@@ -333,6 +333,7 @@ function render() {
       div.onclick = () => seatClick(i);
     } else {
       if (s.folded) div.classList.add("folded");
+      if (s.stack === 0 && !s.allIn) div.classList.add("zero-stack");
       if (handActive && hand.actionSeat === i) div.classList.add("active");
       // Status handled inline now (dealer button, ALL IN, FOLD)
 
@@ -406,7 +407,9 @@ function render() {
   // Board — show during active hand, or hold showdown board after completion
   const board = (handActive && hand) ? hand.board : (showdownBoard || []);
   let boardHtml = "";
-  for (let i = 0; i < 5; i++) boardHtml += board[i] ? cardHtml(board[i]) : '<span class="card empty-slot"></span>';
+  for (let i = 0; i < 5; i++) {
+    if (board[i]) boardHtml += cardHtml(board[i]);
+  }
   document.getElementById("board").innerHTML = boardHtml;
   document.getElementById("pot").textContent = handActive && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
   document.getElementById("phase").textContent = handActive ? hand.phase : (showdownReveals ? "SHOWDOWN" : "");
