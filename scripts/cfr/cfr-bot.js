@@ -69,11 +69,17 @@ function createCFRStrategy(strategyPath) {
       return fallbackStrategy(actions, strength, callAmount, minBet, minRaise, maxRaise, rand);
     }
 
-    // Map CFR action names to engine action names and sample
+    // Map CFR action names to engine action names
+    // CFR uses: FOLD, CHECK, CALL, BET_HALF, BET_POT, BET_ALLIN, RAISE_HALF, RAISE_POT, RAISE_ALLIN
+    // Engine uses: FOLD, CHECK, CALL, BET, RAISE
     const actionProbs = [];
     for (const engineAction of actions) {
-      const cfrAction = engineAction; // same naming: FOLD, CHECK, CALL, BET, RAISE
-      const prob = strategy[cfrAction] || 0;
+      let prob = 0;
+      if (engineAction === "FOLD") prob = strategy["FOLD"] || 0;
+      else if (engineAction === "CHECK") prob = strategy["CHECK"] || 0;
+      else if (engineAction === "CALL") prob = strategy["CALL"] || 0;
+      else if (engineAction === "BET") prob = (strategy["BET_HALF"] || 0) + (strategy["BET_POT"] || 0) + (strategy["BET_ALLIN"] || 0);
+      else if (engineAction === "RAISE") prob = (strategy["RAISE_HALF"] || 0) + (strategy["RAISE_POT"] || 0) + (strategy["RAISE_ALLIN"] || 0);
       actionProbs.push({ action: engineAction, prob });
     }
 
@@ -95,18 +101,32 @@ function createCFRStrategy(strategyPath) {
       }
     }
 
-    // Add amount for bet/raise
+    // Add amount for bet/raise — pick sizing from CFR sub-actions
     if (chosen === "BET") {
-      // Use pot-sized bet as default
-      const potSize = hand.pot || 0;
-      const betAmount = Math.max(minBet, Math.min(Math.round(potSize * 0.66), seatState.stack));
-      return { action: chosen, amount: Math.max(minBet, betAmount) };
+      const potSize = hand.pot || 1;
+      const halfProb = strategy["BET_HALF"] || 0;
+      const potProb = strategy["BET_POT"] || 0;
+      const allProb = strategy["BET_ALLIN"] || 0;
+      const total = halfProb + potProb + allProb;
+      const r2 = rand() * total;
+      let betAmount;
+      if (r2 < halfProb) betAmount = Math.round(potSize * 0.5);
+      else if (r2 < halfProb + potProb) betAmount = Math.round(potSize);
+      else betAmount = seatState.stack; // all-in
+      return { action: chosen, amount: Math.max(minBet, Math.min(betAmount, seatState.stack)) };
     }
     if (chosen === "RAISE") {
-      // Use min-raise for limit-style play, pot-raise for NL
-      const potSize = hand.pot || 0;
-      const raiseAmount = Math.max(minRaise, Math.min(Math.round(potSize * 0.75) + callAmount, maxRaise));
-      return { action: chosen, amount: Math.max(minRaise, raiseAmount) };
+      const potSize = hand.pot || 1;
+      const halfProb = strategy["RAISE_HALF"] || 0;
+      const potProb = strategy["RAISE_POT"] || 0;
+      const allProb = strategy["RAISE_ALLIN"] || 0;
+      const total = halfProb + potProb + allProb;
+      const r2 = rand() * total;
+      let raiseAmount;
+      if (r2 < halfProb) raiseAmount = callAmount + Math.round(potSize * 0.5);
+      else if (r2 < halfProb + potProb) raiseAmount = callAmount + Math.round(potSize);
+      else raiseAmount = seatState.stack; // all-in
+      return { action: chosen, amount: Math.max(minRaise, Math.min(raiseAmount, maxRaise)) };
     }
 
     return { action: chosen };

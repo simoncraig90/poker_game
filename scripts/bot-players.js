@@ -266,12 +266,41 @@ function handleState(newState) {
     }, delay);
   }
 
-  // Simple realistic micro-stakes strategy
-  // These players call a lot, raise sometimes, fold rarely — like real $0.05/$0.10 players
   const hand = state.hand;
   const s = state.seats[actionSeat];
   const legal = hand.legalActions;
   const actions = legal.actions;
+
+  // Use CFR strategy if available
+  if (USE_CFR && cfrStrategy) {
+    try {
+      // Convert string cards ("Ah") to objects ({rank:14, suit:1}) for CFR
+      const RANK_MAP = {'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'T':10,'J':11,'Q':12,'K':13,'A':14};
+      const SUIT_MAP = {'c':1,'d':2,'h':3,'s':4};
+      function convertCard(c) {
+        if (!c || typeof c !== 'string') return c;
+        return { rank: RANK_MAP[c[0]] || 0, suit: SUIT_MAP[c[1]] || 0 };
+      }
+      // Deep copy seats with converted cards
+      const cfrSeats = {};
+      for (const [k, seat] of Object.entries(state.seats)) {
+        cfrSeats[k] = { ...seat };
+        if (seat.holeCards) cfrSeats[k].holeCards = seat.holeCards.map(convertCard);
+      }
+      const cfrHand = { ...hand };
+      if (cfrHand.board) cfrHand.board = cfrHand.board.map(convertCard);
+
+      const cfrDecision = cfrStrategy(actionSeat, legal, { hand: cfrHand, table: { seats: cfrSeats, maxSeats: state.maxSeats || 6, bb: state.bb || 10 } }, Math.random);
+      if (cfrDecision) {
+        executeAction(cfrDecision);
+        return;
+      }
+    } catch (e) {
+      // Fall through to hardcoded
+    }
+  }
+
+  // Fallback: micro-stakes strategy
   const cards = s.holeCards || [];
   const board = hand.board || [];
   const strength = evaluateHandStrength(cards, board, hand.phase);

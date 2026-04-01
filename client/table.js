@@ -245,7 +245,7 @@ const SUIT_SYMBOLS = { s: "\u2660", h: "\u2665", d: "\u2666", c: "\u2663" };
 // Row 1: 2s,2d,3s,3d,4s,4d,5s,5d,6s,6d,7s,7d,8s,8d,9s,9d,As,Ad,Js,Jd,Ks,Kd,Qs,Qd,10s,10d
 const CARD_W = 73, CARD_H = 102, SPRITE_COLS = 26;
 const ROW0_SUITS = ['c','h'], ROW1_SUITS = ['s','d'];
-const RANK_ORDER = ['2','3','4','5','6','7','8','9','A','J','K','Q','10'];
+const RANK_ORDER = ['2','3','4','5','6','7','8','9','A','J','K','Q','T'];
 
 function cardSpritePos(card) {
   const rank = card.slice(0, -1);
@@ -267,12 +267,15 @@ function cardSpritePos(card) {
 function cardHtml(card) {
   if (!card) return '<span class="card empty-slot"></span>';
   const pos = cardSpritePos(card);
-  // Board card size: 42x59 CSS px, sprite native 73x102
-  const scaleX = 42 / CARD_W;
-  const scaleY = 59 / CARD_H;
+  // Board card display: 50x70 CSS px, sprite native 73x102 per card
+  const displayW = 50, displayH = 70;
+  const scaleX = displayW / CARD_W;
+  const scaleY = displayH / CARD_H;
+  const bgW = SPRITE_COLS * CARD_W * scaleX;
+  const bgH = 2 * CARD_H * scaleY;
   const bgX = -(pos.x * scaleX);
   const bgY = -(pos.y * scaleY);
-  return `<span class="card" style="background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
 }
 
 function facedownCardHtml() {
@@ -282,23 +285,27 @@ function facedownCardHtml() {
 function seatCardHtml(card) {
   if (!card) return '';
   const pos = cardSpritePos(card);
-  // Sm card size: 28x39 CSS px
-  const scaleX = 28 / CARD_W;
-  const scaleY = 39 / CARD_H;
+  const displayW = 28, displayH = 39;
+  const scaleX = displayW / CARD_W;
+  const scaleY = displayH / CARD_H;
+  const bgW = SPRITE_COLS * CARD_W * scaleX;
+  const bgH = 2 * CARD_H * scaleY;
   const bgX = -(pos.x * scaleX);
   const bgY = -(pos.y * scaleY);
-  return `<span class="card sm" style="background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card sm" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
 }
 
 function heroCardHtml(card) {
   if (!card) return '';
   const pos = cardSpritePos(card);
-  // Hero card size: 52x73 CSS px
-  const scaleX = 52 / CARD_W;
-  const scaleY = 73 / CARD_H;
+  const displayW = 52, displayH = 73;
+  const scaleX = displayW / CARD_W;
+  const scaleY = displayH / CARD_H;
+  const bgW = SPRITE_COLS * CARD_W * scaleX;
+  const bgH = 2 * CARD_H * scaleY;
   const bgX = -(pos.x * scaleX);
   const bgY = -(pos.y * scaleY);
-  return `<span class="card hero-card" style="background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card hero-card" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
 }
 
 function render() {

@@ -378,6 +378,66 @@ class CFRTrainer {
     this.strategySum = new Map(Object.entries(data.strategySum || {}));
   }
 
+  // ── Parallel Training Support ─────────────────────────────────────────
+
+  /**
+   * Export regret and strategy tables as plain objects (for sending to workers).
+   */
+  exportTables() {
+    const regretSum = {};
+    for (const [key, val] of this.regretSum) {
+      regretSum[key] = { ...val };
+    }
+    const strategySum = {};
+    for (const [key, val] of this.strategySum) {
+      strategySum[key] = { ...val };
+    }
+    return { regretSum, strategySum, iterations: this.iterations };
+  }
+
+  /**
+   * Import regret and strategy tables from plain objects (from a snapshot).
+   */
+  importTables(tables) {
+    this.regretSum = new Map();
+    for (const key of Object.keys(tables.regretSum)) {
+      this.regretSum.set(key, { ...tables.regretSum[key] });
+    }
+    this.strategySum = new Map();
+    for (const key of Object.keys(tables.strategySum)) {
+      this.strategySum.set(key, { ...tables.strategySum[key] });
+    }
+    this.iterations = tables.iterations || 0;
+  }
+
+  /**
+   * Merge regret/strategy deltas from a worker into the main tables.
+   * Deltas are plain objects: { infoSetKey: { action: deltaValue, ... }, ... }
+   */
+  mergeDeltas(regretDelta, strategyDelta) {
+    for (const key of Object.keys(regretDelta)) {
+      if (!this.regretSum.has(key)) {
+        this.regretSum.set(key, {});
+      }
+      const existing = this.regretSum.get(key);
+      const delta = regretDelta[key];
+      for (const action of Object.keys(delta)) {
+        existing[action] = (existing[action] || 0) + delta[action];
+      }
+    }
+
+    for (const key of Object.keys(strategyDelta)) {
+      if (!this.strategySum.has(key)) {
+        this.strategySum.set(key, {});
+      }
+      const existing = this.strategySum.get(key);
+      const delta = strategyDelta[key];
+      for (const action of Object.keys(delta)) {
+        existing[action] = (existing[action] || 0) + delta[action];
+      }
+    }
+  }
+
   /**
    * Export the average strategy as a compact lookup table.
    * This is what a bot loads for actual play.
