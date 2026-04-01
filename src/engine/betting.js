@@ -6,29 +6,37 @@ const { ACTION } = require("./types");
  * Get legal actions for a seat given current state.
  * Returns { actions[], callAmount, minBet, minRaise, maxRaise }
  */
+const MAX_RAISES_PER_STREET = 4; // bet + 3 raises (PokerStars rule)
+
 function getLegalActions(seat, handState, tableBB) {
   const s = seat;
   if (!s.inHand || s.folded || s.allIn) {
     return { actions: [], callAmount: 0, minBet: 0, minRaise: 0, maxRaise: 0 };
   }
 
-  const currentBet = handState.currentBet || 0; // highest bet this street
+  const currentBet = handState.currentBet || 0;
   const myBet = s.bet;
   const toCall = currentBet - myBet;
   const stack = s.stack;
 
-  const actions = [ACTION.FOLD]; // can always fold
+  // Count players still in hand (not folded, not all-in)
+  const activePlayers = handState.activePlayers || 2;
+  // Count raises this street
+  const raiseCount = handState.raiseCount || 0;
+  // Unlimited raises heads-up, capped at MAX_RAISES otherwise
+  const raisesCapped = activePlayers > 2 && raiseCount >= MAX_RAISES_PER_STREET;
+
+  const actions = [ACTION.FOLD];
 
   if (toCall === 0) {
-    // No bet facing: can check or bet
     actions.push(ACTION.CHECK);
-    if (stack > 0) {
+    if (stack > 0 && !raisesCapped) {
       actions.push(ACTION.BET);
     }
     return {
       actions,
       callAmount: 0,
-      minBet: Math.min(tableBB, stack), // min bet is BB (or all-in if less)
+      minBet: Math.min(tableBB, stack),
       minRaise: 0,
       maxRaise: 0,
     };
@@ -41,10 +49,9 @@ function getLegalActions(seat, handState, tableBB) {
 
   const minRaiseIncrement = handState.lastRaiseSize || tableBB;
   const minRaiseTotal = currentBet + minRaiseIncrement;
-  const raiseMax = myBet + stack; // all-in
+  const raiseMax = myBet + stack;
 
-  if (raiseMax > currentBet && stack > toCall) {
-    // Can raise (have more than enough to call)
+  if (raiseMax > currentBet && stack > toCall && !raisesCapped) {
     actions.push(ACTION.RAISE);
   }
 

@@ -17,7 +17,7 @@ const fs = require("fs");
 const path = require("path");
 const { evaluateHandStrength, strengthToBucket, makeInfoSetKey, encodeAction } = require("./abstraction");
 
-const NUM_BUCKETS = 10;
+const NUM_BUCKETS = 20;
 
 /**
  * Create a CFR strategy function that can be used as a bot strategy.
@@ -52,6 +52,12 @@ function createCFRStrategy(strategyPath) {
     const strength = evaluateHandStrength(cards, board, phase);
     const bucket = strengthToBucket(strength, NUM_BUCKETS);
 
+    // Stack bucket
+    const stack = seatState.stack || 0;
+    const bb = state.table.bb || 10;
+    const bbs = stack / bb;
+    const stackBucket = bbs < 30 ? 0 : bbs < 80 ? 1 : 2;
+
     // Action history: encode the hand's action sequence
     // Filter to only player actions (not blinds)
     const actionHistory = (hand.actions || [])
@@ -59,7 +65,10 @@ function createCFRStrategy(strategyPath) {
       .map(a => encodeAction(a.type))
       .join("");
 
-    const infoSetKey = makeInfoSetKey(bucket, actionHistory);
+    // Try with stack bucket first, fall back to without
+    const infoSetKeyStack = `${phase}:${bucket}:s${stackBucket}:${actionHistory}`;
+    const infoSetKeyNoStack = makeInfoSetKey(bucket, actionHistory);
+    const infoSetKey = strategyTable[infoSetKeyStack] ? infoSetKeyStack : infoSetKeyNoStack;
 
     // Look up strategy
     const strategy = strategyTable[infoSetKey];

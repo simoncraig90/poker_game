@@ -26,7 +26,7 @@
 
 const { evaluateHandStrength, strengthToBucket, makeInfoSetKey, encodeAction } = require("./abstraction");
 
-const NUM_BUCKETS = 10;
+const NUM_BUCKETS = 20;
 
 // ── Card utilities ───────────────────────────────────────────────────────
 

@@ -95,8 +95,33 @@ function refreshState() { send("GET_STATE"); }
 
 // ── Event Handling ─────────────────────────────────────────────────────────
 
+function showActionBubble(seat, action, amount) {
+  const seatEl = document.querySelector(`.seat[data-seat="${seat}"]`);
+  if (!seatEl) return;
+  // Remove any existing bubble on this seat
+  const old = seatEl.querySelector('.action-bubble');
+  if (old) old.remove();
+
+  let text = action;
+  if (action === "CALL" && amount) text = `Call $${(amount/100).toFixed(2)}`;
+  else if (action === "RAISE" && amount) text = `Raise $${(amount/100).toFixed(2)}`;
+  else if (action === "BET" && amount) text = `Bet $${(amount/100).toFixed(2)}`;
+  else if (action === "FOLD") text = "Fold";
+  else if (action === "CHECK") text = "Check";
+
+  const bubble = document.createElement('div');
+  bubble.className = `action-bubble ${action.toLowerCase()}`;
+  bubble.textContent = text;
+  seatEl.appendChild(bubble);
+  // Remove after animation
+  setTimeout(() => bubble.remove(), 2600);
+}
+
 function handleEvents(events) {
   for (const e of events) {
+    if (e.type === "PLAYER_ACTION") {
+      showActionBubble(e.seat, e.action, e.totalBet);
+    }
     if (e.type === "HAND_START") {
       clearResultBanner();
       showdownReveals = null;
@@ -115,6 +140,21 @@ function handleEvents(events) {
     }
     if (e.type === "HAND_END") {
       showResultBannerMulti(pendingResults, showdownReveals);
+      // Auto-rebuy if hero (seat 0) is short-stacked
+      setTimeout(() => {
+        if (state && state.seats[0] && state.seats[0].status === "OCCUPIED" && state.seats[0].stack < 20) {
+          // Leave and rejoin with full buy-in
+          send("LEAVE_TABLE", { seat: 0 }, () => {
+            send("SEAT_PLAYER", { seat: 0, name: "Skurj_poker", buyIn: 1000, country: "GB" });
+          });
+        }
+      }, 1000);
+      // Auto-deal next hand after 3 seconds (like PokerStars)
+      setTimeout(() => {
+        if (state && !state.hand || (state.hand && state.hand.phase === "COMPLETE")) {
+          send("START_HAND");
+        }
+      }, 3000);
     }
   }
 }
@@ -146,31 +186,17 @@ function seatClick(seatIndex) {
   if (!state) return;
   if (state.seats[seatIndex].status !== "EMPTY") return;
 
-  // Try to load actors for picker
-  send("LIST_ACTORS", {}, (resp) => {
-    const actors = (resp.ok && resp.state && resp.state.actors) ? resp.state.actors : [];
-    let choice;
-    if (actors.length > 0) {
-      const list = actors.map((a, i) => `${i + 1}. ${a.name}`).join("\n");
-      choice = prompt(`Select actor (number) or type new name:\n${list}\n\nEnter number or name:`);
-    } else {
-      choice = prompt("Player name:");
-    }
-    if (!choice) return;
-
-    let name, actorId;
-    const num = parseInt(choice);
-    if (!isNaN(num) && num >= 1 && num <= actors.length) {
-      const actor = actors[num - 1];
-      name = actor.name;
-      actorId = actor.actorId;
-    } else {
-      name = choice.trim();
-    }
-
-    const buyIn = parseInt(prompt("Buy-in (cents):", "1000"));
-    if (isNaN(buyIn)) return;
-    send("SEAT_PLAYER", { seat: seatIndex, name, buyIn, country: "XX", actorId });
+  // Auto-seat with default name and $10 buy-in (like PS)
+  send("SEAT_PLAYER", { seat: seatIndex, name: "Skurj_poker", buyIn: 1000, country: "GB" }, () => {
+    // Auto-deal after sitting down if enough players
+    setTimeout(() => {
+      send("GET_STATE", {}, () => {
+        const occupied = Object.values(state.seats).filter(s => s.status === "OCCUPIED").length;
+        if (occupied >= 2 && (!state.hand || state.hand.phase === "COMPLETE")) {
+          send("START_HAND");
+        }
+      });
+    }, 1000);
   });
 }
 

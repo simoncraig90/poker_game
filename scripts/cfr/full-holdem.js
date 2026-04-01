@@ -20,7 +20,7 @@ const {
   encodeAction,
 } = require("./abstraction");
 
-const NUM_BUCKETS = 10;
+const NUM_BUCKETS = 20;
 
 // Starting stack in BB. Effective stack for the game.
 const STARTING_STACK = 100;
@@ -484,11 +484,20 @@ function resolveShowdownHeuristic(state) {
  * Format: "STREET:bucket:full_action_history"
  * The full action history encodes all streets separated by dashes.
  */
+function getStackBucket(stack, bb) {
+  const bbs = stack / bb;
+  if (bbs < 30) return 0;  // short
+  if (bbs < 80) return 1;  // medium
+  return 2;                 // deep
+}
+
 function getInfoSetKey(state) {
   const player = state.activePlayer;
   const cards = player === 0 ? state.p0Cards : state.p1Cards;
+  const stack = player === 0 ? state.p0Stack : state.p1Stack;
   const strength = evaluateHandStrength(cards, state.board, state.street);
   const bucket = strengthToBucket(strength, NUM_BUCKETS);
+  const stackBucket = getStackBucket(stack, state.bb || 10);
 
   // Build full history: previous streets + current street
   let fullHistory = state.previousStreets || "";
@@ -496,7 +505,7 @@ function getInfoSetKey(state) {
     fullHistory = fullHistory ? fullHistory + "-" + state.streetHistory : state.streetHistory;
   }
 
-  return `${state.street}:${bucket}:${fullHistory}`;
+  return `${state.street}:${bucket}:s${stackBucket}:${fullHistory}`;
 }
 
 // ── Deal random cards for one MCCFR iteration ───────────────────────────

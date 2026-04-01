@@ -16,6 +16,7 @@ class BettingRound {
 
     this.currentBet = 0;      // highest bet on this street
     this.lastRaiseSize = 0;   // size of last raise increment (for min-raise calc)
+    this.raiseCount = 0;      // number of bets/raises this street (for cap)
     this.lastAggressor = -1;  // seat that last bet/raised
     this.actedSince = new Set(); // seats that acted since last bet/raise
     this.actionIndex = 0;     // pointer into actionOrder
@@ -88,6 +89,7 @@ class BettingRound {
         const raiseIncrement = totalBet - this.currentBet;
         this.lastRaiseSize = Math.max(raiseIncrement, this.lastRaiseSize);
         this.currentBet = totalBet;
+        this.raiseCount++;
         this.lastAggressor = seatIdx;
         // Reset: everyone who acted before must act again
         this.actedSince.clear();
@@ -161,9 +163,13 @@ class BettingRound {
   }
 
   getHandState() {
+    // Count active players (in hand, not folded, not all-in)
+    const activePlayers = this.actionOrder.filter(s => s >= 0).length;
     return {
       currentBet: this.currentBet,
       lastRaiseSize: this.lastRaiseSize,
+      raiseCount: this.raiseCount,
+      activePlayers,
     };
   }
 }
