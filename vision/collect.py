@@ -65,7 +65,7 @@ def main():
         else:
             print(f"[{count}] No table found, skipping...")
 
-        time.sleep(0.5)
+        time.sleep(0.2)
 
 
 if __name__ == "__main__":

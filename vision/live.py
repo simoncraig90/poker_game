@@ -155,7 +155,7 @@ def main():
 
     prev_state = None
     frame_count = 0
-    ocr_interval = 3  # seconds between OCR reads (OCR is slow)
+    ocr_interval = 0.5  # seconds between reads (YOLO is fast)
     last_ocr = 0
 
     while True:

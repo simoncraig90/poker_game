@@ -87,7 +87,7 @@
     box-shadow: 0 0 16px rgba(77,219,122,0.5), 0 0 4px rgba(77,219,122,0.3);
   }
   .seat.folded { opacity: 0.5; }
-  .seat.empty { opacity: 0; border: none; background: transparent; box-shadow: none; pointer-events: auto; }
+  .seat.empty { opacity: 0.4; border: 1px dashed #4ecca3; background: rgba(30,30,30,0.6); box-shadow: none; pointer-events: auto; }
   .seat.empty:hover { opacity: 0.3; background: url('ps_assets/player_container_cutout.png') center/100% 100% no-repeat; }
   .seat-avatar {
     position: absolute; left: 2px; top: 2px; width: 36px; height: 36px;
@@ -116,7 +116,7 @@
   .seat[data-seat="4"] { top: 20%; right: -6%; left: auto; transform: translate(0, -50%); }
   .seat[data-seat="1"] { top: 62%; left: -6%; transform: translate(0, -50%); }
   .seat[data-seat="5"] { top: 62%; right: -6%; left: auto; transform: translate(0, -50%); }
-  .seat[data-seat="0"] { bottom: 0%; top: auto; left: 50%; transform: translate(-50%, 0); }
+  .seat[data-seat="0"] { bottom: 8%; top: auto; left: 50%; transform: translate(-50%, 0); }
 
   /* ── CARDS (sprite-based) ── */
   .card {
