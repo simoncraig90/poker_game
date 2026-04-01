@@ -12,6 +12,7 @@ const { parseClientMessage, formatResponse, formatBroadcast, formatWelcome, form
 const { ActorRegistry } = require("../api/actors");
 const { queryHands, getActorStats } = require("../api/query");
 const { AnnotationStore } = require("../api/annotations");
+const { BotDetector } = require("../engine/bot-detector");
 
 const DEFAULT_CONFIG = {
   port: 9100,
@@ -36,6 +37,8 @@ function startServer(userConfig = {}) {
   const actorsDir = config.actorsDir || path.join(path.dirname(dataDir), "actors");
   const actors = new ActorRegistry(actorsDir);
   const annotations = new AnnotationStore(storage);
+  const botDetector = new BotDetector();
+  const actionPromptTimes = {}; // seat -> timestamp when action was requested
   let session;
   let wasRecovered = false;
   let voidedHands = [];
@@ -68,7 +71,7 @@ function startServer(userConfig = {}) {
 
   // ── HTTP server ──────────────────────────────────────────────────────
   const clientDir = path.join(__dirname, "..", "..", "client");
-  const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png" };
+  const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml" };
 
   const httpServer = http.createServer((req, res) => {
     const url = req.url === "/" ? "/index.html" : req.url;
@@ -257,6 +260,15 @@ function startServer(userConfig = {}) {
         return;
       }
 
+      // ── Bot detection commands ────────────────────────────────────────
+      if (cmdName === "GET_BOT_SCORES") {
+        const scores = payload.player
+          ? [{ player: payload.player, ...botDetector.getScore(payload.player) }]
+          : botDetector.getSummary();
+        ws.send(formatResponse(id, { ok: true, events: [], state: { botScores: scores }, error: null }));
+        return;
+      }
+
       // ── Session-level commands ───────────────────────────────────────
       const cmdMap = {
         CREATE_TABLE: CMD.CREATE_TABLE,
@@ -274,8 +286,41 @@ function startServer(userConfig = {}) {
       const internalCmd = cmdMap[cmdName];
       if (!internalCmd) { ws.send(formatError(id, `Unknown command: ${cmdName}`)); return; }
 
+      // ── Bot detection: record response time for PLAYER_ACTION ──────
+      let botResponseTimeMs = null;
+      if (cmdName === "PLAYER_ACTION" && payload.seat != null && actionPromptTimes[payload.seat]) {
+        botResponseTimeMs = Date.now() - actionPromptTimes[payload.seat];
+        delete actionPromptTimes[payload.seat];
+      }
+
       const result = session.dispatch(command(internalCmd, payload));
       ws.send(formatResponse(id, result));
+
+      // ── Bot detection: feed action data ──────────────────────────────
+      if (cmdName === "PLAYER_ACTION" && result.ok && botResponseTimeMs !== null) {
+        const actionEvent = result.events.find((e) => e.type === "PLAYER_ACTION");
+        if (actionEvent) {
+          const state = session.getState();
+          const potSize = state.hand ? state.hand.pot : 0;
+          botDetector.recordAction(
+            actionEvent.player,
+            actionEvent.action,
+            actionEvent.delta || 0,
+            botResponseTimeMs,
+            payload.handStrength || null,
+            potSize,
+            actionEvent.street
+          );
+        }
+      }
+
+      // ── Bot detection: record when next player needs to act ──────────
+      if (result.ok && result.events.length > 0) {
+        const state = session.getState();
+        if (state.hand && state.hand.actionSeat != null) {
+          actionPromptTimes[state.hand.actionSeat] = Date.now();
+        }
+      }
 
       if (result.ok && result.events.length > 0) {
         const broadcast = formatBroadcast(result.events);
@@ -300,7 +345,7 @@ function startServer(userConfig = {}) {
   });
 
   return {
-    wss, httpServer, session, storage,
+    wss, httpServer, session, storage, botDetector,
     get wasRecovered() { return wasRecovered; },
     get voidedHands() { return voidedHands; },
     close() {

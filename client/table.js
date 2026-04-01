@@ -237,28 +237,68 @@ function c$(v) {
   return "$" + (v / 100).toFixed(2);
 }
 
-const SUIT_SYMBOLS = { s: "♠", h: "♥", d: "♦", c: "♣" };
+const SUIT_SYMBOLS = { s: "\u2660", h: "\u2665", d: "\u2666", c: "\u2663" };
+
+// ── Card sprite sheet mapping ──
+// cards.png: 1898x204, 26 columns x 2 rows, each card 73x102
+// Row 0: 2c,2h,3c,3h,4c,4h,5c,5h,6c,6h,7c,7h,8c,8h,9c,9h,Ac,Ah,Jc,Jh,Kc,Kh,Qc,Qh,10c,10h
+// Row 1: 2s,2d,3s,3d,4s,4d,5s,5d,6s,6d,7s,7d,8s,8d,9s,9d,As,Ad,Js,Jd,Ks,Kd,Qs,Qd,10s,10d
+const CARD_W = 73, CARD_H = 102, SPRITE_COLS = 26;
+const ROW0_SUITS = ['c','h'], ROW1_SUITS = ['s','d'];
+const RANK_ORDER = ['2','3','4','5','6','7','8','9','A','J','K','Q','10'];
+
+function cardSpritePos(card) {
+  const rank = card.slice(0, -1);
+  const suit = card.slice(-1);
+  const rankIdx = RANK_ORDER.indexOf(rank);
+  if (rankIdx < 0) return { x: 0, y: 0 };
+  let row, suitOffset;
+  if (suit === 'c' || suit === 'h') {
+    row = 0;
+    suitOffset = suit === 'c' ? 0 : 1;
+  } else {
+    row = 1;
+    suitOffset = suit === 's' ? 0 : 1;
+  }
+  const col = rankIdx * 2 + suitOffset;
+  return { x: col * CARD_W, y: row * CARD_H };
+}
 
 function cardHtml(card) {
   if (!card) return '<span class="card empty-slot"></span>';
-  const rank = card.slice(0, -1);
-  const suit = card.slice(-1);
-  const isRed = suit === "h" || suit === "d";
-  const symbol = SUIT_SYMBOLS[suit] || suit;
-  return `<span class="card ${isRed ? "red" : "black"}"><span class="rank">${rank}</span><span class="suit">${symbol}</span></span>`;
+  const pos = cardSpritePos(card);
+  // Board card size: 42x59 CSS px, sprite native 73x102
+  const scaleX = 42 / CARD_W;
+  const scaleY = 59 / CARD_H;
+  const bgX = -(pos.x * scaleX);
+  const bgY = -(pos.y * scaleY);
+  return `<span class="card" style="background-position:${bgX}px ${bgY}px"></span>`;
 }
 
 function facedownCardHtml() {
-  return '<span class="card facedown"><span class="rank">?</span><span class="suit">?</span></span>';
+  return '<span class="card facedown"></span>';
 }
 
 function seatCardHtml(card) {
   if (!card) return '';
-  const rank = card.slice(0, -1);
-  const suit = card.slice(-1);
-  const isRed = suit === "h" || suit === "d";
-  const symbol = SUIT_SYMBOLS[suit] || suit;
-  return `<span class="card sm ${isRed ? "red" : "black"}"><span class="rank">${rank}</span><span class="suit">${symbol}</span></span>`;
+  const pos = cardSpritePos(card);
+  // Sm card size: 28x39 CSS px
+  const scaleX = 28 / CARD_W;
+  const scaleY = 39 / CARD_H;
+  const bgX = -(pos.x * scaleX);
+  const bgY = -(pos.y * scaleY);
+  return `<span class="card sm" style="background-position:${bgX}px ${bgY}px"></span>`;
+}
+
+function heroCardHtml(card) {
+  if (!card) return '';
+  const pos = cardSpritePos(card);
+  // Hero card size: 52x73 CSS px
+  const scaleX = 52 / CARD_W;
+  const scaleY = 73 / CARD_H;
+  const bgX = -(pos.x * scaleX);
+  const bgY = -(pos.y * scaleY);
+  return `<span class="card hero-card" style="background-position:${bgX}px ${bgY}px"></span>`;
 }
 
 function render() {
@@ -270,6 +310,12 @@ function render() {
   const sidShort = sessionId ? sessionId.slice(-10) : "";
   document.getElementById("table-info").textContent =
     `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | ${handInfo} | Played: ${state.handsPlayed} | ${sidShort}`;
+
+  // Felt info text (like PS table name + stakes)
+  const feltInfo = document.getElementById("felt-info");
+  if (feltInfo) {
+    feltInfo.innerHTML = `${state.tableName} - No Limit Hold'em<br>${c$(state.sb)}/${c$(state.bb)}`;
+  }
 
   // Seats
   const felt = document.getElementById("table-felt");
@@ -301,7 +347,7 @@ function render() {
         handNameHtml = `<div style="font-size:9px;color:#8ecae6;margin-top:2px;">${reveal.handName}</div>`;
       } else if (s.holeCards && isHero) {
         // Hero: show cards large, below the seat
-        heroCardsHtml = `<div class="hero-cards">${s.holeCards.map(seatCardHtml).join("")}</div>`;
+        heroCardsHtml = `<div class="hero-cards">${s.holeCards.map(heroCardHtml).join("")}</div>`;
       } else if (s.holeCards && !isHero) {
         // Opponent: show facedown card backs
         cardsHtml = `<div class="seat-cards">${facedownCardHtml()}${facedownCardHtml()}</div>`;
@@ -310,13 +356,13 @@ function render() {
       }
 
       const statusBadge = s.allIn ? '<div style="color:#ff6b6b;font-size:10px;font-weight:bold;margin-top:1px">ALL IN</div>' : (s.folded ? '<div style="color:#666;font-size:10px;margin-top:1px">FOLD</div>' : "");
-      div.innerHTML = `<div class="seat-name">${s.player.name}</div><div class="seat-stack">${c$(s.stack)}</div>${cardsHtml}${handNameHtml}${statusBadge}${heroCardsHtml}`;
+      div.innerHTML = `<div class="seat-avatar"></div><div class="seat-name">${s.player.name}</div><div class="seat-stack">${c$(s.stack)}</div>${cardsHtml}${handNameHtml}${statusBadge}`;
 
       // Dealer button — positioned outside the seat panel
       if (state.button === i) {
         const btn = document.createElement("div");
         btn.className = "dealer-btn";
-        btn.textContent = "D";
+        btn.textContent = "";
         const btnPositions = {
           0: "top:-12px;right:-12px",
           1: "top:-8px;right:-12px",
@@ -336,23 +382,23 @@ function render() {
         chip.className = "bet-chip";
         chip.textContent = c$(s.bet);
         const chipPositions = {
-          0: "top:-24px;left:50%;transform:translateX(-50%)",
-          1: "top:30%;right:-60px",
-          2: "bottom:30%;right:-60px",
+          0: "top:-28px;left:50%;transform:translateX(-50%)",
+          1: "top:50%;right:-55px;transform:translateY(-50%)",
+          2: "bottom:50%;right:-55px;transform:translateY(50%)",
           3: "bottom:-24px;left:50%;transform:translateX(-50%)",
-          4: "bottom:30%;left:-60px",
-          5: "top:30%;left:-60px",
+          4: "bottom:50%;left:-55px;transform:translateY(50%)",
+          5: "top:50%;left:-55px;transform:translateY(-50%)",
         };
         chip.style.cssText = chipPositions[i] || "";
         div.appendChild(chip);
       }
     }
     felt.appendChild(div);
-    // Hero cards — render as separate element
-    if (heroCardsHtml && isHero) {
+    // Hero cards — render as separate element outside the seat panel
+    if (s.status !== "EMPTY" && i === 0 && s.holeCards && s.holeCards.length > 0) {
       const hc = document.createElement("div");
       hc.className = "hero-cards";
-      hc.innerHTML = s.holeCards.map(seatCardHtml).join("");
+      hc.innerHTML = s.holeCards.map(heroCardHtml).join("");
       felt.appendChild(hc);
     }
   }
@@ -373,24 +419,53 @@ function updateActionButtons() {
   const legal = hand ? hand.legalActions : null;
   const actions = legal ? legal.actions : [];
 
+  // Hide action buttons when it's not hero's turn (seat 0)
+  const isHeroTurn = hand && hand.actionSeat === 0 && hand.phase !== "COMPLETE";
+  const actionBar = document.getElementById("action-bar");
+  const handActive = hand && hand.phase !== "COMPLETE";
+  const showBar = isHeroTurn || !handActive;
+  actionBar.style.display = showBar ? "flex" : "none";
+
   document.getElementById("fold-btn").disabled = !actions.includes("FOLD");
   document.getElementById("check-btn").disabled = !actions.includes("CHECK");
   document.getElementById("call-btn").disabled = !actions.includes("CALL");
   document.getElementById("bet-btn").disabled = !actions.includes("BET");
   document.getElementById("raise-btn").disabled = !actions.includes("RAISE");
 
+  // Hide/show action buttons based on hero's turn
+  document.getElementById("fold-btn").style.display = isHeroTurn && actions.includes("FOLD") ? "" : "none";
+  document.getElementById("check-btn").style.display = isHeroTurn && actions.includes("CHECK") ? "" : "none";
+  document.getElementById("call-btn").style.display = isHeroTurn && actions.includes("CALL") ? "" : "none";
+  document.getElementById("bet-btn").style.display = isHeroTurn && actions.includes("BET") ? "" : "none";
+  document.getElementById("raise-btn").style.display = isHeroTurn && actions.includes("RAISE") ? "" : "none";
+
   const callBtn = document.getElementById("call-btn");
   callBtn.innerHTML = actions.includes("CALL") && legal
     ? `Call ${c$(legal.callAmount)} <span class="key-hint">[C]</span>`
     : 'Call <span class="key-hint">[C]</span>';
 
+  const betBtn = document.getElementById("bet-btn");
+  const raiseBtn = document.getElementById("raise-btn");
   const betInput = document.getElementById("bet-input");
-  if (actions.includes("BET") && legal) { betInput.value = legal.minBet; betInput.min = legal.minBet; }
-  else if (actions.includes("RAISE") && legal) { betInput.value = legal.minRaise; betInput.min = legal.minRaise; betInput.max = legal.maxRaise; }
+  const showBetInput = isHeroTurn && (actions.includes("BET") || actions.includes("RAISE"));
+  betInput.classList.toggle("visible", showBetInput);
+  if (actions.includes("BET") && legal) {
+    betInput.value = legal.minBet; betInput.min = legal.minBet;
+    betBtn.innerHTML = `Bet ${c$(legal.minBet)}`;
+  } else {
+    betBtn.innerHTML = 'Bet';
+  }
+  if (actions.includes("RAISE") && legal) {
+    betInput.value = legal.minRaise; betInput.min = legal.minRaise; betInput.max = legal.maxRaise;
+    raiseBtn.innerHTML = `Raise to ${c$(legal.minRaise)}`;
+  } else {
+    raiseBtn.innerHTML = 'Raise';
+  }
 
   const occupied = state ? Object.values(state.seats).filter((s) => s.status === "OCCUPIED").length : 0;
-  const handActive = hand && hand.phase !== "COMPLETE";
   document.getElementById("start-btn").disabled = handActive || occupied < 2;
+  // Always show start button when between hands
+  document.getElementById("start-btn").style.display = handActive ? "none" : "";
 }
 
 // ── Banners ────────────────────────────────────────────────────────────────

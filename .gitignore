@@ -18,3 +18,10 @@ vision/analysis_results.json
 
 # Hand histories (personal data)
 hands/
+
+# PS client analysis (large downloaded files)
+analysis/ps_client/*.js
+analysis/ps_client/*.exe
+
+# Generated screenshots (transient)
+screenshots/

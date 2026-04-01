@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PokerStars Layout Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Roboto Condensed', sans-serif; background: #1c1c1c; color: #fff; height: 100vh; overflow: hidden; }
+
+#toolbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  background: #000; padding: 4px 12px; display: flex; align-items: center; gap: 8px; font-size: 11px;
+  border-bottom: 1px solid #444;
+}
+#toolbar input[type=file] { font-size: 10px; max-width: 200px; }
+#toolbar input[type=range] { width: 120px; }
+#toolbar button { font-size: 10px; padding: 3px 10px; background: #333; color: #fff; border: 1px solid #666; border-radius: 3px; cursor: pointer; }
+#toolbar button:hover { background: #555; }
+#toolbar .lbl { color: #aaa; }
+
+#canvas {
+  position: absolute; top: 28px; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+}
+
+#ref {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+#ref img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+/* Draggable elements */
+.elem {
+  position: absolute; z-index: 10; cursor: move;
+  border: 1px dashed rgba(255,255,0,0.5);
+  user-select: none;
+}
+.elem:hover { border-color: #ff0; }
+.elem.selected { border-color: #0ff; box-shadow: 0 0 6px #0ff; }
+.elem .label {
+  position: absolute; top: -14px; left: 0; font-size: 9px; color: #ff0;
+  white-space: nowrap; pointer-events: none;
+}
+
+/* Felt */
+#felt {
+  background: radial-gradient(ellipse at 50% 42%, #2ea855 0%, #228f45 20%, #1a7a38 40%, #10602a 60%, #08481e 80%, #043814 100%);
+  border-radius: 46% / 48%; border: 8px solid #2a1c10;
+  box-shadow: 0 0 0 3px #3a2a18, inset 0 0 60px rgba(0,0,0,0.2);
+}
+
+/* Seat panels */
+.seat-panel {
+  background: rgba(30,30,30,0.92); border: 1.5px solid #555; border-radius: 5px;
+  padding: 2px 6px; text-align: center; min-width: 100px;
+}
+.seat-panel .n { font-weight: 700; color: #fff; font-size: 11px; }
+.seat-panel .s { color: #4ddb7a; font-size: 11px; font-weight: 700; }
+
+/* Cards */
+.hcard {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 44px; height: 62px; background: #fff; border-radius: 4px; border: 1px solid #bbb;
+  font-weight: bold; box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+.hcard .r { font-size: 24px; }
+.hcard .su { font-size: 20px; margin-top: -3px; }
+.hcard.red { color: #c00; }
+.hcard.black { color: #111; }
+
+.bcard {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 40px; height: 56px; background: #fff; border-radius: 4px; border: 1px solid #bbb;
+  font-weight: bold; box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+.bcard .r { font-size: 20px; }
+.bcard .su { font-size: 17px; margin-top: -2px; }
+.bcard.red { color: #c00; }
+.bcard.black { color: #111; }
+
+.cardback {
+  display: inline-block; width: 18px; height: 27px; border-radius: 3px;
+  background: linear-gradient(145deg, #c41e3a, #8b0000 50%, #c41e3a);
+  border: 1px solid #777;
+}
+
+.pot-pill {
+  font-size: 14px; color: #fff; font-weight: 700;
+  background: rgba(0,0,0,0.5); padding: 2px 12px; border-radius: 10px;
+}
+
+.chip-pill {
+  background: #1a7a3a; color: #fff; font-size: 9px; font-weight: 700;
+  padding: 1px 5px; border-radius: 8px; border: 1px solid #4ddb7a;
+}
+
+.dbtn-circle {
+  width: 18px; height: 18px; background: linear-gradient(135deg, #ffd700, #e6b800);
+  border-radius: 50%; color: #111; font-size: 9px; font-weight: 900;
+  line-height: 18px; text-align: center; border: 2px solid #b8960f;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="lbl">Ref:</span>
+  <input type="file" id="refFile" accept="image/*">
+  <span class="lbl">Opacity:</span>
+  <input type="range" id="refOp" min="0" max="100" value="0">
+  <button onclick="exportPositions()">Export CSS</button>
+  <span id="coords" style="color:#0ff;margin-left:auto"></span>
+</div>
+
+<div id="canvas">
+  <div id="ref"><img id="refImg" src=""></div>
+
+  <!-- Felt -->
+  <div class="elem" id="felt" style="left:15%;top:5%;width:70%;height:72%">
+    <span class="label">felt</span>
+  </div>
+
+  <!-- Pot -->
+  <div class="elem" id="pot" style="left:42%;top:28%">
+    <span class="label">pot</span>
+    <div class="pot-pill">Pot: $0.15</div>
+  </div>
+
+  <!-- Board -->
+  <div class="elem" id="board" style="left:30%;top:33%;display:flex;gap:3px">
+    <span class="label">board</span>
+    <div class="bcard black"><span class="r">3</span><span class="su">♣</span></div>
+    <div class="bcard black"><span class="r">K</span><span class="su">♣</span></div>
+    <div class="bcard red"><span class="r">7</span><span class="su">♦</span></div>
+  </div>
+
+  <!-- Seat 3 top -->
+  <div class="elem" id="s3" style="left:38%;top:10%">
+    <span class="label">s3 (top)</span>
+    <div class="seat-panel"><div class="n">TasteYurFlav</div><div class="s">$9.95</div></div>
+    <div style="display:flex;gap:0;justify-content:center;margin-top:2px"><div class="cardback"></div><div class="cardback" style="margin-left:-5px;transform:rotate(5deg)"></div></div>
+  </div>
+
+  <!-- Seat 2 upper-left -->
+  <div class="elem" id="s2" style="left:5%;top:25%">
+    <span class="label">s2 (UL)</span>
+    <div class="seat-panel"><div class="n">MyCVVis911</div><div class="s">$10</div></div>
+    <div style="display:flex;gap:0;justify-content:center;margin-top:2px"><div class="cardback"></div><div class="cardback" style="margin-left:-5px;transform:rotate(5deg)"></div></div>
+  </div>
+
+  <!-- Seat 4 upper-right -->
+  <div class="elem" id="s4" style="left:68%;top:25%">
+    <span class="label">s4 (UR)</span>
+    <div class="seat-panel"><div class="n">UBaHbl4_641</div><div class="s">$10</div></div>
+    <div style="display:flex;gap:0;justify-content:center;margin-top:2px"><div class="cardback"></div><div class="cardback" style="margin-left:-5px;transform:rotate(5deg)"></div></div>
+  </div>
+
+  <!-- Seat 1 lower-left -->
+  <div class="elem" id="s1" style="left:5%;top:55%">
+    <span class="label">s1 (LL)</span>
+    <div class="seat-panel"><div class="n">couplong1</div><div class="s">$8</div></div>
+    <div style="display:flex;gap:0;justify-content:center;margin-top:2px"><div class="cardback"></div><div class="cardback" style="margin-left:-5px;transform:rotate(5deg)"></div></div>
+  </div>
+
+  <!-- Seat 5 lower-right -->
+  <div class="elem" id="s5" style="left:68%;top:55%">
+    <span class="label">s5 (LR)</span>
+    <div class="seat-panel"><div class="n">Nasry_u_yidy</div><div class="s">$9.90</div></div>
+    <div style="display:flex;gap:0;justify-content:center;margin-top:2px"><div class="cardback"></div><div class="cardback" style="margin-left:-5px;transform:rotate(5deg)"></div></div>
+  </div>
+
+  <!-- Seat 0 hero panel -->
+  <div class="elem" id="s0" style="left:38%;top:73%">
+    <span class="label">s0 (hero)</span>
+    <div class="seat-panel"><div class="n">Skurj_poker</div><div class="s">$7.85</div></div>
+  </div>
+
+  <!-- Hero cards -->
+  <div class="elem" id="herocards" style="left:38%;top:80%;display:flex;gap:3px">
+    <span class="label">hero cards</span>
+    <div class="hcard black"><span class="r">6</span><span class="su">♣</span></div>
+    <div class="hcard black"><span class="r">4</span><span class="su">♣</span></div>
+  </div>
+
+  <!-- Chips -->
+  <div class="elem" id="chip1" style="left:48%;top:18%">
+    <span class="label">chip (SB)</span>
+    <div class="chip-pill">$0.05</div>
+  </div>
+  <div class="elem" id="chip2" style="left:58%;top:62%">
+    <span class="label">chip (BB)</span>
+    <div class="chip-pill">$0.10</div>
+  </div>
+
+  <!-- Dealer button -->
+  <div class="elem" id="dbtn" style="left:14%;top:58%">
+    <span class="label">D btn</span>
+    <div class="dbtn-circle">D</div>
+  </div>
+</div>
+
+<script>
+// Reference image
+document.getElementById('refFile').onchange = function() {
+  if (this.files[0]) {
+    const r = new FileReader();
+    r.onload = (e) => document.getElementById('refImg').src = e.target.result;
+    r.readAsDataURL(this.files[0]);
+  }
+};
+document.getElementById('refOp').oninput = function() {
+  document.getElementById('ref').style.opacity = this.value / 100;
+};
+
+// Dragging
+let dragging = null, offsetX = 0, offsetY = 0;
+document.querySelectorAll('.elem').forEach(el => {
+  el.onmousedown = function(e) {
+    if (e.target.tagName === 'INPUT') return;
+    dragging = el;
+    const r = el.getBoundingClientRect();
+    offsetX = e.clientX - r.left;
+    offsetY = e.clientY - r.top;
+    document.querySelectorAll('.elem').forEach(x => x.classList.remove('selected'));
+    el.classList.add('selected');
+    e.preventDefault();
+  };
+});
+document.onmousemove = function(e) {
+  if (!dragging) return;
+  const canvas = document.getElementById('canvas');
+  const cr = canvas.getBoundingClientRect();
+  const x = ((e.clientX - offsetX - cr.left) / cr.width * 100);
+  const y = ((e.clientY - offsetY - cr.top) / cr.height * 100);
+  dragging.style.left = x + '%';
+  dragging.style.top = y + '%';
+  document.getElementById('coords').textContent = `${dragging.id}: left=${x.toFixed(1)}% top=${y.toFixed(1)}%`;
+};
+document.onmouseup = function() { dragging = null; };
+
+// Felt is also resizable by dragging edges (simplified: just drag to move)
+
+// Export positions
+function exportPositions() {
+  const ids = ['felt','pot','board','s3','s2','s4','s1','s5','s0','herocards','chip1','chip2','dbtn'];
+  let css = '/* Exported positions */\n';
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    css += `#${id} { left: ${el.style.left}; top: ${el.style.top}; width: ${el.style.width || 'auto'}; height: ${el.style.height || 'auto'}; }\n`;
+  });
+  // Copy to clipboard
+  navigator.clipboard.writeText(css).then(() => alert('CSS copied to clipboard!')).catch(() => {
+    prompt('Copy this CSS:', css);
+  });
+  console.log(css);
+}
+</script>
+
+</body>
+</html>

@@ -66,6 +66,7 @@ def main():
         project=runs_dir,
         name="poker",
         exist_ok=True,
+        workers=0,          # prevent zombie data loader processes on Windows
         patience=20,        # early stopping after 20 epochs without improvement
         save_period=10,      # save checkpoint every 10 epochs
         plots=True,

@@ -12,7 +12,13 @@ import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "runs", "detect", "poker", "weights", "best.pt")
+# Try multiple model locations (newest first)
+_MODEL_CANDIDATES = [
+    os.path.join(os.path.dirname(__file__), "runs", "poker_lab", "weights", "best.pt"),
+    os.path.join(os.path.dirname(__file__), "runs", "poker", "weights", "best.pt"),
+    os.path.join(os.path.dirname(__file__), "runs", "detect", "poker", "weights", "best.pt"),
+]
+MODEL_PATH = next((p for p in _MODEL_CANDIDATES if os.path.exists(p)), _MODEL_CANDIDATES[-1])
 
 CLASS_NAMES = [
     "board_card", "hero_card", "card_back", "player_panel",
