@@ -114,7 +114,7 @@ function showActionBubble(seat, action, amount) {
   bubble.textContent = text;
   seatEl.appendChild(bubble);
   // Remove after animation
-  setTimeout(() => bubble.remove(), 2600);
+  setTimeout(() => bubble.remove(), 2100);
 }
 
 function handleEvents(events) {

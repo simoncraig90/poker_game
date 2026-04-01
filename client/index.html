@@ -98,11 +98,11 @@
   .seat-stack { color: #5ce882; font-size: 10px; font-weight: 700; line-height: 1.3; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
   /* Action bubble — shows what each player did */
   .action-bubble {
-    position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.8); color: #fff; font-size: 10px; font-weight: 700;
-    padding: 2px 8px; border-radius: 10px; white-space: nowrap; z-index: 10;
+    position: absolute; top: -30px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: #fff; font-size: 14px; font-weight: 700;
+    padding: 4px 14px; border-radius: 12px; white-space: nowrap; z-index: 10;
     pointer-events: none;
-    animation: bubbleFade 2.5s ease-out forwards;
+    animation: bubbleFade 2s ease-out forwards;
   }
   .action-bubble.fold { color: #ff6b6b; }
   .action-bubble.call { color: #4ddb7a; }
@@ -110,8 +110,8 @@
   .action-bubble.check { color: #aaa; }
   @keyframes bubbleFade {
     0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    70% { opacity: 1; transform: translateX(-50%) translateY(-5px); }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-15px); }
+    80% { opacity: 1; transform: translateX(-50%) translateY(-3px); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
   }
   /* Default: cards above the seat panel */
   .seat-cards { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); display: flex; gap: 0px; justify-content: center; margin-bottom: 2px; z-index: 5; }

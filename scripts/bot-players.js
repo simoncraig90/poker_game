@@ -19,9 +19,40 @@ const WS_URL = "ws://localhost:9100";
 const NN_URL = "http://localhost:9200/predict";
 const HUMAN_SEAT = 0;
 const BOT_SEATS = [1, 2, 3, 4, 5];
-const BOT_NAMES = ["Bot_Alice", "Bot_Bob", "Bot_Charlie", "Bot_Diana", "Bot_Eve"];
 const USE_CFR = true;  // Use CFR strategy (real learned play)
 const USE_NEURAL = false;
+
+// ── Load opponent profiles ──────────────────────────────────────────────
+const fs = require("fs");
+const path = require("path");
+
+let opponentProfiles = {};
+const PROFILES_PATH = path.join(__dirname, "opponent-profiles.json");
+try {
+  opponentProfiles = JSON.parse(fs.readFileSync(PROFILES_PATH, "utf8"));
+  console.log(`Loaded ${Object.keys(opponentProfiles).length} opponent profiles`);
+} catch (e) {
+  console.log("No opponent profiles found, using default bot names");
+}
+
+// Pick top 5 opponents by hands played (with 10+ hands) to use as bot personalities
+const rankedOpponents = Object.values(opponentProfiles)
+  .filter(p => p.handsPlayed >= 10)
+  .sort((a, b) => b.handsPlayed - a.handsPlayed)
+  .slice(0, 5);
+
+const BOT_NAMES = rankedOpponents.length >= 5
+  ? rankedOpponents.map(p => p.name)
+  : ["Bot_Alice", "Bot_Bob", "Bot_Charlie", "Bot_Diana", "Bot_Eve"];
+
+// Map each bot seat to a profile (or null for default behavior)
+const BOT_PROFILES = {};
+for (let i = 0; i < BOT_SEATS.length; i++) {
+  if (i < rankedOpponents.length) {
+    BOT_PROFILES[BOT_SEATS[i]] = rankedOpponents[i];
+    console.log(`  Seat ${BOT_SEATS[i]}: ${rankedOpponents[i].name} [${rankedOpponents[i].classification.toUpperCase()}] (VPIP ${rankedOpponents[i].vpip}%, PFR ${rankedOpponents[i].pfr}%)`);
+  }
+}
 
 // Load CFR strategy
 let cfrStrategy = null;
@@ -30,7 +61,7 @@ if (USE_CFR) {
     cfrStrategy = createCFRStrategy("./vision/models/cfr_strategy.json");
     console.log("CFR strategy loaded");
   } catch (e) {
-    console.log("CFR strategy not available, falling back to TAG:", e.message);
+    console.log("CFR strategy not available, falling back to profile-based play:", e.message);
   }
 }
 
@@ -157,6 +188,188 @@ function neuralDecide(seat, state, callback) {
   req.end();
 }
 
+// ── Profile-based decision (opponent personality) ───────────────────────
+function botDecideProfile(seat, state, profile) {
+  const s = state.seats[seat];
+  if (!s || s.status !== "OCCUPIED" || !s.inHand || s.folded || s.allIn) return null;
+
+  const hand = state.hand;
+  if (!hand || hand.actionSeat !== seat) return null;
+
+  const legal = hand.legalActions;
+  if (!legal || !legal.actions || legal.actions.length === 0) return null;
+
+  const actions = legal.actions;
+  const cards = s.holeCards || [];
+  const board = hand.board || [];
+  const phase = hand.phase;
+  const pot = hand.pot || 0;
+  const callAmount = legal.callAmount || 0;
+  const minBet = legal.minBet || 0;
+  const minRaise = legal.minRaise || 0;
+  const maxRaise = legal.maxRaise || 0;
+
+  const strength = evaluateHandStrength(cards, board, phase);
+  const rand = Math.random();
+  const type = profile.classification;
+
+  // ── FISH: loose-passive, calls too much, rarely raises ──────────────
+  if (type === "fish") {
+    if (phase === "PREFLOP") {
+      // Fish VPIP is high — call with almost anything
+      const vpipThreshold = 1 - (profile.vpip / 100);  // e.g., VPIP 40% -> threshold 0.60
+      if (strength > 0.65 && actions.includes("RAISE") && rand < 0.3) {
+        return { action: "RAISE", amount: minRaise };
+      }
+      if (strength > vpipThreshold && actions.includes("CALL")) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      // Fish even call with junk sometimes
+      if (rand < 0.15 && actions.includes("CALL")) return { action: "CALL" };
+      return { action: "FOLD" };
+    }
+    // Postflop: check-call station
+    if (strength > 0.55) {
+      if (actions.includes("BET") && rand < 0.35) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.4)) };
+      if (actions.includes("CALL")) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+    }
+    if (strength > 0.2) {
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      // Fish call with any piece of the board
+      if (actions.includes("CALL") && callAmount < pot * 1.0) return { action: "CALL" };
+      return { action: "FOLD" };
+    }
+    if (actions.includes("CHECK")) return { action: "CHECK" };
+    if (rand < 0.12 && actions.includes("CALL")) return { action: "CALL" };
+    return { action: "FOLD" };
+  }
+
+  // ── TAG: tight preflop, aggressive postflop ─────────────────────────
+  if (type === "tag") {
+    if (phase === "PREFLOP") {
+      // TAG only enters with good hands, but usually raises
+      if (strength > 0.55 && actions.includes("RAISE")) {
+        const amt = Math.min(minRaise + Math.floor(pot * 0.6), maxRaise);
+        return { action: "RAISE", amount: Math.max(minRaise, amt) };
+      }
+      if (strength > 0.45 && actions.includes("CALL") && rand < 0.4) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      return { action: "FOLD" };
+    }
+    // Postflop: aggressive when in hand
+    if (strength > 0.5) {
+      if (actions.includes("RAISE") && rand < 0.5) {
+        return { action: "RAISE", amount: Math.max(minRaise, Math.min(minRaise + Math.floor(pot * 0.75), maxRaise)) };
+      }
+      if (actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.65)) };
+      if (actions.includes("CALL")) return { action: "CALL" };
+      return { action: "CHECK" };
+    }
+    if (strength > 0.3) {
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      // TAG bluffs sometimes with equity
+      if (rand < 0.25 && actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.5)) };
+      if (actions.includes("CALL") && callAmount < pot * 0.5) return { action: "CALL" };
+      return { action: "FOLD" };
+    }
+    if (actions.includes("CHECK")) return { action: "CHECK" };
+    return { action: "FOLD" };
+  }
+
+  // ── LAG: loose preflop, aggressive everywhere ───────────────────────
+  if (type === "lag") {
+    if (phase === "PREFLOP") {
+      if (strength > 0.40 && actions.includes("RAISE")) {
+        const amt = Math.min(minRaise + Math.floor(pot * 0.5), maxRaise);
+        return { action: "RAISE", amount: Math.max(minRaise, amt) };
+      }
+      // LAG raises with marginal hands too
+      if (strength > 0.25 && actions.includes("RAISE") && rand < 0.4) {
+        return { action: "RAISE", amount: minRaise };
+      }
+      if (strength > 0.20 && actions.includes("CALL")) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      // Even raise with junk as a bluff
+      if (rand < 0.12 && actions.includes("RAISE")) return { action: "RAISE", amount: minRaise };
+      return { action: "FOLD" };
+    }
+    // Postflop: bet and raise frequently
+    if (strength > 0.45) {
+      if (actions.includes("RAISE") && rand < 0.6) {
+        return { action: "RAISE", amount: Math.max(minRaise, Math.min(minRaise + Math.floor(pot * 0.8), maxRaise)) };
+      }
+      if (actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.7)) };
+      if (actions.includes("CALL")) return { action: "CALL" };
+      return { action: "CHECK" };
+    }
+    if (strength > 0.2) {
+      // LAG bluffs aggressively
+      if (rand < 0.40 && actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.55)) };
+      if (rand < 0.30 && actions.includes("RAISE")) return { action: "RAISE", amount: minRaise };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      if (actions.includes("CALL") && callAmount < pot * 0.7) return { action: "CALL" };
+      return { action: "FOLD" };
+    }
+    // Even with weak hands, LAG fires sometimes
+    if (rand < 0.20 && actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.5)) };
+    if (actions.includes("CHECK")) return { action: "CHECK" };
+    return { action: "FOLD" };
+  }
+
+  // ── NIT: very tight, only plays premiums ────────────────────────────
+  if (type === "nit") {
+    if (phase === "PREFLOP") {
+      // Nit only plays top ~15% of hands
+      if (strength > 0.75 && actions.includes("RAISE")) {
+        return { action: "RAISE", amount: Math.max(minRaise, Math.min(minRaise + Math.floor(pot * 0.5), maxRaise)) };
+      }
+      if (strength > 0.65 && actions.includes("CALL")) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      return { action: "FOLD" };
+    }
+    // Postflop: only continues with strong hands
+    if (strength > 0.6) {
+      if (actions.includes("BET")) return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.6)) };
+      if (actions.includes("RAISE")) return { action: "RAISE", amount: Math.max(minRaise, Math.min(minRaise + Math.floor(pot * 0.6), maxRaise)) };
+      if (actions.includes("CALL")) return { action: "CALL" };
+      return { action: "CHECK" };
+    }
+    if (strength > 0.4) {
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      if (actions.includes("CALL") && callAmount < pot * 0.3) return { action: "CALL" };
+      return { action: "FOLD" };
+    }
+    if (actions.includes("CHECK")) return { action: "CHECK" };
+    return { action: "FOLD" };
+  }
+
+  // ── MANIAC: raises everything, huge aggression ──────────────────────
+  if (type === "maniac") {
+    if (phase === "PREFLOP") {
+      if (actions.includes("RAISE") && (strength > 0.25 || rand < 0.35)) {
+        const amt = Math.min(minRaise + Math.floor(pot * 0.7), maxRaise);
+        return { action: "RAISE", amount: Math.max(minRaise, amt) };
+      }
+      if (actions.includes("CALL")) return { action: "CALL" };
+      if (actions.includes("CHECK")) return { action: "CHECK" };
+      return { action: "FOLD" };
+    }
+    // Postflop: bet/raise relentlessly
+    if (actions.includes("RAISE") && rand < 0.5) {
+      return { action: "RAISE", amount: Math.max(minRaise, Math.min(minRaise + Math.floor(pot * 1.0), maxRaise)) };
+    }
+    if (actions.includes("BET") && rand < 0.7) {
+      return { action: "BET", amount: Math.max(minBet, Math.floor(pot * 0.75)) };
+    }
+    if (actions.includes("CALL")) return { action: "CALL" };
+    if (actions.includes("CHECK")) return { action: "CHECK" };
+    return { action: "FOLD" };
+  }
+
+  // ── REG (default): balanced play ────────────────────────────────────
+  return null;  // Fall through to TAG/CFR
+}
+
 // TAG fallback
 function botDecideTAG(seat, state) {
   const s = state.seats[seat];
@@ -270,6 +483,17 @@ function handleState(newState) {
   const s = state.seats[actionSeat];
   const legal = hand.legalActions;
   const actions = legal.actions;
+
+  // Use opponent-profile-based personality if available for this seat
+  const profile = BOT_PROFILES[actionSeat];
+  if (profile) {
+    const profileDecision = botDecideProfile(actionSeat, state, profile);
+    if (profileDecision) {
+      executeAction(profileDecision);
+      return;
+    }
+    // If profile returns null (e.g., REG type), fall through to CFR/TAG
+  }
 
   // Use CFR strategy if available
   if (USE_CFR && cfrStrategy) {
