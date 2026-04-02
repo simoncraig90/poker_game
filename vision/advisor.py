@@ -14,6 +14,8 @@ Usage:
 import json
 import math
 import os
+import queue
+import subprocess
 import sys
 import threading
 import time
@@ -120,17 +122,61 @@ def evaluate_hand_strength(cards, board, phase):
 
     # Postflop
     board_ranks = [c["rank"] for c in board]
+    # Count occurrences of each rank on the board
+    board_rank_counts = {}
+    for r in board_ranks:
+        board_rank_counts[r] = board_rank_counts.get(r, 0) + 1
+
+    r1_board_count = board_rank_counts.get(r1, 0)
+    r2_board_count = board_rank_counts.get(r2, 0)
+
     post = pf
-    if r1 in board_ranks:
-        post += 0.25
-    if r2 in board_ranks:
-        post += 0.20
-    if r1 in board_ranks and r2 in board_ranks and not pair:
-        post += 0.20
-    if pair and r1 in board_ranks:
-        post += 0.35
-    if pair and board_ranks and r1 > max(board_ranks):
-        post += 0.15
+
+    if pair:
+        # Pocket pair
+        if r1_board_count >= 2:
+            # Quads: pocket pair + 2 on board
+            post += 0.95
+        elif r1_board_count == 1:
+            # Set (pocket pair + one on board)
+            post += 0.70
+            # Full house: set + board has another pair
+            board_has_other_pair = any(
+                cnt >= 2 for rank, cnt in board_rank_counts.items() if rank != r1
+            )
+            if board_has_other_pair:
+                post += 0.15  # full house
+        else:
+            # Overpair / underpair
+            if board_ranks and r1 > max(board_ranks):
+                post += 0.30  # overpair
+            else:
+                post += 0.15  # underpair
+    else:
+        # Unpaired hole cards
+        hit1 = r1_board_count > 0
+        hit2 = r2_board_count > 0
+
+        if hit1 and r1_board_count >= 2:
+            # Trips: hero card matches a board pair (e.g., hero 8x, board 8 8 Q)
+            post += 0.70
+            # Check for full house: trips + other hole card pairs with board
+            if hit2:
+                post += 0.20  # full house
+        elif hit2 and r2_board_count >= 2:
+            # Trips with second card matching board pair
+            post += 0.70
+            if hit1:
+                post += 0.20  # full house
+        elif hit1 and hit2:
+            # Two pair (both cards hit board, no board-pair overlap)
+            post += 0.55
+        elif hit1:
+            # One pair with r1
+            post += 0.25
+        elif hit2:
+            # One pair with r2
+            post += 0.20
 
     # Flush detection
     all_suits = [c["suit"] for c in cards] + [c["suit"] for c in board]
@@ -263,7 +309,7 @@ class CFRLookup:
             print(f"[Advisor] WARNING: CFR strategy not found at {path}")
 
     def lookup(self, hero_cards_str, board_cards_str, pot, stack, bb=0.10,
-               action_history_str="", num_opponents=1):
+               action_history_str="", num_opponents=1, position="IP"):
         """
         Look up CFR recommendation.
 
@@ -301,7 +347,14 @@ class CFRLookup:
 
         # Hand strength (heuristic — matching CFR abstraction)
         strength = evaluate_hand_strength(hero_dicts, board_dicts, phase)
-        bucket = strength_to_bucket(strength, 20)
+        bucket = strength_to_bucket(strength, 50)
+
+        # Position-based bucket adjustment (IP plays wider preflop)
+        if phase == "PREFLOP":
+            if position == "IP":
+                bucket = min(49, bucket + 5)  # BTN/CO: play 5 buckets wider
+            elif position == "OOP":
+                bucket = max(0, bucket - 3)   # UTG/MP: play 3 buckets tighter
 
         # Neural net equity (optional, for display)
         hero_ints = [card_str_to_int(c) for c in hero_cards_str]
@@ -318,15 +371,15 @@ class CFRLookup:
         stack_bucket_real = 0 if bbs < 30 else (1 if bbs < 80 else 2)
 
         # Build info set key
-        # Format: "STREET:bucket:s0:actionHistory"
-        # All trained keys use s0 (short stack bucket)
+        # Try position-aware key first, then fallbacks
+        key_with_pos = f"{phase}:{bucket}:s0:{position}:{action_history_str}"
         key_primary = f"{phase}:{bucket}:s0:{action_history_str}"
         key_no_stack = f"{bucket}|{action_history_str}"
 
-        # Try primary key, then pipe format
+        # Try position-aware, then primary, then pipe format
         info_key = None
         strat = None
-        for candidate in [key_primary, key_no_stack]:
+        for candidate in [key_with_pos, key_primary, key_no_stack]:
             if candidate in self.strategy:
                 info_key = candidate
                 strat = self.strategy[candidate]
@@ -350,7 +403,7 @@ class CFRLookup:
                 "rec_prob": 1.0,
                 "equity": strength,
                 "nn_equity": nn_eq,
-                "info_key": key_with_stack + " (not found)",
+                "info_key": key_primary + " (not found)",
                 "bucket": bucket,
                 "fallback": True,
             }
@@ -422,6 +475,122 @@ def _heuristic_action(strength):
         return "FOLD"
 
 
+# ── Real-time Subgame Solver ────────────────────────────────────────────
+
+class SubgameSolver:
+    """
+    Persistent Node.js solver process for real-time subgame CFR solving.
+    Communicates via stdin/stdout JSON lines.
+    """
+
+    def __init__(self, timeout_ms=200):
+        self.timeout_ms = timeout_ms
+        self.proc = None
+        self._response_queue = queue.Queue()
+        self._start_process()
+
+    def _start_process(self):
+        solver_script = str(ROOT / "scripts" / "cfr" / "cfr-solver.js")
+        self.proc = subprocess.Popen(
+            ["node", solver_script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(ROOT),
+            bufsize=0,
+        )
+        # Reader thread for non-blocking stdout
+        self._reader = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader.start()
+        # Wait for ready signal
+        resp = self._read_response(timeout=10.0)
+        if resp and resp.get("ready"):
+            print(f"[Solver] Process started (PID {self.proc.pid})")
+        else:
+            print("[Solver] WARNING: solver did not send ready signal")
+
+    def _read_loop(self):
+        try:
+            while self.proc and self.proc.poll() is None:
+                line = self.proc.stdout.readline()
+                if not line:
+                    break
+                self._response_queue.put(json.loads(line.decode("utf-8")))
+        except Exception:
+            pass
+
+    def _read_response(self, timeout=0.2):
+        try:
+            return self._response_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
+    def solve(self, hero_cards, board_cards, pot, hero_stack, opp_stack,
+              street, hero_position, action_history, facing_bet=False):
+        """Request a real-time subgame solve. Returns strategy dict or None."""
+        hero_dicts = [card_str_to_dict(c) for c in hero_cards]
+        board_dicts = [card_str_to_dict(c) for c in board_cards]
+        if not hero_dicts or len(hero_dicts) < 2 or None in hero_dicts:
+            return None
+
+        bb = 1.0  # solver works in BB units
+        pot_bb = pot / 0.10 if pot else 1.5
+        hero_bb = hero_stack / 0.10 if hero_stack else 100
+        opp_bb = opp_stack / 0.10 if opp_stack else 100
+
+        # Determine invested amounts and current bet from context
+        hero_invested = 0
+        opp_invested = 0
+        current_bet = 0
+        raises = 0
+        if street == "PREFLOP":
+            if facing_bet:
+                hero_invested = 1.0  # BB or SB
+                opp_invested = 3.0   # typical raise
+                current_bet = 3.0
+                raises = 1
+            else:
+                hero_invested = 1.0
+                opp_invested = 1.0
+                current_bet = 1.0
+
+        cmd = {
+            "cmd": "solve",
+            "heroCards": hero_dicts,
+            "board": board_dicts,
+            "pot": pot_bb,
+            "heroStack": hero_bb - hero_invested,
+            "oppStack": opp_bb - opp_invested,
+            "heroInvested": hero_invested,
+            "oppInvested": opp_invested,
+            "currentBet": current_bet,
+            "street": street,
+            "heroPosition": 0 if hero_position == "IP" else 1,
+            "actionHistory": action_history,
+            "raisesThisStreet": raises,
+            "timeBudgetMs": self.timeout_ms,
+        }
+
+        try:
+            line = json.dumps(cmd) + "\n"
+            self.proc.stdin.write(line.encode("utf-8"))
+            self.proc.stdin.flush()
+            return self._read_response(timeout=self.timeout_ms / 1000.0 + 0.1)
+        except Exception:
+            return None
+
+    def quit(self):
+        try:
+            self.proc.stdin.write(b'{"cmd":"quit"}\n')
+            self.proc.stdin.flush()
+        except Exception:
+            pass
+        try:
+            self.proc.terminate()
+        except Exception:
+            pass
+
+
 # ── Screen capture and table detection ───────────────────────────────────
 
 def capture_screen():
@@ -450,13 +619,15 @@ def find_table_region(frame):
 
 
 def crop_table(frame, region):
-    """Crop table region with padding."""
+    """Crop table region with padding. Extra side padding for hero cards at table edges."""
     x, y, w, h = region
-    pad = 50
-    x1 = max(0, x - pad)
-    y1 = max(0, y - pad)
-    x2 = min(frame.shape[1], x + w + pad)
-    y2 = min(frame.shape[0], y + h + pad * 3)
+    pad_top = 50
+    pad_side = 120  # hero cards can extend well beyond the felt oval
+    pad_bottom = 180  # action buttons below the felt
+    x1 = max(0, x - pad_side)
+    y1 = max(0, y - pad_top)
+    x2 = min(frame.shape[1], x + w + pad_side)
+    y2 = min(frame.shape[0], y + h + pad_bottom)
     return frame[y1:y2, x1:x2], (x1, y1)
 
 
@@ -607,9 +778,10 @@ class OverlayWindow:
         # Probabilities line
         probs = rec["action_probs"]
         parts = []
+        short = {"FOLD": "F", "CHECK": "X", "CALL": "C", "BET": "B", "RAISE": "R"}
         for a in ["FOLD", "CHECK", "CALL", "BET", "RAISE"]:
             if a in probs and probs[a] > 0.01:
-                parts.append(f"{a[0]}:{probs[a]:.0%}")
+                parts.append(f"{short[a]}:{probs[a]:.0%}")
         self.probs_label.config(text="  ".join(parts))
 
     def update(self):
@@ -634,8 +806,15 @@ class Advisor:
         self.terminal = terminal
         self.debug = debug
 
-        # Load CFR strategy
+        # Load CFR strategy (table lookup — fast fallback)
         self.cfr = CFRLookup()
+
+        # Start real-time subgame solver (2s solve, leaves 4s to read + act)
+        self.solver = None
+        try:
+            self.solver = SubgameSolver(timeout_ms=2000)
+        except Exception as e:
+            print(f"[Advisor] Subgame solver not available: {e}")
 
         # Load YOLO model
         self.yolo_model = None
@@ -677,6 +856,11 @@ class Advisor:
         self.table_region = None
         self.positioned = False
 
+        # BB/hour tracking
+        self.session_start = time.time()
+        self.hands_seen = 0
+        self.hand_results = []  # list of (timestamp, hero_cards, action, result)
+
     def _detect_with_yolo(self, table_img):
         """Run YOLO detection on a table image."""
         if self.yolo_detect is None:
@@ -710,39 +894,43 @@ class Advisor:
 
             best_label = "??"
             best_score = -1
+            crop_h, crop_w = crop.shape[:2]
+            is_narrow = crop_w < crop_h * 0.55  # overlapping card
 
-            # Match against lab sprite templates
-            # For narrow cards (overlapping), only match the LEFT portion of the template
-            if hasattr(self, '_lab_templates'):
-                crop_h, crop_w = crop.shape[:2]
-                is_narrow = crop_w < crop_h * 0.55  # overlapping card
-
-                for label, tmpl in self._lab_templates.items():
-                    if is_narrow:
-                        # Crop template to same narrow proportion
-                        th, tw = tmpl.shape[:2]
-                        frac = crop_w / (crop_h * (tw / th))
-                        frac = min(1.0, max(0.3, frac))
-                        tmpl_narrow = tmpl[:, :int(tw * frac)]
-                        tmpl_resized = cv2.resize(tmpl_narrow, (crop_w, crop_h))
-                    else:
-                        tmpl_resized = cv2.resize(tmpl, (crop_w, crop_h))
-
-                    score = cv2.matchTemplate(crop, tmpl_resized, cv2.TM_CCOEFF_NORMED)[0][0]
-                    if score > best_score:
-                        best_score = score
-                        best_label = label
-
-            # For narrow cards or low scores, use card_id corner-based detection
-            if best_score < 0.5:
+            if is_narrow:
+                # Narrow/overlapping cards: use corner-based identification
+                # Full-card template matching is unreliable here (T vs Q etc.)
                 try:
                     from card_id import identify_card
-                    label, conf = identify_card(crop)
-                    if label and label != "??" and conf > 0.3:
+                    label, conf = identify_card(crop, is_narrow=True)
+                    if label and label != "??" and conf > 0.2:
                         best_label = label
                         best_score = conf
                 except Exception:
                     pass
+            else:
+                # Full cards: match against lab sprite templates
+                if hasattr(self, '_lab_templates'):
+                    for label, tmpl in self._lab_templates.items():
+                        # Skip narrow-specific templates for full cards
+                        if '_narrow' in label:
+                            continue
+                        tmpl_resized = cv2.resize(tmpl, (crop_w, crop_h))
+                        score = cv2.matchTemplate(crop, tmpl_resized, cv2.TM_CCOEFF_NORMED)[0][0]
+                        if score > best_score:
+                            best_score = score
+                            best_label = label
+
+                # Low score fallback: corner-based detection
+                if best_score < 0.5:
+                    try:
+                        from card_id import identify_card
+                        label, conf = identify_card(crop)
+                        if label and label != "??" and conf > 0.3:
+                            best_label = label
+                            best_score = conf
+                    except Exception:
+                        pass
 
             # Final fallback: card_identify on full image
             if best_score < 0.3 and self.card_identify:
@@ -803,22 +991,24 @@ class Advisor:
                 except Exception:
                     pass
 
-            # Fallback: detect action buttons by looking for red/green button colors
-            if not hero_turn and hero_cards:
-                h, w = table_img.shape[:2]
-                # Check bottom 15% of image for colored buttons
-                bottom = table_img[int(h * 0.85):, :]
-                hsv_bottom = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
-                # Red button (Fold)
-                red1 = cv2.inRange(hsv_bottom, np.array([0, 80, 80]), np.array([10, 255, 255]))
-                red2 = cv2.inRange(hsv_bottom, np.array([160, 80, 80]), np.array([180, 255, 255]))
-                # Green button (Check/Call)
-                green = cv2.inRange(hsv_bottom, np.array([35, 80, 80]), np.array([85, 255, 255]))
-                red_px = cv2.countNonZero(red1) + cv2.countNonZero(red2)
-                green_px = cv2.countNonZero(green)
-                # If significant colored pixels in bottom area, action buttons are present
-                if red_px > 200 or green_px > 200:
+            # Detect action buttons by looking for red/green button colors
+            facing_bet = False
+            h, w = table_img.shape[:2]
+            bottom = table_img[int(h * 0.85):, :]
+            hsv_bottom = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
+            # Red button (Fold) — present when facing a bet/raise
+            red1 = cv2.inRange(hsv_bottom, np.array([0, 80, 80]), np.array([10, 255, 255]))
+            red2 = cv2.inRange(hsv_bottom, np.array([160, 80, 80]), np.array([180, 255, 255]))
+            # Green button (Check/Call)
+            green = cv2.inRange(hsv_bottom, np.array([35, 80, 80]), np.array([85, 255, 255]))
+            red_px = cv2.countNonZero(red1) + cv2.countNonZero(red2)
+            green_px = cv2.countNonZero(green)
+            if red_px > 200 or green_px > 200:
+                if not hero_turn:
                     hero_turn = True
+                # Red button = Fold = facing a bet/raise
+                # Green only (no red) = Check available = not facing a bet
+                facing_bet = red_px > 200
 
             # Try to read pot from pot_text region
             pot = None
@@ -841,12 +1031,26 @@ class Advisor:
             # Count active players (player panels + card backs = opponents)
             num_opp = max(1, len(elements.get("card_back", [])))
 
+            # Detect position from dealer button location
+            # If dealer button is in bottom half of table → hero is BTN or close to it → IP
+            position = "IP"  # default
+            dealer_buttons = elements.get("dealer_button", [])
+            if dealer_buttons:
+                btn = dealer_buttons[0]
+                btn_y_pct = btn["y"] / h if h > 0 else 0
+                # Bottom 35% = near hero → IP (BTN/CO)
+                # Top 65% = away from hero → OOP (UTG/MP/blinds)
+                if btn_y_pct < 0.65:
+                    position = "OOP"
+
             return {
                 "hero_cards": hero_cards,
                 "board_cards": board_cards,
                 "hero_turn": hero_turn,
+                "facing_bet": facing_bet,
                 "pot": pot,
                 "num_opponents": num_opp,
+                "position": position,
             }
         else:
             # OCR fallback
@@ -855,35 +1059,153 @@ class Advisor:
                 result["num_opponents"] = 1
             return result
 
-    def _update_action_history(self, new_board, new_phase):
+    def _infer_action_history(self, state):
         """
-        Track action history for CFR key construction.
-        Since we cannot directly read action history from the screen,
-        we reset on new streets (separated by '-' in CFR keys).
-        For the initial version, we use empty history and rely on
-        the current street/bucket for lookup.
+        Infer the action context from visible UI elements.
+        Red fold button visible → facing a bet/raise.
+        No red button (only green check) → not facing a bet.
         """
-        if new_phase != self.last_phase:
-            # Street changed — append separator
+        board = state.get("board_cards", [])
+        phase = phase_from_board_count(len(board))
+        facing_bet = state.get("facing_bet", False)
+
+        # Street changed — start fresh for current street
+        if phase != self.last_phase:
+            # Save previous streets' history
             if self.action_history and not self.action_history.endswith("-"):
                 self.action_history += "-"
-            self.last_phase = new_phase
+            self.last_phase = phase
+
+        # Split previous streets from current
+        parts = self.action_history.rstrip("-").split("-") if self.action_history.rstrip("-") else []
+
+        if phase == "PREFLOP":
+            if facing_bet:
+                # Fold button visible → someone raised ahead
+                self.action_history = "rh"
+            else:
+                # No fold button → limped to hero or BB option
+                self.action_history = "c"
+        else:
+            # Postflop: preserve previous street history
+            prev = "-".join(parts[:-1]) if len(parts) > 1 else (parts[0] if parts else "")
+            if facing_bet:
+                current = "bh"  # facing a bet
+            else:
+                current = ""    # checked to hero
+            self.action_history = (prev + "-" + current).strip("-") if prev else current
+
+    def _format_solver_result(self, result, hero, board, phase, position):
+        """Convert solver response to the same format as CFRLookup.lookup()."""
+        strat = result.get("strategy", {})
+        # Aggregate into simple actions
+        simple = {}
+        for a in ["FOLD", "CHECK", "CALL"]:
+            if a in strat:
+                simple[a] = strat[a]
+        bet_sum = sum(strat.get(k, 0) for k in ["BET_HALF", "BET_POT", "BET_ALLIN"])
+        raise_sum = sum(strat.get(k, 0) for k in ["RAISE_HALF", "RAISE_POT", "RAISE_ALLIN"])
+        if bet_sum > 0.01:
+            simple["BET"] = bet_sum
+        if raise_sum > 0.01:
+            simple["RAISE"] = raise_sum
+
+        # Best action
+        best_action = max(simple, key=simple.get) if simple else "CHECK"
+        best_prob = simple.get(best_action, 0)
+
+        # Sizing description
+        rec_text = best_action
+        if best_action == "BET":
+            half = strat.get("BET_HALF", 0)
+            pot = strat.get("BET_POT", 0)
+            allin = strat.get("BET_ALLIN", 0)
+            if pot >= half and pot >= allin:
+                rec_text = "BET pot-size"
+            elif half >= pot:
+                rec_text = "BET half-pot"
+            else:
+                rec_text = "BET all-in"
+        elif best_action == "RAISE":
+            half = strat.get("RAISE_HALF", 0)
+            pot = strat.get("RAISE_POT", 0)
+            allin = strat.get("RAISE_ALLIN", 0)
+            if pot >= half and pot >= allin:
+                rec_text = "RAISE pot-size"
+            elif half >= pot:
+                rec_text = "RAISE half-pot"
+            else:
+                rec_text = "RAISE all-in"
+
+        # Hand strength for display
+        hero_dicts = [card_str_to_dict(c) for c in hero]
+        board_dicts = [card_str_to_dict(c) for c in board]
+        hero_dicts = [c for c in hero_dicts if c]
+        board_dicts = [c for c in board_dicts if c]
+        strength = evaluate_hand_strength(hero_dicts, board_dicts, phase)
+        bucket = strength_to_bucket(strength, 50)
+
+        hero_ints = [card_str_to_int(c) for c in hero]
+        board_ints = [card_str_to_int(c) for c in board]
+        hero_ints = [x for x in hero_ints if x is not None]
+        board_ints = [x for x in board_ints if x is not None]
+        nn_eq = nn_hand_strength(hero_ints, board_ints, 1) if len(hero_ints) == 2 else None
+
+        solve_ms = result.get("solveTimeMs", 0)
+        cached = result.get("cached", False)
+        tag = f" [solver {solve_ms}ms]" if not cached else " [cached]"
+
+        return {
+            "action_probs": simple,
+            "recommended": rec_text,
+            "rec_prob": best_prob,
+            "equity": strength,
+            "nn_equity": nn_eq,
+            "info_key": f"solver:{phase}:{bucket}{tag}",
+            "bucket": bucket,
+            "fallback": False,
+        }
 
     def _get_recommendation(self, state):
-        """Get CFR recommendation from the current game state."""
+        """Get recommendation: try real-time solver first, fall back to table lookup."""
         hero = state["hero_cards"]
         board = state["board_cards"]
-        pot = state.get("pot") or 0.10  # default small pot if unknown
+        pot = state.get("pot") or 0.10
         num_opp = state.get("num_opponents", 1)
+        facing_bet = state.get("facing_bet", False)
 
-        # Determine phase
         phase = phase_from_board_count(len(board))
-        self._update_action_history(board, phase)
+        self._infer_action_history(state)
+        position = state.get("position", "IP")
 
-        # Estimate stack (default to 100bb if unknown)
-        stack = 10.0  # $10 default for micro stakes
-        bb = 0.10     # $0.05/$0.10
+        stack = 10.0
+        bb = 0.10
 
+        # Tier 1: Real-time subgame solver
+        if self.solver and len(hero) >= 2:
+            try:
+                result = self.solver.solve(
+                    hero_cards=hero,
+                    board_cards=board,
+                    pot=pot,
+                    hero_stack=stack,
+                    opp_stack=stack,
+                    street=phase,
+                    hero_position=position,
+                    action_history=self.action_history.rstrip("-"),
+                    facing_bet=facing_bet,
+                )
+                if result and result.get("strategy") and len(result["strategy"]) > 0:
+                    if self.debug:
+                        ms = result.get("solveTimeMs", 0)
+                        cached = result.get("cached", False)
+                        print(f"[solver] {ms}ms cached={cached} strat={result['strategy']}")
+                    return self._format_solver_result(result, hero, board, phase, position)
+            except Exception as e:
+                if self.debug:
+                    print(f"[solver] error: {e}")
+
+        # Tier 2: Pre-trained table lookup
         rec = self.cfr.lookup(
             hero_cards_str=hero,
             board_cards_str=board,
@@ -892,8 +1214,39 @@ class Advisor:
             bb=bb,
             action_history_str=self.action_history.rstrip("-"),
             num_opponents=num_opp,
+            position=position,
         )
         return rec
+
+    def _update_session_display(self):
+        """Update overlay title with session stats."""
+        elapsed = time.time() - self.session_start
+        mins = int(elapsed / 60)
+        if self.overlay:
+            self.overlay.title_label.config(
+                text=f"POKER ADVISOR  |  {self.hands_seen} hands  {mins}m"
+            )
+        if self.terminal:
+            print(f"[Session] {self.hands_seen} hands in {mins}m")
+
+    def _log_recommendation(self, hero, board, state, rec):
+        """Log recommendation to file for post-session review."""
+        import time
+        log_path = os.path.join(os.path.dirname(__file__), "data", "advisor_log.jsonl")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        entry = {
+            "timestamp": time.time(),
+            "time": time.strftime("%H:%M:%S"),
+            "hero": hero,
+            "board": board,
+            "phase": "PREFLOP" if not board else ("FLOP" if len(board) == 3 else ("TURN" if len(board) == 4 else "RIVER")),
+            "recommended_action": rec.get("action", ""),
+            "action_probs": {k: round(v, 3) for k, v in rec.get("probs", {}).items() if v > 0.01},
+            "equity": rec.get("equity", 0),
+            "bucket": rec.get("bucket", 0),
+        }
+        with open(log_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
 
     def _print_recommendation(self, state, rec):
         """Print recommendation to terminal."""
@@ -979,16 +1332,17 @@ class Advisor:
                     turn = state.get("hero_turn", False)
                     print(f"[debug] hero={hero} board={board} turn={turn}")
 
-                # 5. Check if hero's turn
-                if state.get("hero_turn") and len(state.get("hero_cards", [])) >= 2:
-                    hero = state["hero_cards"]
-                    board = state.get("board_cards", [])
+                # 5. Update overlay whenever state changes
+                hero = state.get("hero_cards", [])
+                board = state.get("board_cards", [])
+                hero_turn = state.get("hero_turn", False)
 
-                    # Only re-calculate if state changed
-                    if hero != self.prev_hero or board != self.prev_board or not self.prev_hero_turn:
+                if len(hero) >= 2:
+                    # State changed? Recalculate
+                    if hero != self.prev_hero or board != self.prev_board or hero_turn != self.prev_hero_turn:
                         self.prev_hero = hero
                         self.prev_board = board
-                        self.prev_hero_turn = True
+                        self.prev_hero_turn = hero_turn
 
                         # Get recommendation
                         rec = self._get_recommendation(state)
@@ -997,18 +1351,23 @@ class Advisor:
                                 self.overlay.show_recommendation(hero, board, rec)
                             if self.terminal or self.debug:
                                 self._print_recommendation(state, rec)
+                            # Log recommendation for post-session review
+                            if hero_turn:
+                                self._log_recommendation(hero, board, state, rec)
                 else:
-                    if self.prev_hero_turn:
-                        # Was hero's turn, now it's not — reset
+                    if self.prev_hero:
+                        # Had hero cards, now gone — new hand
                         self.prev_hero_turn = False
                         if self.overlay:
-                            self.overlay.show_waiting("Not your turn")
+                            self.overlay.show_waiting("Waiting...")
 
                     # New hand detection: if board changed to empty, reset history
-                    board = state.get("board_cards", [])
                     if not board and self.prev_board:
                         self.action_history = ""
                         self.last_phase = "PREFLOP"
+                        self.hands_seen += 1
+                        self._update_session_display()
+                    self.prev_hero = hero
                     self.prev_board = board
 
                 frame_count += 1
@@ -1023,6 +1382,12 @@ class Advisor:
                 else:
                     print(f"\n[Error] {e}")
                 time.sleep(1)
+
+        if self.solver:
+            try:
+                self.solver.quit()
+            except Exception:
+                pass
 
         if self.overlay:
             try:

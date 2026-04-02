@@ -16,8 +16,9 @@
 const fs = require("fs");
 const path = require("path");
 const { evaluateHandStrength, strengthToBucket, makeInfoSetKey, encodeAction } = require("./abstraction");
+const { adjustStrategy, getAdjustments } = require("../player-profiler");
 
-const NUM_BUCKETS = 20;
+const NUM_BUCKETS = 50;
 
 /**
  * Create a CFR strategy function that can be used as a bot strategy.
@@ -48,9 +49,23 @@ function createCFRStrategy(strategyPath) {
     const board = hand.board || [];
     const phase = hand.phase;
 
-    // Card bucket
+    // Position: map 6-max seat to IP/OOP relative to dealer
+    const dealer = hand.dealer ?? 0;
+    const numSeats = Object.keys(state.table.seats).length;
+    // Seats relative to dealer: BTN=0, SB=1, BB=2, UTG=3, MP=4, CO=5 (in 6-max)
+    const relPos = ((seat - dealer) % numSeats + numSeats) % numSeats;
+    // IP positions: BTN(0), CO(5) — act last, play wider
+    // OOP positions: SB(1), BB(2), UTG(3), MP(4) — act first, play tighter
+    const isIP = relPos === 0 || relPos === numSeats - 1; // BTN or CO
+    const position = isIP ? "IP" : "OOP";
+
+    // Card bucket — adjust for position (IP plays wider preflop)
     const strength = evaluateHandStrength(cards, board, phase);
-    const bucket = strengthToBucket(strength, NUM_BUCKETS);
+    let bucket = strengthToBucket(strength, NUM_BUCKETS);
+    if (phase === "PREFLOP") {
+      if (isIP) bucket = Math.min(NUM_BUCKETS - 1, bucket + 5); // BTN/CO: +5 buckets wider
+      else if (relPos === 3) bucket = Math.max(0, bucket - 3);   // UTG: -3 buckets tighter
+    }
 
     // Stack bucket
     const stack = seatState.stack || 0;
@@ -59,16 +74,64 @@ function createCFRStrategy(strategyPath) {
     const stackBucket = bbs < 30 ? 0 : bbs < 80 ? 1 : 2;
 
     // Action history: encode the hand's action sequence
-    // Filter to only player actions (not blinds)
-    const actionHistory = (hand.actions || [])
-      .filter(a => a.type !== "BLIND_SB" && a.type !== "BLIND_BB")
-      .map(a => encodeAction(a.type))
-      .join("");
+    // Map 6-max actions to heads-up CFR equivalents
+    const rawActions = (hand.actions || [])
+      .filter(a => a.type !== "BLIND_SB" && a.type !== "BLIND_BB" && a.seat !== seat);
 
-    // Try with stack bucket first, fall back to without
-    const infoSetKeyStack = `${phase}:${bucket}:s${stackBucket}:${actionHistory}`;
-    const infoSetKeyNoStack = makeInfoSetKey(bucket, actionHistory);
-    const infoSetKey = strategyTable[infoSetKeyStack] ? infoSetKeyStack : infoSetKeyNoStack;
+    // Build simplified action prefix: what happened BEFORE hero's current decision
+    // In heads-up CFR: "c" = limp/call, "rh" = raise half, etc.
+    // For 6-max, collapse to: limps = "c", raises = "rh", 3bets = "rhrh"
+    let actionHistory = "";
+    let hasRaise = false;
+    for (const a of rawActions) {
+      if (a.type === "FOLD") continue; // folds don't affect hero's decision
+      if (a.type === "CALL" && !hasRaise) {
+        actionHistory += "c"; // limp
+      } else if (a.type === "CALL" && hasRaise) {
+        actionHistory += "c"; // cold-call of raise
+      } else if (a.type === "RAISE" || a.type === "BET") {
+        actionHistory += "rh"; // any raise mapped to raise-half
+        hasRaise = true;
+      } else if (a.type === "CHECK") {
+        actionHistory += "k";
+      }
+    }
+    // Add street separators for postflop
+    // The CFR key uses "-" between streets
+    if (phase !== "PREFLOP" && hand.actions) {
+      // Rebuild with street awareness
+      const streetActions = { PREFLOP: "", FLOP: "", TURN: "", RIVER: "" };
+      let currentStreet = "PREFLOP";
+      let streetHasRaise = false;
+      for (const a of hand.actions) {
+        if (a.type === "BLIND_SB" || a.type === "BLIND_BB") continue;
+        if (a.type === "DEAL_FLOP") { currentStreet = "FLOP"; streetHasRaise = false; continue; }
+        if (a.type === "DEAL_TURN") { currentStreet = "TURN"; streetHasRaise = false; continue; }
+        if (a.type === "DEAL_RIVER") { currentStreet = "RIVER"; streetHasRaise = false; continue; }
+        if (a.seat === seat) continue; // only opponent actions
+        if (a.type === "FOLD") continue;
+        if (a.type === "CALL" || a.type === "CHECK") {
+          streetActions[currentStreet] += a.type === "CHECK" ? "k" : "c";
+        } else if (a.type === "RAISE" || a.type === "BET") {
+          streetActions[currentStreet] += "rh";
+          streetHasRaise = true;
+        }
+      }
+      const parts = [];
+      for (const st of ["PREFLOP", "FLOP", "TURN", "RIVER"]) {
+        if (st === phase) break; // don't include current street's completed actions
+        if (streetActions[st]) parts.push(streetActions[st]);
+      }
+      // Add current street actions
+      actionHistory = parts.length > 0 ? parts.join("-") + "-" + streetActions[phase] : streetActions[phase];
+    }
+
+    // Try position-aware key first, then stack-only, then basic
+    const keyWithPos = `${phase}:${bucket}:s${stackBucket}:${position}:${actionHistory}`;
+    const keyNoPos = `${phase}:${bucket}:s${stackBucket}:${actionHistory}`;
+    const keyBasic = makeInfoSetKey(bucket, actionHistory);
+    const infoSetKey = strategyTable[keyWithPos] ? keyWithPos
+      : strategyTable[keyNoPos] ? keyNoPos : keyBasic;
 
     // Look up strategy
     const strategy = strategyTable[infoSetKey];
@@ -78,17 +141,21 @@ function createCFRStrategy(strategyPath) {
       return fallbackStrategy(actions, strength, callAmount, minBet, minRaise, maxRaise, rand);
     }
 
-    // Map CFR action names to engine action names
-    // CFR uses: FOLD, CHECK, CALL, BET_HALF, BET_POT, BET_ALLIN, RAISE_HALF, RAISE_POT, RAISE_ALLIN
-    // Engine uses: FOLD, CHECK, CALL, BET, RAISE
+    // Map CFR action names to engine action names and apply opponent adjustments
+    let adjustedStrategy = strategy;
+    const oppType = state.opponentType || null;
+    if (oppType && oppType !== "TAG" && oppType !== "UNKNOWN") {
+      adjustedStrategy = adjustStrategy(strategy, getAdjustments(oppType));
+    }
+
     const actionProbs = [];
     for (const engineAction of actions) {
       let prob = 0;
-      if (engineAction === "FOLD") prob = strategy["FOLD"] || 0;
-      else if (engineAction === "CHECK") prob = strategy["CHECK"] || 0;
-      else if (engineAction === "CALL") prob = strategy["CALL"] || 0;
-      else if (engineAction === "BET") prob = (strategy["BET_HALF"] || 0) + (strategy["BET_POT"] || 0) + (strategy["BET_ALLIN"] || 0);
-      else if (engineAction === "RAISE") prob = (strategy["RAISE_HALF"] || 0) + (strategy["RAISE_POT"] || 0) + (strategy["RAISE_ALLIN"] || 0);
+      if (engineAction === "FOLD") prob = adjustedStrategy["FOLD"] || 0;
+      else if (engineAction === "CHECK") prob = adjustedStrategy["CHECK"] || 0;
+      else if (engineAction === "CALL") prob = adjustedStrategy["CALL"] || 0;
+      else if (engineAction === "BET") prob = (adjustedStrategy["BET_HALF"] || 0) + (adjustedStrategy["BET_POT"] || 0) + (adjustedStrategy["BET_ALLIN"] || 0);
+      else if (engineAction === "RAISE") prob = (adjustedStrategy["RAISE_HALF"] || 0) + (adjustedStrategy["RAISE_POT"] || 0) + (adjustedStrategy["RAISE_ALLIN"] || 0);
       actionProbs.push({ action: engineAction, prob });
     }
 

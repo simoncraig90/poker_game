@@ -166,8 +166,11 @@ class CFRTrainer {
     }
 
     // Update regrets: regret[a] += opponent_reach * (value[a] - node_value)
-    // The opponent reach probability is the counterfactual weight.
-    const opponentReach = reachProbs[1 - traversingPlayer];
+    // Counterfactual reach = product of ALL other players' reach probabilities
+    let opponentReach = 1;
+    for (let i = 0; i < reachProbs.length; i++) {
+      if (i !== traversingPlayer) opponentReach *= reachProbs[i];
+    }
 
     if (!this.regretSum.has(infoSet)) {
       this.regretSum.set(infoSet, {});
@@ -225,19 +228,18 @@ class CFRTrainer {
   train(numIterations, options = {}) {
     const logEvery = options.logEvery || 1000;
     const onProgress = options.onProgress || null;
+    const numPlayers = this.game.NUM_PLAYERS || 2;
 
     for (let i = 0; i < numIterations; i++) {
-      // Sample random cards (external sampling of chance node)
-      const deal = this.game.dealForIteration();
-      const state = this.game.createInitialState(deal.p0Cards, deal.p1Cards, deal.board);
-
-      // Traverse for both players
-      this.cfr(state, 0, [1.0, 1.0]);
-
-      // Re-deal for player 1 traversal (independent sample)
-      const deal2 = this.game.dealForIteration();
-      const state2 = this.game.createInitialState(deal2.p0Cards, deal2.p1Cards, deal2.board);
-      this.cfr(state2, 1, [1.0, 1.0]);
+      // Traverse for each player with independent card samples
+      for (let p = 0; p < numPlayers; p++) {
+        const deal = this.game.dealForIteration();
+        const state = numPlayers === 2
+          ? this.game.createInitialState(deal.p0Cards, deal.p1Cards, deal.board)
+          : this.game.createInitialState(deal.playerCards, deal.board);
+        const reachProbs = new Array(numPlayers).fill(1.0);
+        this.cfr(state, p, reachProbs);
+      }
 
       this.iterations++;
 

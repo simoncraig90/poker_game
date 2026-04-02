@@ -60,6 +60,67 @@ def _load_templates():
 # Load once at import
 _ranks, _suits, _full, _hero_ranks = _load_templates()
 
+# Load full screen_cards templates (captured from lab browser) for direct matching
+_screen_cards = {}  # "Ah" -> img, "Ah_narrow" -> img
+
+def _load_screen_cards():
+    """Load screen_cards templates for full-card matching."""
+    screen_dir = os.path.join(os.path.dirname(__file__), "templates", "screen_cards")
+    if not os.path.isdir(screen_dir):
+        return
+    for f in os.listdir(screen_dir):
+        if not f.endswith('.png'):
+            continue
+        label = f.replace('.png', '')
+        img = cv2.imread(os.path.join(screen_dir, f))
+        if img is not None:
+            _screen_cards[label] = img
+
+_load_screen_cards()
+
+
+def _match_screen_card(card_img, is_narrow=False):
+    """Match card crop against screen_cards templates using rank region only.
+    Focuses on top 45% of card where rank character lives — avoids noise from suit pips."""
+    if not _screen_cards:
+        return "??", -1.0
+    crop_h, crop_w = card_img.shape[:2]
+    # Extract rank region: top 45% of card
+    rank_h = max(10, int(crop_h * 0.45))
+    rank_crop = card_img[0:rank_h, :]
+
+    best_label = "??"
+    best_score = -1
+
+    for label, tmpl in _screen_cards.items():
+        has_narrow_tag = '_narrow' in label
+        th, tw = tmpl.shape[:2]
+
+        if is_narrow and not has_narrow_tag:
+            # Crop full template to same width proportion as narrow card
+            frac = crop_w / (crop_h * (tw / th))
+            frac = min(1.0, max(0.3, frac))
+            tmpl_work = tmpl[:, :int(tw * frac)]
+        elif not is_narrow and has_narrow_tag:
+            continue
+        else:
+            tmpl_work = tmpl
+
+        # Extract same rank region from template
+        tmpl_rank_h = max(10, int(tmpl_work.shape[0] * 0.45))
+        tmpl_rank = tmpl_work[0:tmpl_rank_h, :]
+
+        # Resize template rank region to match crop rank region
+        tmpl_rank_resized = cv2.resize(tmpl_rank, (rank_crop.shape[1], rank_crop.shape[0]))
+        score = cv2.matchTemplate(rank_crop, tmpl_rank_resized, cv2.TM_CCOEFF_NORMED)[0][0]
+
+        clean_label = label.replace('_narrow', '')
+        if score > best_score:
+            best_score = score
+            best_label = clean_label
+
+    return best_label, float(best_score)
+
 
 def _extract_corner(card_img):
     """Extract and normalize the top-left corner of a card image."""
@@ -195,34 +256,29 @@ def identify_card(card_img, is_narrow=False):
     """
     Identify a card from its cropped image using template matching.
     Returns (label, confidence) where label is like 'Ah', 'Ks', etc.
-    confidence is 0-1 (average of rank and suit match scores).
-    is_narrow: True for overlapping hero cards (uses hero-specific templates).
+
+    Primary: full-card matching against screen_cards templates (pixel-accurate for lab).
+    Fallback: corner-based rank matching + suit classification (for PS or missing templates).
     """
+    # Primary: match full card against screen_cards templates
+    screen_label, screen_score = _match_screen_card(card_img, is_narrow=is_narrow)
+    if screen_score > 0.5:
+        return screen_label, screen_score
+
+    # Fallback: corner-based matching (for PS or when screen_cards don't match)
     corner = _extract_corner(card_img)
+    rank, rank_score = _match_rank(corner, use_hero_templates=True)
+    rank_r, score_r = _match_rank(corner, use_hero_templates=False)
+    if score_r > rank_score:
+        rank, rank_score = rank_r, score_r
 
-    if is_narrow:
-        # For narrow/overlapping cards, use hero-specific rank templates
-        rank, rank_score = _match_rank(corner, use_hero_templates=True)
-        # Use solidity-based suit classification on the full card image
-        suit, suit_score = _classify_suit(card_img)
-        label = rank + suit
-        confidence = (rank_score + suit_score) / 2
-        return label, confidence
-
-    # Match rank via templates
-    rank, rank_score = _match_rank(corner)
-
-    # Classify suit via color + solidity (more robust than template matching)
     suit, suit_score = _classify_suit(card_img)
-
     label = rank + suit
     confidence = (rank_score + suit_score) / 2
 
-    # Full template match as fallback only when rank is uncertain
-    if rank_score < 0.5:
-        full_label, full_score = _match_full(corner)
-        if full_score > confidence:
-            return full_label, full_score
+    # Use screen_cards result if it beat the corner-based result
+    if screen_score > confidence:
+        return screen_label, screen_score
 
     return label, confidence
 
@@ -251,6 +307,10 @@ def identify_cards(image, card_boxes):
                 is_narrow = True
 
         crop = image[y1:y2, x1:x2]
+        crop_h, crop_w = crop.shape[:2]
+        # Also detect narrow by aspect ratio (color detection may pre-crop)
+        if not is_narrow and crop_h > 0 and crop_w < crop_h * 0.55:
+            is_narrow = True
         label, conf = identify_card(crop, is_narrow=is_narrow)
         results.append((label, conf))
 

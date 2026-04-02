@@ -13,6 +13,10 @@ let showdownReveals = null;     // current hand's SHOWDOWN_REVEAL data
 let pendingResults = [];        // accumulated HAND_RESULT events for current hand
 let showdownBoard = null;       // board cards cached at showdown (persists until next HAND_START)
 
+// ── BB/Hour tracking ──────────────────────────────────────────────────────
+const BB_CENTS = 10;  // $0.10
+const heroStats = { startTime: Date.now(), initialBuyIn: 0, totalBuyIn: 0, hands: 0, prevStack: 0 };
+
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
 function connect() {
@@ -38,6 +42,14 @@ function connect() {
         showRecoveryBanner(msg);
       }
 
+      // Init bb tracking if hero already seated
+      if (state.seats[0] && state.seats[0].status === "OCCUPIED") {
+        heroStats.startTime = Date.now();
+        heroStats.initialBuyIn = state.seats[0].stack;
+        heroStats.totalBuyIn = state.seats[0].stack;
+        heroStats.prevStack = state.seats[0].stack;
+        heroStats.hands = 0;
+      }
       render();
       // Auto-seat players if table is empty
       autoSeatIfEmpty();
@@ -140,12 +152,25 @@ function handleEvents(events) {
     }
     if (e.type === "HAND_END") {
       showResultBannerMulti(pendingResults, showdownReveals);
+      // Track bb/hour for hero
+      if (state && state.seats[0] && state.seats[0].status === "OCCUPIED") {
+        heroStats.hands++;
+        const stack = state.seats[0].stack;
+        // Detect rebuy: stack jumped way above previous
+        if (heroStats.prevStack > 0 && stack > heroStats.prevStack + 500) {
+          heroStats.totalBuyIn += (stack - heroStats.prevStack);
+        }
+        heroStats.prevStack = stack;
+        updateBBHud();
+      }
       // Auto-rebuy if hero (seat 0) is short-stacked
       setTimeout(() => {
         if (state && state.seats[0] && state.seats[0].status === "OCCUPIED" && state.seats[0].stack < 20) {
+          const rebuyAmount = 1000;
+          heroStats.totalBuyIn += rebuyAmount;
           // Leave and rejoin with full buy-in
           send("LEAVE_TABLE", { seat: 0 }, () => {
-            send("SEAT_PLAYER", { seat: 0, name: "Skurj_poker", buyIn: 1000, country: "GB" });
+            send("SEAT_PLAYER", { seat: 0, name: "Skurj_poker", buyIn: rebuyAmount, country: "GB" });
           });
         }
       }, 1000);
@@ -187,6 +212,11 @@ function seatClick(seatIndex) {
   if (state.seats[seatIndex].status !== "EMPTY") return;
 
   // Auto-seat with default name and $10 buy-in (like PS)
+  heroStats.startTime = Date.now();
+  heroStats.initialBuyIn = 1000;
+  heroStats.totalBuyIn = 1000;
+  heroStats.hands = 0;
+  heroStats.prevStack = 1000;
   send("SEAT_PLAYER", { seat: seatIndex, name: "Skurj_poker", buyIn: 1000, country: "GB" }, () => {
     // Auto-deal after sitting down if enough players
     setTimeout(() => {
@@ -224,6 +254,21 @@ function autoSeatIfEmpty() {
         });
       }
     });
+  }
+}
+
+function updateBBHud() {
+  if (!state || !state.seats[0] || state.seats[0].status === "EMPTY") return;
+  const stack = state.seats[0].stack;
+  const profitCents = stack - heroStats.totalBuyIn;
+  const profitBB = profitCents / BB_CENTS;
+  const hoursElapsed = (Date.now() - heroStats.startTime) / 3600000;
+  const bbPerHour = hoursElapsed > 0.001 ? profitBB / hoursElapsed : 0;
+  const sign = profitBB >= 0 ? "+" : "";
+  const el = document.getElementById("bb-hud");
+  if (el) {
+    el.textContent = `${sign}${profitBB.toFixed(1)} bb  (${sign}${bbPerHour.toFixed(1)} bb/hr)  ${heroStats.hands} hands`;
+    el.style.color = profitBB >= 0 ? "#4caf50" : "#ef5350";
   }
 }
 

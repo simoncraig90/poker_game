@@ -8,7 +8,8 @@
  *
  * Protocol:
  *   Main -> Worker: { type: 'init', gameMode: 'full'|'preflop' }
- *   Main -> Worker: { type: 'run', iterations: N, regretSum: {...}, strategySum: {...} }
+ *   Main -> Worker: { type: 'run', iterations: N, progressEvery: M, regretSum: {...}, strategySum: {...} }
+ *   Worker -> Main: { type: 'progress', iterations: N }  (periodic, every progressEvery iters)
  *   Worker -> Main: { type: 'done', regretDelta: {...}, strategyDelta: {...}, iterations: N }
  *   Main -> Worker: { type: 'exit' }
  */
@@ -39,9 +40,16 @@ parentPort.on("message", (msg) => {
       };
       trainer.importTables(baseline);
 
-      // Run iterations locally
+      // Run iterations locally, sending progress updates periodically
       const numIters = msg.iterations || 1000;
-      trainer.train(numIters);
+      const progressEvery = msg.progressEvery || 1000;
+
+      trainer.train(numIters, {
+        logEvery: progressEvery,
+        onProgress(iter) {
+          parentPort.postMessage({ type: "progress", iterations: iter });
+        },
+      });
 
       // Compute deltas: (current table values) - (baseline values)
       const regretDelta = {};
@@ -93,7 +101,8 @@ parentPort.on("message", (msg) => {
     }
 
     case "exit": {
-      process.exit(0);
+      // Graceful shutdown — close the port so the thread can exit
+      parentPort.close();
       break;
     }
   }

@@ -20,7 +20,7 @@ const {
   encodeAction,
 } = require("./abstraction");
 
-const NUM_BUCKETS = 20;
+const NUM_BUCKETS = 50;
 
 // Starting stack in BB. Effective stack for the game.
 const STARTING_STACK = 100;
@@ -499,13 +499,18 @@ function getInfoSetKey(state) {
   const bucket = strengthToBucket(strength, NUM_BUCKETS);
   const stackBucket = getStackBucket(stack, state.bb || 10);
 
+  // Position: in heads-up, p0=SB (IP postflop), p1=BB (OOP postflop)
+  // For 6-max compatibility, state.position can override (IP/OOP/BTN/CO/etc.)
+  const pos = state.position || (player === 0 ? "IP" : "OOP");
+
   // Build full history: previous streets + current street
   let fullHistory = state.previousStreets || "";
   if (state.streetHistory) {
     fullHistory = fullHistory ? fullHistory + "-" + state.streetHistory : state.streetHistory;
   }
 
-  return `${state.street}:${bucket}:s${stackBucket}:${fullHistory}`;
+  // New format includes position; fall back to old format if needed during lookup
+  return `${state.street}:${bucket}:s${stackBucket}:${pos}:${fullHistory}`;
 }
 
 // ── Deal random cards for one MCCFR iteration ───────────────────────────

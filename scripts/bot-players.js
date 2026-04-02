@@ -449,6 +449,50 @@ let msgId = 0;
 let ws = null;
 let seatedBots = new Set();
 
+// ── BB/hour tracking ────────────────────────────────────────────────────
+const stats = {};  // seat -> { name, buyIn, hands, startTime }
+
+function initStats(seat, name, buyIn) {
+  stats[seat] = { name, buyIn, totalBuyIn: buyIn, hands: 0, startTime: Date.now() };
+}
+
+function updateStats(newState) {
+  if (!newState || !newState.seats) return;
+  for (const seat of [...BOT_SEATS, HUMAN_SEAT]) {
+    const s = newState.seats[seat];
+    if (!s || s.status === "EMPTY") continue;
+    if (!stats[seat]) {
+      initStats(seat, s.player?.name || `Seat ${seat}`, s.stack);
+    }
+  }
+}
+
+function printStats() {
+  const now = Date.now();
+  const lines = [];
+  for (const seat of [HUMAN_SEAT, ...BOT_SEATS]) {
+    const st = stats[seat];
+    if (!st || !state?.seats[seat]) continue;
+    const s = state.seats[seat];
+    if (s.status === "EMPTY") continue;
+    const stack = s.stack;
+    const profitCents = stack - st.totalBuyIn;
+    const profitBB = profitCents / BB;
+    const hoursElapsed = (now - st.startTime) / 3600000;
+    const bbPerHour = hoursElapsed > 0 ? profitBB / hoursElapsed : 0;
+    const tag = seat === HUMAN_SEAT ? " (HERO)" : "";
+    lines.push(`  Seat ${seat} ${st.name}${tag}: ${profitBB >= 0 ? "+" : ""}${profitBB.toFixed(1)} bb (${bbPerHour >= 0 ? "+" : ""}${bbPerHour.toFixed(1)} bb/hr) | ${st.hands} hands | $${(stack / 100).toFixed(2)}`);
+  }
+  if (lines.length > 0) {
+    console.log("\n── BB/Hour Stats ──────────────────────────────────");
+    lines.forEach(l => console.log(l));
+    console.log("───────────────────────────────────────────────────\n");
+  }
+}
+
+// Track rebuys: if stack increases between hands more than pot won, it's a rebuy
+let prevStacks = {};
+
 function send(cmd, payload) {
   msgId++;
   ws.send(JSON.stringify({ id: `bot-${msgId}`, cmd, payload: payload || {} }));
@@ -623,6 +667,9 @@ function connect() {
       // Seat any missing bots
       seatBots();
 
+      // Init stats for already-seated players
+      updateStats(state);
+
       // If there's an active hand and it's a bot's turn, act
       if (state.hand && state.hand.actionSeat !== null) {
         handleState(state);
@@ -649,11 +696,34 @@ function connect() {
       if (hasSeat) {
         msg.events.filter(e => e.type === "SEAT_PLAYER").forEach(e => {
           seatedBots.add(e.seat);
+          initStats(e.seat, e.player, e.buyIn || 1000);
           console.log(`  Seated ${e.player} at seat ${e.seat}`);
         });
       }
 
       if (hasHandEnd) {
+        // Track hands and rebuys for bb/hour
+        for (const seat of [HUMAN_SEAT, ...BOT_SEATS]) {
+          if (stats[seat]) stats[seat].hands++;
+        }
+        // Detect rebuys: stack jumped above previous + pot won
+        if (state?.seats) {
+          for (const seat of [HUMAN_SEAT, ...BOT_SEATS]) {
+            const s = state.seats[seat];
+            if (!s || s.status === "EMPTY" || !stats[seat]) continue;
+            const prev = prevStacks[seat];
+            if (prev !== undefined && s.stack > prev + (state.hand?.pot || 0) + 100) {
+              const rebuyAmount = s.stack - prev;
+              stats[seat].totalBuyIn += rebuyAmount;
+            }
+            prevStacks[seat] = s.stack;
+          }
+        }
+        // Print stats every 10 hands
+        const totalHands = stats[BOT_SEATS[0]]?.hands || 0;
+        if (totalHands > 0 && totalHands % 10 === 0) {
+          printStats();
+        }
         console.log("  Hand complete");
       }
 
@@ -674,3 +744,9 @@ function connect() {
 
 connect();
 console.log("Press Ctrl+C to stop bots.");
+
+process.on("SIGINT", () => {
+  console.log("\nFinal stats:");
+  printStats();
+  process.exit(0);
+});

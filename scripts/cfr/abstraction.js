@@ -48,12 +48,59 @@ function evaluateHandStrength(cards, board, phase) {
 
   // Postflop: augment with board hits
   const boardRanks = board.map(c => c.rank);
+  // Count occurrences of each rank on the board
+  const boardRankCounts = {};
+  for (const r of boardRanks) boardRankCounts[r] = (boardRankCounts[r] || 0) + 1;
+
+  const r1BoardCount = boardRankCounts[r1] || 0;
+  const r2BoardCount = boardRankCounts[r2] || 0;
+
   let post = pf;
-  if (boardRanks.includes(r1)) post += 0.25;
-  if (boardRanks.includes(r2)) post += 0.20;
-  if (boardRanks.includes(r1) && boardRanks.includes(r2) && !pair) post += 0.20;
-  if (pair && boardRanks.includes(r1)) post += 0.35;
-  if (pair && boardRanks.length > 0 && r1 > Math.max(...boardRanks)) post += 0.15;
+
+  if (pair) {
+    // Pocket pair
+    if (r1BoardCount >= 2) {
+      // Quads: pocket pair + 2 on board
+      post += 0.95;
+    } else if (r1BoardCount === 1) {
+      // Set (pocket pair + one on board)
+      post += 0.70;
+      // Full house: set + board has another pair
+      const boardHasOtherPair = Object.entries(boardRankCounts).some(([rank, cnt]) => cnt >= 2 && Number(rank) !== r1);
+      if (boardHasOtherPair) post += 0.15; // full house
+    } else {
+      // Overpair / underpair
+      if (boardRanks.length > 0 && r1 > Math.max(...boardRanks)) {
+        post += 0.30; // overpair
+      } else {
+        post += 0.15; // underpair
+      }
+    }
+  } else {
+    // Unpaired hole cards
+    const hit1 = r1BoardCount > 0;
+    const hit2 = r2BoardCount > 0;
+
+    if (hit1 && r1BoardCount >= 2) {
+      // Trips: hero card matches a board pair (e.g., hero 8x, board 8 8 Q)
+      post += 0.70;
+      // Check for full house: trips + other hole card pairs with board
+      if (hit2) post += 0.20; // full house
+    } else if (hit2 && r2BoardCount >= 2) {
+      // Trips with second card matching board pair
+      post += 0.70;
+      if (hit1) post += 0.20; // full house
+    } else if (hit1 && hit2) {
+      // Two pair (both cards hit board, no board-pair overlap)
+      post += 0.55;
+    } else if (hit1) {
+      // One pair with r1 (higher cards get more credit already via pf)
+      post += 0.25;
+    } else if (hit2) {
+      // One pair with r2
+      post += 0.20;
+    }
+  }
 
   // Flush draw detection
   const allSuits = [...cards, ...board].map(c => c.suit);

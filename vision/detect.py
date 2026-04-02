@@ -186,8 +186,10 @@ def find_cards_by_color(image):
     # Sort left to right
     all_cards.sort(key=lambda c: c["cx"])
 
-    # Separate board cards (center of table, 25-55% height) from hero cards (bottom, >65% height)
-    board = [c for c in all_cards if c["cy"] < h * 0.55 and c["cy"] > h * 0.15]
+    # Separate board cards (center of table, 25-55% height, 20-80% width) from hero cards (bottom, >65% height)
+    # Board cards must be horizontally centered and have minimum size to avoid UI noise
+    board = [c for c in all_cards if c["cy"] < h * 0.55 and c["cy"] > h * 0.15
+             and c["cx"] > w * 0.20 and c["cx"] < w * 0.80 and c["w"] > 40 and c["h"] > 60]
     hero = [c for c in all_cards if c["cy"] > h * 0.65]
 
     return {"board": board, "hero": hero, "all": all_cards}

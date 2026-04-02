@@ -51,11 +51,12 @@ const CHECKPOINT_EVERY = parseInt(getArg("checkpointEvery", "50000"), 10);
 const RESUME = getArg("resume", false);
 const EXPLOIT_ONLY = getArg("exploit", false);
 const NUM_THREADS = parseInt(getArg("threads", String(os.cpus().length)), 10);
-const BATCH_PER_WORKER = parseInt(getArg("batch", "500"), 10);
 
 // Select game module based on mode
 const gameModule = GAME_MODE === "preflop"
   ? require("./simple-holdem")
+  : GAME_MODE === "sixmax"
+  ? require("./sixmax-holdem")
   : require("./full-holdem");
 
 const MODEL_DIR = path.join(__dirname, "..", "..", "vision", "models");
@@ -99,7 +100,7 @@ async function main() {
   const useThreads = NUM_THREADS > 1;
   console.log(`Training for ${NUM_ITERATIONS.toLocaleString()} iterations...`);
   console.log(`  Game mode: ${GAME_MODE}`);
-  console.log(`  Threads: ${NUM_THREADS}${useThreads ? ` (batch ${BATCH_PER_WORKER} iter/worker)` : " (single-threaded)"}`);
+  console.log(`  Threads: ${NUM_THREADS}${useThreads ? "" : " (single-threaded)"}`);
   console.log(`  Log every: ${LOG_EVERY.toLocaleString()}`);
   console.log(`  Exploitability check every: ${EXPLOIT_EVERY.toLocaleString()}`);
   console.log(`  Checkpoint every: ${CHECKPOINT_EVERY.toLocaleString()}\n`);
@@ -170,20 +171,29 @@ function trainSingleThreaded(trainer) {
 // ── Multi-threaded training ─────────────────────────────────────────────
 
 /**
- * Spawn worker threads, distribute iteration batches, merge results.
+ * Spawn worker threads, let each train independently, merge at the end.
  *
- * Each round:
- *   1. Snapshot current regret/strategy tables
- *   2. Send snapshot + batch size to all workers
- *   3. Workers run iterations independently and return deltas
- *   4. Main thread merges all deltas into the master tables
- *   5. Repeat until target iterations reached
+ * Previous approach sent full table snapshots every batch round, which
+ * caused O(workers * info_sets) serialization overhead each round.
+ * With full game mode (100k+ info sets), this made multi-threaded
+ * training slower than single-threaded and appeared to hang.
+ *
+ * New approach:
+ *   1. Snapshot current tables once and send to all workers
+ *   2. Each worker trains its share of iterations independently
+ *   3. Workers send periodic progress messages for logging
+ *   4. When done, workers send back full deltas for merging
+ *   5. Main thread merges all deltas and saves
+ *
+ * This trades off inter-round synchronization for throughput. CFR still
+ * converges — workers explore different random paths independently, and
+ * the merged regret/strategy sums remain valid.
  */
 async function trainMultiThreaded(trainer) {
   const workerPath = path.join(__dirname, "cfr-worker.js");
   const numWorkers = NUM_THREADS;
   const startTime = Date.now();
-  let lastLogIter = trainer.iterations;
+  const baseIter = trainer.iterations;
 
   // Spawn workers and wait for them to be ready
   const workers = [];
@@ -198,6 +208,7 @@ async function trainMultiThreaded(trainer) {
         const onMsg = (msg) => {
           if (msg.type === "ready") {
             worker.removeListener("message", onMsg);
+            worker.removeListener("error", reject);
             resolve();
           }
         };
@@ -212,87 +223,86 @@ async function trainMultiThreaded(trainer) {
   await Promise.all(readyPromises);
   console.log(`  ${numWorkers} worker threads initialized.\n`);
 
-  const targetIterations = trainer.iterations + NUM_ITERATIONS;
+  // Snapshot current tables once
+  const tables = trainer.exportTables();
 
-  while (trainer.iterations < targetIterations) {
-    const remaining = targetIterations - trainer.iterations;
-    const totalBatch = Math.min(remaining, BATCH_PER_WORKER * numWorkers);
-    const perWorker = Math.ceil(totalBatch / numWorkers);
+  // Divide iterations among workers
+  const perWorker = Math.ceil(NUM_ITERATIONS / numWorkers);
 
-    // Snapshot current tables
-    const tables = trainer.exportTables();
+  // Track aggregate progress from all workers
+  const workerProgress = new Array(numWorkers).fill(0);
+  let lastLogTotal = 0;
 
-    // Dispatch to all workers in parallel
-    const resultPromises = workers.map((worker, idx) => {
-      const iters = Math.min(perWorker, remaining - idx * perWorker);
-      if (iters <= 0) return Promise.resolve(null);
-
-      return new Promise((resolve, reject) => {
-        const onMsg = (msg) => {
-          if (msg.type === "done") {
-            worker.removeListener("message", onMsg);
-            resolve(msg);
-          }
-        };
-        worker.on("message", onMsg);
-        worker.on("error", reject);
-
-        worker.postMessage({
-          type: "run",
-          iterations: iters,
-          regretSum: tables.regretSum,
-          strategySum: tables.strategySum,
-        });
-      });
-    });
-
-    const results = await Promise.all(resultPromises);
-
-    // Merge deltas from all workers
-    let batchIters = 0;
-    for (const result of results) {
-      if (!result) continue;
-      trainer.mergeDeltas(result.regretDelta, result.strategyDelta);
-      batchIters += result.iterations;
-    }
-    trainer.iterations += batchIters;
-
-    // Log progress
-    if (trainer.iterations - lastLogIter >= LOG_EVERY) {
+  function logProgress() {
+    const totalDone = workerProgress.reduce((a, b) => a + b, 0);
+    if (totalDone - lastLogTotal >= LOG_EVERY) {
+      const globalIter = baseIter + totalDone;
       const elapsed = (Date.now() - startTime) / 1000;
-      const iterPerSec = (trainer.iterations - (targetIterations - NUM_ITERATIONS)) / elapsed;
-      const infoSets = trainer.regretSum.size;
+      const iterPerSec = totalDone / elapsed;
 
-      let line = `  iter ${trainer.iterations.toLocaleString().padStart(10)}  |  ` +
-                 `${infoSets.toLocaleString()} info sets  |  ` +
+      let line = `  iter ${globalIter.toLocaleString().padStart(10)}  |  ` +
                  `${iterPerSec.toFixed(0)} iter/s  |  ` +
                  `${elapsed.toFixed(1)}s elapsed`;
 
-      // Exploitability at intervals (relative to total iteration count)
-      if (Math.floor(trainer.iterations / EXPLOIT_EVERY) > Math.floor(lastLogIter / EXPLOIT_EVERY)) {
-        const exploit = computeExploitabilitySampled(trainer, 10000);
-        line += `  |  exploit: ${(exploit.exploitability * 1000).toFixed(2)} mBB/hand`;
-      }
-
       console.log(line);
 
-      // Checkpoint at intervals
-      if (Math.floor(trainer.iterations / CHECKPOINT_EVERY) > Math.floor(lastLogIter / CHECKPOINT_EVERY)) {
-        saveCheckpoint(trainer, trainer.iterations);
-      }
-
-      lastLogIter = trainer.iterations;
+      lastLogTotal = totalDone - (totalDone % LOG_EVERY);
     }
   }
 
-  // Terminate workers
-  for (const worker of workers) {
-    worker.postMessage({ type: "exit" });
+  // Dispatch to all workers and collect results
+  const resultPromises = workers.map((worker, idx) => {
+    const iters = Math.min(perWorker, NUM_ITERATIONS - idx * perWorker);
+    if (iters <= 0) return Promise.resolve(null);
+
+    return new Promise((resolve, reject) => {
+      const onMsg = (msg) => {
+        if (msg.type === "progress") {
+          workerProgress[idx] = msg.iterations;
+          logProgress();
+        } else if (msg.type === "done") {
+          worker.removeListener("message", onMsg);
+          worker.removeListener("error", onError);
+          workerProgress[idx] = msg.iterations;
+          logProgress();
+          resolve(msg);
+        }
+      };
+      const onError = (err) => {
+        worker.removeListener("message", onMsg);
+        worker.removeListener("error", onError);
+        reject(err);
+      };
+      worker.on("message", onMsg);
+      worker.on("error", onError);
+
+      worker.postMessage({
+        type: "run",
+        iterations: iters,
+        progressEvery: LOG_EVERY,
+        regretSum: tables.regretSum,
+        strategySum: tables.strategySum,
+      });
+    });
+  });
+
+  const results = await Promise.all(resultPromises);
+
+  // Merge deltas from all workers into the main trainer
+  let totalIters = 0;
+  for (const result of results) {
+    if (!result) continue;
+    trainer.mergeDeltas(result.regretDelta, result.strategyDelta);
+    totalIters += result.iterations;
   }
+  trainer.iterations += totalIters;
+
+  // Terminate workers
+  await Promise.all(workers.map((w) => w.terminate()));
 
   const totalTime = (Date.now() - startTime) / 1000;
-  console.log(`\nTraining complete: ${NUM_ITERATIONS.toLocaleString()} iterations in ${totalTime.toFixed(1)}s`);
-  console.log(`  ${(NUM_ITERATIONS / totalTime).toFixed(0)} iterations/second (${numWorkers} threads)`);
+  console.log(`\nTraining complete: ${totalIters.toLocaleString()} iterations in ${totalTime.toFixed(1)}s`);
+  console.log(`  ${(totalIters / totalTime).toFixed(0)} iterations/second (${numWorkers} threads)`);
   console.log(`  ${trainer.regretSum.size.toLocaleString()} unique information sets\n`);
 }
 
@@ -301,6 +311,14 @@ async function trainMultiThreaded(trainer) {
 function saveCheckpoint(trainer, iter) {
   if (!fs.existsSync(MODEL_DIR)) {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
+  }
+  // For large game trees (6-max), skip full checkpoint — too large for JSON.stringify
+  // Only save the strategy (much smaller than regret+strategy sums)
+  const infoSets = trainer.regretSum.size;
+  if (infoSets > 500000) {
+    console.log(`  [checkpoint] ${iter.toLocaleString()} iters, ${infoSets.toLocaleString()} info sets (skipping full checkpoint, saving strategy only)`);
+    saveStrategy(trainer);
+    return;
   }
   console.log(`  [checkpoint] Saving at iteration ${iter.toLocaleString()}...`);
   trainer.save(CHECKPOINT_PATH);
@@ -311,10 +329,28 @@ function saveStrategy(trainer) {
     fs.mkdirSync(MODEL_DIR, { recursive: true });
   }
   const strategy = trainer.exportStrategy();
-  console.log(`Saving strategy to ${STRATEGY_PATH}...`);
-  fs.writeFileSync(STRATEGY_PATH, JSON.stringify(strategy, null, 2));
-  // Also save to default path for backward compatibility
-  fs.writeFileSync(STRATEGY_PATH_DEFAULT, JSON.stringify(strategy, null, 2));
+  const entries = Object.entries(strategy);
+  console.log(`Saving strategy to ${STRATEGY_PATH}... (${entries.length.toLocaleString()} entries)`);
+
+  // Stream write for large strategies — JSON.stringify can't handle >500MB strings
+  const ws = fs.createWriteStream(STRATEGY_PATH);
+  ws.write("{\n");
+  for (let i = 0; i < entries.length; i++) {
+    const [key, val] = entries[i];
+    ws.write(`${JSON.stringify(key)}:${JSON.stringify(val)}${i < entries.length - 1 ? "," : ""}\n`);
+  }
+  ws.write("}\n");
+  ws.end();
+
+  // Also save to default path
+  const ws2 = fs.createWriteStream(STRATEGY_PATH_DEFAULT);
+  ws2.write("{\n");
+  for (let i = 0; i < entries.length; i++) {
+    const [key, val] = entries[i];
+    ws2.write(`${JSON.stringify(key)}:${JSON.stringify(val)}${i < entries.length - 1 ? "," : ""}\n`);
+  }
+  ws2.write("}\n");
+  ws2.end();
 }
 
 // ── Sampled Exploitability ──────────────────────────────────────────────
@@ -369,20 +405,24 @@ function computeExploitabilityPreflop(trainer, numSamples) {
  * many random deals.
  */
 function computeExploitabilityMC(trainer, numSamples) {
-  let totalBR0 = 0;
-  let totalBR1 = 0;
+  const numPlayers = gameModule.NUM_PLAYERS || 2;
+  const totals = new Array(numPlayers).fill(0);
 
   for (let i = 0; i < numSamples; i++) {
     const deal = gameModule.dealForIteration();
-    const state = gameModule.createInitialState(deal.p0Cards, deal.p1Cards, deal.board);
-    totalBR0 += rolloutBestResponse(trainer, state, 0);
-    totalBR1 += rolloutBestResponse(trainer, state, 1);
+    const state = numPlayers === 2
+      ? gameModule.createInitialState(deal.p0Cards, deal.p1Cards, deal.board)
+      : gameModule.createInitialState(deal.playerCards, deal.board);
+    // Only check exploitability for first 2 players (to keep cost manageable)
+    for (let p = 0; p < Math.min(numPlayers, 2); p++) {
+      totals[p] += rolloutBestResponse(trainer, state, p);
+    }
   }
 
   return {
-    exploitability: (totalBR0 / numSamples + totalBR1 / numSamples) / 2,
-    player0: totalBR0 / numSamples,
-    player1: totalBR1 / numSamples,
+    exploitability: (totals[0] / numSamples + totals[1] / numSamples) / 2,
+    player0: totals[0] / numSamples,
+    player1: totals[1] / numSamples,
     numSamples,
   };
 }
