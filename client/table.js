@@ -281,10 +281,10 @@ function cardSpritePos(card) {
   let row, suitOffset;
   if (suit === 'c' || suit === 'h') {
     row = 0;
-    suitOffset = suit === 'c' ? 0 : 1;
+    suitOffset = suit === 'h' ? 0 : 1;  // hearts first, then clubs
   } else {
     row = 1;
-    suitOffset = suit === 's' ? 0 : 1;
+    suitOffset = suit === 'd' ? 0 : 1;  // diamonds first, then spades
   }
   const col = rankIdx * 2 + suitOffset;
   return { x: col * CARD_W, y: row * CARD_H };

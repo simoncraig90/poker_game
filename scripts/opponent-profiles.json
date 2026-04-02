@@ -819,5 +819,313 @@
     "winRate": 33.3,
     "showdownHands": [],
     "classification": "fish"
+  },
+  "buenosamigos": {
+    "name": "buenosamigos",
+    "handsPlayed": 2,
+    "vpip": 100,
+    "pfr": 100,
+    "aggressionFactor": 1,
+    "wtsd": 50,
+    "wsd": 100,
+    "foldTo3bet": null,
+    "cbetFrequency": 100,
+    "avgStack": 10.36,
+    "handsWon": 2,
+    "winRate": 100,
+    "showdownHands": [
+      "Kh Jc"
+    ],
+    "classification": "fish"
+  },
+  "gregkitten": {
+    "name": "gregkitten",
+    "handsPlayed": 19,
+    "vpip": 5.3,
+    "pfr": 5.3,
+    "aggressionFactor": 0,
+    "wtsd": 0,
+    "wsd": 0,
+    "foldTo3bet": null,
+    "cbetFrequency": null,
+    "avgStack": 10.04,
+    "handsWon": 3,
+    "winRate": 15.8,
+    "showdownHands": [],
+    "classification": "nit"
+  },
+  "Sumalee85": {
+    "name": "Sumalee85",
+    "handsPlayed": 43,
+    "vpip": 41.9,
+    "pfr": 7,
+    "aggressionFactor": 4.6,
+    "wtsd": 4.7,
+    "wsd": 50,
+    "foldTo3bet": null,
+    "cbetFrequency": 100,
+    "avgStack": 4.92,
+    "handsWon": 11,
+    "winRate": 25.6,
+    "showdownHands": [
+      "Kc Ks",
+      "5d 5c"
+    ],
+    "classification": "lag"
+  },
+  "KramSS": {
+    "name": "KramSS",
+    "handsPlayed": 33,
+    "vpip": 42.4,
+    "pfr": 30.3,
+    "aggressionFactor": 1.33,
+    "wtsd": 3,
+    "wsd": 0,
+    "foldTo3bet": 0,
+    "cbetFrequency": 75,
+    "avgStack": 11.59,
+    "handsWon": 8,
+    "winRate": 24.2,
+    "showdownHands": [
+      "Tc Jc"
+    ],
+    "classification": "fish"
+  },
+  "1chieftain": {
+    "name": "1chieftain",
+    "handsPlayed": 68,
+    "vpip": 25,
+    "pfr": 22.1,
+    "aggressionFactor": 0.33,
+    "wtsd": 4.4,
+    "wsd": 66.7,
+    "foldTo3bet": 0,
+    "cbetFrequency": 20,
+    "avgStack": 20.39,
+    "handsWon": 13,
+    "winRate": 19.1,
+    "showdownHands": [
+      "3d Ad",
+      "Js Ts",
+      "7h 9h"
+    ],
+    "classification": "reg"
+  },
+  "yzuk": {
+    "name": "yzuk",
+    "handsPlayed": 12,
+    "vpip": 8.3,
+    "pfr": 8.3,
+    "aggressionFactor": 0,
+    "wtsd": 8.3,
+    "wsd": 0,
+    "foldTo3bet": null,
+    "cbetFrequency": 0,
+    "avgStack": 10,
+    "handsWon": 0,
+    "winRate": 0,
+    "showdownHands": [],
+    "classification": "nit"
+  },
+  "fllo97": {
+    "name": "fllo97",
+    "handsPlayed": 16,
+    "vpip": 43.8,
+    "pfr": 25,
+    "aggressionFactor": 2,
+    "wtsd": 12.5,
+    "wsd": 100,
+    "foldTo3bet": 100,
+    "cbetFrequency": 100,
+    "avgStack": 5.19,
+    "handsWon": 6,
+    "winRate": 37.5,
+    "showdownHands": [
+      "Jh Ks",
+      "Jh Ks"
+    ],
+    "classification": "lag"
+  },
+  "geesnode": {
+    "name": "geesnode",
+    "handsPlayed": 32,
+    "vpip": 15.6,
+    "pfr": 15.6,
+    "aggressionFactor": 99,
+    "wtsd": 3.1,
+    "wsd": 0,
+    "foldTo3bet": 0,
+    "cbetFrequency": 50,
+    "avgStack": 11.58,
+    "handsWon": 5,
+    "winRate": 15.6,
+    "showdownHands": [
+      "Ts Qh"
+    ],
+    "classification": "reg"
+  },
+  "AG Gomel79": {
+    "name": "AG Gomel79",
+    "handsPlayed": 30,
+    "vpip": 26.7,
+    "pfr": 26.7,
+    "aggressionFactor": 99,
+    "wtsd": 3.3,
+    "wsd": 0,
+    "foldTo3bet": 33.3,
+    "cbetFrequency": 33.3,
+    "avgStack": 10.59,
+    "handsWon": 5,
+    "winRate": 16.7,
+    "showdownHands": [
+      "8d Jc"
+    ],
+    "classification": "tag"
+  },
+  "mrpokerma694": {
+    "name": "mrpokerma694",
+    "handsPlayed": 31,
+    "vpip": 38.7,
+    "pfr": 0,
+    "aggressionFactor": 0.4,
+    "wtsd": 12.9,
+    "wsd": 100,
+    "foldTo3bet": null,
+    "cbetFrequency": null,
+    "avgStack": 12.27,
+    "handsWon": 8,
+    "winRate": 25.8,
+    "showdownHands": [
+      "Ts Jc",
+      "3s 3c",
+      "7h 5c",
+      "Kd Ad"
+    ],
+    "classification": "fish"
+  },
+  "ikilledqueen": {
+    "name": "ikilledqueen",
+    "handsPlayed": 22,
+    "vpip": 22.7,
+    "pfr": 13.6,
+    "aggressionFactor": 0.67,
+    "wtsd": 4.5,
+    "wsd": 0,
+    "foldTo3bet": 100,
+    "cbetFrequency": 0,
+    "avgStack": 10.01,
+    "handsWon": 1,
+    "winRate": 4.5,
+    "showdownHands": [
+      "Jd 8h"
+    ],
+    "classification": "reg"
+  },
+  "Tieschum": {
+    "name": "Tieschum",
+    "handsPlayed": 3,
+    "vpip": 0,
+    "pfr": 0,
+    "aggressionFactor": 0,
+    "wtsd": 0,
+    "wsd": 0,
+    "foldTo3bet": null,
+    "cbetFrequency": null,
+    "avgStack": 25,
+    "handsWon": 0,
+    "winRate": 0,
+    "showdownHands": [],
+    "classification": "nit"
+  },
+  "GPT_MS": {
+    "name": "GPT_MS",
+    "handsPlayed": 19,
+    "vpip": 36.8,
+    "pfr": 31.6,
+    "aggressionFactor": 0.5,
+    "wtsd": 5.3,
+    "wsd": 0,
+    "foldTo3bet": 33.3,
+    "cbetFrequency": null,
+    "avgStack": 34.68,
+    "handsWon": 4,
+    "winRate": 21.1,
+    "showdownHands": [
+      "8c Ac"
+    ],
+    "classification": "fish"
+  },
+  "GiveMeBank": {
+    "name": "GiveMeBank",
+    "handsPlayed": 19,
+    "vpip": 10.5,
+    "pfr": 5.3,
+    "aggressionFactor": 1.5,
+    "wtsd": 10.5,
+    "wsd": 0,
+    "foldTo3bet": null,
+    "cbetFrequency": 0,
+    "avgStack": 25,
+    "handsWon": 1,
+    "winRate": 5.3,
+    "showdownHands": [
+      "Kh Qs"
+    ],
+    "classification": "nit"
+  },
+  "hello_putin": {
+    "name": "hello_putin",
+    "handsPlayed": 19,
+    "vpip": 21.1,
+    "pfr": 21.1,
+    "aggressionFactor": 99,
+    "wtsd": 5.3,
+    "wsd": 100,
+    "foldTo3bet": null,
+    "cbetFrequency": 100,
+    "avgStack": 30.7,
+    "handsWon": 5,
+    "winRate": 26.3,
+    "showdownHands": [
+      "9d 8d"
+    ],
+    "classification": "tag"
+  },
+  "LicEstadiS11": {
+    "name": "LicEstadiS11",
+    "handsPlayed": 19,
+    "vpip": 31.6,
+    "pfr": 31.6,
+    "aggressionFactor": 1,
+    "wtsd": 10.5,
+    "wsd": 100,
+    "foldTo3bet": 50,
+    "cbetFrequency": 100,
+    "avgStack": 33.49,
+    "handsWon": 5,
+    "winRate": 26.3,
+    "showdownHands": [
+      "8h Jh",
+      "7h 7d"
+    ],
+    "classification": "fish"
+  },
+  "the_big_howe": {
+    "name": "the_big_howe",
+    "handsPlayed": 7,
+    "vpip": 28.6,
+    "pfr": 28.6,
+    "aggressionFactor": 1.5,
+    "wtsd": 14.3,
+    "wsd": 100,
+    "foldTo3bet": null,
+    "cbetFrequency": 100,
+    "avgStack": 26,
+    "handsWon": 2,
+    "winRate": 28.6,
+    "showdownHands": [
+      "Qd Jc"
+    ],
+    "classification": "reg"
   }
 }
