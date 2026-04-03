@@ -13,6 +13,7 @@ const { ActorRegistry } = require("../api/actors");
 const { queryHands, getActorStats } = require("../api/query");
 const { AnnotationStore } = require("../api/annotations");
 const { BotDetector } = require("../engine/bot-detector");
+const { TableManager } = require("./table-manager");
 
 const DEFAULT_CONFIG = {
   port: 9100,
@@ -84,6 +85,13 @@ function startServer(userConfig = {}) {
     });
   });
 
+  // ── Multi-table manager ────────────────────────────────────────────────
+  const tableManager = new TableManager(storage, actors, tableConfig);
+  // Register the primary table (table 1) with the recovered/new session
+  const primaryTable = tableManager.getOrCreate("1");
+  // Replace its session with the recovered one
+  primaryTable.session = session;
+
   httpServer.listen(port);
 
   // ── WebSocket server ─────────────────────────────────────────────────
@@ -105,9 +113,17 @@ function startServer(userConfig = {}) {
   console.log(`Table: ${st.tableName} (${st.sb}/${st.bb}) | Hands: ${st.handsPlayed}`);
   console.log();
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
     clients.add(ws);
-    console.log(`Client connected (${clients.size} total)`);
+
+    // Parse table ID from query string: ws://host:port?table=2
+    const url = new URL(req.url, `http://localhost:${port}`);
+    const tableId = url.searchParams.get("table") || "1";
+    const table = tableManager.getOrCreate(tableId);
+    table.addClient(ws);
+    ws._tableId = tableId; // stash for cleanup
+
+    console.log(`Client connected to table ${tableId} (${clients.size} total, ${table.clients.size} on table)`);
     sendWelcome(ws);
 
     ws.on("message", (raw) => {
@@ -115,6 +131,12 @@ function startServer(userConfig = {}) {
       if (!parsed.valid) { ws.send(formatError(null, parsed.error)); return; }
 
       const { id, cmd: cmdName, payload } = parsed;
+
+      // ── Multi-table commands ──────────────────────────────────────────
+      if (cmdName === "LIST_TABLES") {
+        ws.send(formatResponse(id, { ok: true, events: [], state: { tables: tableManager.list() }, error: null }));
+        return;
+      }
 
       // ── Server-level commands ────────────────────────────────────────
       if (cmdName === "GET_SESSION_LIST") {
@@ -366,7 +388,12 @@ function startServer(userConfig = {}) {
       }
     });
 
-    ws.on("close", () => { clients.delete(ws); console.log(`Client disconnected (${clients.size} remaining)`); });
+    ws.on("close", () => {
+      clients.delete(ws);
+      const t = tableManager.get(ws._tableId);
+      if (t) t.removeClient(ws);
+      console.log(`Client disconnected from table ${ws._tableId} (${clients.size} remaining)`);
+    });
     ws.on("error", (err) => { console.error("WS error:", err.message); clients.delete(ws); });
   });
 

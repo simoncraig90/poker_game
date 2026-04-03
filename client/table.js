@@ -20,7 +20,10 @@ const heroStats = { startTime: Date.now(), initialBuyIn: 0, totalBuyIn: 0, hands
 // ── WebSocket ──────────────────────────────────────────────────────────────
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}`);
+  // Support ?table=N for multi-table
+  const urlParams = new URLSearchParams(window.location.search);
+  const tableId = urlParams.get("table") || "1";
+  ws = new WebSocket(`ws://${location.host}?table=${tableId}`);
 
   ws.onopen = () => setStatus("connected", "Connected");
 

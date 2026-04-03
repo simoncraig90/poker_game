@@ -15,7 +15,10 @@ const { getLegalActions } = require("../src/engine/betting");
 const http = require("http");
 const { createCFRStrategy } = require("./cfr/cfr-bot");
 
-const WS_URL = "ws://localhost:9100";
+// Support --table N for multi-table
+const _tableArg = process.argv.indexOf("--table");
+const TABLE_ID = _tableArg >= 0 && process.argv[_tableArg + 1] ? process.argv[_tableArg + 1] : "1";
+const WS_URL = `ws://localhost:9100?table=${TABLE_ID}`;
 const NN_URL = "http://localhost:9200/predict";
 const HUMAN_SEAT = 0;
 const BOT_SEATS = [1, 2, 3, 4, 5];
