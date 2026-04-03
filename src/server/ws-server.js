@@ -75,7 +75,9 @@ function startServer(userConfig = {}) {
   const MIME = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml" };
 
   const httpServer = http.createServer((req, res) => {
-    const url = req.url === "/" ? "/index.html" : req.url;
+    // Strip query string for file serving (e.g., /?table=2 -> /index.html)
+    const urlPath = req.url.split("?")[0];
+    const url = urlPath === "/" ? "/index.html" : urlPath;
     const filePath = path.join(clientDir, url);
     const ext = path.extname(filePath);
     fs.readFile(filePath, (err, data) => {
