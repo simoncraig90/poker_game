@@ -2,7 +2,7 @@
 
 ## Project Purpose
 
-Poker research and practice platform. Combines a deterministic Node.js game engine with a Python vision/ML pipeline that reads live PokerStars tables and provides real-time advice. Includes self-play AI for strategy research and study tools for hand review.
+Poker research platform with two goals: (1) real-time play assistance via CFR strategy + vision pipeline, and (2) **anti-bot detection research** — building realistic bots and detection systems to test against each other. Combines a deterministic Node.js game engine with a Python vision/ML pipeline, PokerStars-like browser client (91.8% visual match), screen-reading bots, and multi-dimensional detection/humanness scoring.
 
 ## Current State
 
@@ -17,7 +17,10 @@ Poker research and practice platform. Combines a deterministic Node.js game engi
 - **Bot evaluation framework**: round-robin with ELO, 95% CI, 20k hands (scripts/eval-bots.js)
 - **Anti-bot detection system**: feature extraction for bet sizing precision, session stability, tilt resistance, bot scoring (scripts/bot-detector.js)
 - **PS-like browser client**: 91.8% visual match to PokerStars, bet sizing slider, turn timer, auto-actions
-- **Windows client bot**: OCR + click automation, frame comparison to PS captures (vision/client_bot.py)
+- **Multi-table support**: server routes by `?table=N`, TableManager with per-table sessions/auto-deal
+- **Screen-reading bot**: pure pixel detection + click automation, plays multiple tables simultaneously
+- **Humanness scoring**: 4-dimension framework (timing/motor/behavioral/strategic), 0-100 scale
+- **Advisor overlay**: supports `--table N` for multi-table, runs independently per table with YOLO + solver
 - Self-play at 42k hands/sec (TAG strategy, 6-max)
 - BB/hour tracking in bot-players, browser client, and advisor overlay
 
@@ -59,7 +62,13 @@ Poker research and practice platform. Combines a deterministic Node.js game engi
 | `scripts/bot-detector.js` | Anti-bot detection feature extraction and scoring |
 | `scripts/player-profiler.js` | Population-based opponent classification |
 | `scripts/opponent-profiles.json` | 67 PS opponent profiles with VPIP/PFR/AF |
+| `vision/screen_bot.py` | Screen-reading bot: pure pixel detection + click (single table) |
+| `vision/multi_table_bot.py` | Multi-table screen bot: plays N tables simultaneously |
 | `vision/client_bot.py` | Windows bot: OCR + click automation + PS frame comparison |
+| `scripts/humanness-score.js` | Humanness scoring framework (timing/motor/behavioral/strategic) |
+| `scripts/tile-tables.py` | Tile poker browser windows side-by-side |
+| `scripts/launch-tables.js` | Open N table browser windows in grid layout |
+| `src/server/table-manager.js` | Multi-table session manager (per-table state/clients/auto-deal) |
 
 ## CFR Architecture
 
@@ -77,6 +86,8 @@ Poker research and practice platform. Combines a deterministic Node.js game engi
 ```bash
 node src/server/ws-server.js
 # WebSocket server on port 9100
+# Multi-table: clients connect to ws://localhost:9100?table=N
+# Server-side auto-deal (3s after hand end, like PokerStars)
 ```
 
 ## User
@@ -114,9 +125,27 @@ node --max-old-space-size=4096 scripts/bot-detector.js --hands 5000 --strategies
 node scripts/generate-rl-data.js --strategy tag --hands 100000
 node --max-old-space-size=4096 scripts/generate-rl-data.js --strategy cfr --hands 100000
 
-# Windows client bot (OCR + click automation)
-C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/client_bot.py
-C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/client_bot.py --compare  # frame comparison to PS
+# Screen-reading bot (single table, pure pixel reading)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/screen_bot.py --hands 20
+
+# Multi-table bot (plays all visible tables simultaneously)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/multi_table_bot.py --max-actions 30
+
+# Advisor overlay (per-table targeting)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/advisor.py --table 1 --debug
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/advisor.py --table 2 --debug
+
+# Multi-table setup
+node scripts/launch-tables.js --tables 2
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe scripts/tile-tables.py
+node scripts/bot-players.js --table 1
+node scripts/bot-players.js --table 2
+
+# Humanness scoring
+node scripts/humanness-score.js
+
+# Frame comparison (lab client vs PS captures)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/client_bot.py --compare
 
 # Player profiling
 node scripts/player-profiler.js
