@@ -15,10 +15,13 @@ const { getLegalActions } = require("../src/engine/betting");
 const http = require("http");
 const { createCFRStrategy } = require("./cfr/cfr-bot");
 
-// Support --table N for multi-table
+// Support --table N for multi-table, remote host + API key via env vars
 const _tableArg = process.argv.indexOf("--table");
 const TABLE_ID = _tableArg >= 0 && process.argv[_tableArg + 1] ? process.argv[_tableArg + 1] : "1";
-const WS_URL = `ws://localhost:9100?table=${TABLE_ID}`;
+const SERVER_HOST = process.env.POKER_HOST || "localhost:9100";
+const API_KEY = process.env.POKER_API_KEY || "";
+const keyParam = API_KEY ? `&key=${encodeURIComponent(API_KEY)}` : "";
+const WS_URL = `ws://${SERVER_HOST}?table=${TABLE_ID}${keyParam}`;
 const NN_URL = "http://localhost:9200/predict";
 const HUMAN_SEAT = 0;
 const BOT_SEATS = [1, 2, 3, 4, 5];
@@ -445,6 +448,150 @@ function botDecideTAG(seat, state) {
   return { action: "FOLD" };
 }
 
+// ── Humanization Layer ──────────────────────────────────────────────────
+// Makes bot decisions harder to detect by adding realistic imperfections
+
+// Tilt state per seat: tracks recent big losses
+const tiltState = {};  // seat -> { recentLosses: number[], tiltLevel: 0-1 }
+
+function initTilt(seat) {
+  tiltState[seat] = { recentLosses: [], tiltLevel: 0 };
+}
+
+function recordHandResult(seat, profitBB) {
+  if (!tiltState[seat]) initTilt(seat);
+  const ts = tiltState[seat];
+  ts.recentLosses.push(profitBB);
+  // Rolling window of last 10 hands
+  if (ts.recentLosses.length > 10) ts.recentLosses.shift();
+  // Tilt increases with consecutive losses, decays with wins
+  const recentSum = ts.recentLosses.reduce((a, b) => a + b, 0);
+  const consecutiveLosses = ts.recentLosses.slice().reverse().findIndex(x => x >= 0);
+  const lossStreak = consecutiveLosses === -1 ? ts.recentLosses.length : consecutiveLosses;
+  ts.tiltLevel = Math.min(1, Math.max(0, -recentSum / 30 + lossStreak * 0.1));
+}
+
+function getTiltLevel(seat) {
+  return tiltState[seat]?.tiltLevel || 0;
+}
+
+// Bet size humanization: make sizing look human, not pot-fractional
+function humanizeBetSize(amount, pot, minBet, maxRaise) {
+  if (!amount || amount <= 0 || pot <= 0) return amount;
+
+  const r = Math.random();
+
+  // 40% of the time: pick an absolute dollar amount humans would type
+  // Humans at micros think in dollar amounts, not pot fractions
+  if (r < 0.40) {
+    // Common micro-stakes bet amounts ($0.15 to $2.00) — absolute, not pot-relative
+    const humanAmounts = [15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 75, 80, 100, 125, 150, 175, 200];
+    // Pick the closest human amount to the original
+    let best = humanAmounts[0];
+    let bestDist = Math.abs(amount - best);
+    for (const ha of humanAmounts) {
+      const dist = Math.abs(amount - ha);
+      if (dist < bestDist) { best = ha; bestDist = dist; }
+    }
+    // Add small jitter (±1-3 units)
+    best += Math.floor(Math.random() * 7) - 3;
+    return Math.max(minBet || amount, Math.min(best, maxRaise || amount));
+  }
+
+  // 35% of the time: jitter the calculated amount by ±8-20%
+  if (r < 0.75) {
+    const jitterPct = 0.08 + Math.random() * 0.12;
+    const direction = Math.random() < 0.5 ? 1 : -1;
+    let humanized = Math.round(amount * (1 + direction * jitterPct));
+    // Add random offset of 1-5 units to break exact fractions
+    humanized += Math.floor(Math.random() * 5) + 1;
+    return Math.max(minBet || amount, Math.min(humanized, maxRaise || amount));
+  }
+
+  // 25% of the time: use the slider-style amount (round to nearest 5)
+  // But NOT pot-relative — just round the jittered amount
+  let humanized = amount + Math.floor(Math.random() * 20) - 10;
+  humanized = Math.round(humanized / 5) * 5;
+  // Ensure we don't accidentally hit exact pot fractions
+  const frac = humanized / pot;
+  const COMMON = [0.25, 0.33, 0.5, 0.66, 0.67, 0.75, 1.0, 1.5, 2.0];
+  if (COMMON.some(cf => Math.abs(frac - cf) < 0.02)) {
+    humanized += (Math.random() < 0.5 ? 3 : -3); // nudge off exact fraction
+  }
+  return Math.max(minBet || amount, Math.min(humanized, maxRaise || amount));
+}
+
+// Timing humanization: log-normal distribution (humans have fast checks, slow decisions)
+function humanDelay(action, strength) {
+  // Base: log-normal with mean ~1.5s, heavy right tail
+  const logMean = 0.3;
+  const logStd = 0.6;
+  // Box-Muller transform for normal distribution
+  const u1 = Math.random(), u2 = Math.random();
+  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  let delay = Math.exp(logMean + logStd * z) * 1000; // ms
+
+  // Fast-path for obvious actions (check, easy fold)
+  if (action === "CHECK") delay *= 0.5;
+  if (action === "FOLD" && strength < 0.15) delay *= 0.4;
+
+  // Slow down for big decisions (raises, close spots)
+  if (action === "RAISE" || action === "BET") delay *= 1.4;
+  if (strength > 0.3 && strength < 0.6) delay *= 1.3; // tough spot
+
+  // Occasional "tank" (2-8% of decisions, 4-8 seconds)
+  if (Math.random() < 0.05) delay = 4000 + Math.random() * 4000;
+
+  // Clamp to 300ms-10s
+  return Math.max(300, Math.min(10000, delay));
+}
+
+// Apply tilt to a decision: loosen calling, increase aggression
+function applyTilt(decision, tiltLevel, actions, legal) {
+  if (tiltLevel < 0.2) return decision; // not tilted enough
+
+  const r = Math.random();
+
+  // Tilted players call more instead of folding
+  if (decision.action === "FOLD" && tiltLevel > 0.3 && r < tiltLevel * 0.5) {
+    if (actions.includes("CALL")) return { action: "CALL" };
+  }
+
+  // Tilted players raise more aggressively
+  if (decision.action === "CALL" && tiltLevel > 0.5 && r < tiltLevel * 0.3) {
+    if (actions.includes("RAISE") && legal.minRaise) {
+      return { action: "RAISE", amount: legal.maxRaise || legal.minRaise }; // shove tendency
+    }
+  }
+
+  return decision;
+}
+
+// Humanize a complete decision (sizing + tilt)
+function humanizeDecision(decision, seat, state) {
+  if (!decision) return decision;
+
+  const hand = state.hand;
+  const legal = hand?.legalActions;
+  const actions = legal?.actions || [];
+  const pot = hand?.pot || 0;
+  const tilt = getTiltLevel(seat);
+
+  // Apply tilt modifications
+  decision = applyTilt(decision, tilt, actions, legal);
+
+  // Humanize bet sizing
+  if (decision.amount && (decision.action === "BET" || decision.action === "RAISE")) {
+    decision.amount = humanizeBetSize(
+      decision.amount, pot,
+      decision.action === "BET" ? legal?.minBet : legal?.minRaise,
+      legal?.maxRaise
+    );
+  }
+
+  return decision;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────
 
 let state = null;
@@ -513,15 +660,23 @@ function handleState(newState) {
   if (actionSeat === HUMAN_SEAT) return;
   if (!BOT_SEATS.includes(actionSeat)) return;
 
-  // Add human-like delay (0.5-3 seconds)
-  const delay = 500 + Math.random() * 2500;
-
   function executeAction(decision) {
     if (!decision) return;
+
+    // Humanize the decision (tilt + bet sizing noise)
+    const s = state.seats[actionSeat];
+    const strength = evaluateHandStrength(s.holeCards || [], (state.hand.board || []), state.hand.phase);
+    decision = humanizeDecision(decision, actionSeat, state);
+
+    // Human-like timing (log-normal distribution)
+    const delay = humanDelay(decision.action, strength);
+
     setTimeout(() => {
       const payload = { seat: actionSeat, action: decision.action };
       if (decision.amount !== undefined) payload.amount = decision.amount;
-      console.log(`  [Bot seat ${actionSeat}] ${decision.action}${decision.amount ? " $" + (decision.amount / 100).toFixed(2) : ""}`);
+      const tilt = getTiltLevel(actionSeat);
+      const tiltTag = tilt > 0.2 ? ` [TILT ${(tilt * 100).toFixed(0)}%]` : "";
+      console.log(`  [Bot seat ${actionSeat}] ${decision.action}${decision.amount ? " $" + (decision.amount / 100).toFixed(2) : ""}${tiltTag} (${(delay / 1000).toFixed(1)}s)`);
       send("PLAYER_ACTION", payload);
     }, delay);
   }
@@ -700,11 +855,24 @@ function connect() {
         msg.events.filter(e => e.type === "SEAT_PLAYER").forEach(e => {
           seatedBots.add(e.seat);
           initStats(e.seat, e.player, e.buyIn || 1000);
+          initTilt(e.seat);
           console.log(`  Seated ${e.player} at seat ${e.seat}`);
         });
       }
 
       if (hasHandEnd) {
+        // Track tilt: measure profit/loss for each bot this hand
+        if (state?.seats) {
+          for (const seat of BOT_SEATS) {
+            const s = state.seats[seat];
+            if (!s || s.status === "EMPTY") continue;
+            const prev = prevStacks[seat];
+            if (prev !== undefined) {
+              const profitBB = (s.stack - prev) / BB;
+              recordHandResult(seat, profitBB);
+            }
+          }
+        }
         // Track hands and rebuys for bb/hour
         for (const seat of [HUMAN_SEAT, ...BOT_SEATS]) {
           if (stats[seat]) stats[seat].hands++;

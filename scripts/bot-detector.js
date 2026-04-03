@@ -164,11 +164,102 @@ function cfr50Strategy(seat, legal, state, rng) {
   return _cfr50Fn(seat, legal, state, rng);
 }
 
+// ── Humanization wrapper ────────────────────────────────────────────────
+// Adds bet size noise and tilt simulation to any strategy
+
+function humanizeBetSize(amount, pot, minBet, maxRaise, rng) {
+  if (!amount || amount <= 0 || pot <= 0) return amount;
+  const r = rng();
+
+  // 40%: absolute dollar amounts humans type at micros
+  if (r < 0.40) {
+    const humanAmounts = [15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 75, 80, 100, 125, 150, 175, 200];
+    let best = humanAmounts[0], bestDist = Math.abs(amount - best);
+    for (const ha of humanAmounts) {
+      const dist = Math.abs(amount - ha);
+      if (dist < bestDist) { best = ha; bestDist = dist; }
+    }
+    best += Math.floor(rng() * 7) - 3;
+    return Math.max(minBet || amount, Math.min(best, maxRaise || amount));
+  }
+
+  // 35%: jitter ±8-20% plus random offset to break fractions
+  if (r < 0.75) {
+    const jitterPct = 0.08 + rng() * 0.12;
+    const direction = rng() < 0.5 ? 1 : -1;
+    let humanized = Math.round(amount * (1 + direction * jitterPct));
+    humanized += Math.floor(rng() * 5) + 1;
+    return Math.max(minBet || amount, Math.min(humanized, maxRaise || amount));
+  }
+
+  // 25%: slider-style, nudge off exact pot fractions
+  let humanized = amount + Math.floor(rng() * 20) - 10;
+  humanized = Math.round(humanized / 5) * 5;
+  const frac = humanized / pot;
+  const COMMON = [0.25, 0.33, 0.5, 0.66, 0.67, 0.75, 1.0, 1.5, 2.0];
+  if (COMMON.some(cf => Math.abs(frac - cf) < 0.02)) {
+    humanized += (rng() < 0.5 ? 3 : -3);
+  }
+  return Math.max(minBet || amount, Math.min(humanized, maxRaise || amount));
+}
+
+function createHumanizedStrategy(baseFn) {
+  let tiltLevel = 0;
+  const recentResults = [];
+
+  return function humanizedStrategy(seat, legal, state, rng) {
+    let decision = baseFn(seat, legal, state, rng);
+    if (!decision) return decision;
+
+    const { actions, minBet, minRaise, maxRaise } = legal;
+    const pot = state.hand.pot || 0;
+
+    // Apply tilt: loosen calls, increase aggression after losses
+    if (tiltLevel > 0.2) {
+      if (decision.action === "FOLD" && tiltLevel > 0.3 && rng() < tiltLevel * 0.5) {
+        if (actions.includes("CALL")) decision = { action: "CALL" };
+      }
+      if (decision.action === "CALL" && tiltLevel > 0.5 && rng() < tiltLevel * 0.3) {
+        if (actions.includes("RAISE") && minRaise) {
+          decision = { action: "RAISE", amount: maxRaise || minRaise };
+        }
+      }
+    }
+
+    // Humanize bet sizing
+    if (decision.amount && (decision.action === "BET" || decision.action === "RAISE")) {
+      decision = { ...decision };
+      decision.amount = humanizeBetSize(
+        decision.amount, pot,
+        decision.action === "BET" ? minBet : minRaise,
+        maxRaise, rng
+      );
+    }
+
+    return decision;
+  };
+}
+
+// Tilt updater — called from profileStrategy after each hand
+function updateTiltState(strategyState, profitBB) {
+  strategyState.recentResults.push(profitBB);
+  if (strategyState.recentResults.length > 10) strategyState.recentResults.shift();
+  const recentSum = strategyState.recentResults.reduce((a, b) => a + b, 0);
+  const consecutiveLosses = strategyState.recentResults.slice().reverse().findIndex(x => x >= 0);
+  const lossStreak = consecutiveLosses === -1 ? strategyState.recentResults.length : consecutiveLosses;
+  strategyState.tiltLevel = Math.min(1, Math.max(0, -recentSum / 30 + lossStreak * 0.1));
+}
+
 const STRATEGIES = {
   tag:   { name: "TAG",    fn: tagStrategy },
   fish:  { name: "FISH",   fn: fishStrategy },
   lag:   { name: "LAG",    fn: lagStrategy },
   cfr50: { name: "CFR-50", fn: cfr50Strategy },
+  // Humanized versions
+  "tag-h":   { name: "TAG-H",    fn: createHumanizedStrategy(tagStrategy) },
+  "fish-h":  { name: "FISH-H",   fn: createHumanizedStrategy(fishStrategy) },
+  "lag-h":   { name: "LAG-H",    fn: createHumanizedStrategy(lagStrategy) },
+  "cfr50-h": { name: "CFR50-H",  fn: createHumanizedStrategy(cfr50Strategy) },
 };
 
 // ── Decision Recorder ──────────────────────────────────────────────────

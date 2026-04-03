@@ -23,12 +23,25 @@ function connect() {
   // Support ?table=N for multi-table
   const urlParams = new URLSearchParams(window.location.search);
   const tableId = urlParams.get("table") || "1";
-  ws = new WebSocket(`ws://${location.host}?table=${tableId}`);
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const apiKey = localStorage.getItem("pokerlab-api-key") || "";
+  const keyParam = apiKey ? `&key=${encodeURIComponent(apiKey)}` : "";
+  ws = new WebSocket(`${proto}//${location.host}?table=${tableId}${keyParam}`);
 
   ws.onopen = () => setStatus("connected", "Connected");
 
   ws.onmessage = (evt) => {
     const msg = JSON.parse(evt.data);
+
+    // Auth failure from server
+    if (msg.code === "AUTH_FAILED") {
+      const key = prompt("API key required to connect:");
+      if (key) {
+        localStorage.setItem("pokerlab-api-key", key);
+        setTimeout(connect, 500);
+      }
+      return;
+    }
 
     if (msg.welcome) {
       sessionId = msg.sessionId;
@@ -86,9 +99,10 @@ function connect() {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (evt) => {
     setStatus("disconnected", "Disconnected");
-    setTimeout(connect, 2000);
+    // Don't auto-reconnect on auth failure (4001) — handled in onmessage
+    if (evt.code !== 4001) setTimeout(connect, 2000);
   };
   ws.onerror = () => {};
 }

@@ -14,6 +14,7 @@ const { queryHands, getActorStats } = require("../api/query");
 const { AnnotationStore } = require("../api/annotations");
 const { BotDetector } = require("../engine/bot-detector");
 const { TableManager } = require("./table-manager");
+const { Auth } = require("./auth");
 
 const DEFAULT_CONFIG = {
   port: 9100,
@@ -87,6 +88,14 @@ function startServer(userConfig = {}) {
     });
   });
 
+  // ── Authentication ───────────────────────────────────────────────────
+  const auth = new Auth(config.keysPath);
+  if (auth.isEnabled()) {
+    console.log(`Auth enabled: ${auth.keys.size} API key(s) loaded`);
+  } else {
+    console.log("Auth disabled (no api-keys.json) — local dev mode");
+  }
+
   // ── Multi-table manager ────────────────────────────────────────────────
   const tableManager = new TableManager(storage, actors, tableConfig);
   // Register the primary table (table 1) with the recovered/new session
@@ -116,16 +125,38 @@ function startServer(userConfig = {}) {
   console.log();
 
   wss.on("connection", (ws, req) => {
-    clients.add(ws);
-
-    // Parse table ID from query string: ws://host:port?table=2
+    // Parse query string: ws://host:port?table=2&key=pk_live_...
     const url = new URL(req.url, `http://localhost:${port}`);
     const tableId = url.searchParams.get("table") || "1";
+    const apiKey = url.searchParams.get("key");
+
+    // ── Auth check (bypass for localhost) ──────────────────────────────
+    const isLocal = Auth.isLocalConnection(req);
+    let role = "admin";
+    let authName = "local";
+
+    if (!isLocal) {
+      const authResult = auth.validate(apiKey);
+      if (!authResult.valid) {
+        console.log(`Auth rejected: ${req.socket.remoteAddress} (invalid key)`);
+        ws.send(JSON.stringify({ error: "Invalid API key", code: "AUTH_FAILED" }));
+        ws.close(4001, "Unauthorized");
+        return;
+      }
+      role = authResult.role;
+      authName = authResult.name;
+    }
+
+    ws._role = role;
+    ws._authName = authName;
+    clients.add(ws);
+
     const table = tableManager.getOrCreate(tableId);
     table.addClient(ws);
     ws._tableId = tableId; // stash for cleanup
 
-    console.log(`Client connected to table ${tableId} (${clients.size} total, ${table.clients.size} on table)`);
+    const source = isLocal ? "local" : `${authName} (${role})`;
+    console.log(`Client connected to table ${tableId} — ${source} (${clients.size} total, ${table.clients.size} on table)`);
     sendWelcome(ws);
 
     ws.on("message", (raw) => {
@@ -133,6 +164,12 @@ function startServer(userConfig = {}) {
       if (!parsed.valid) { ws.send(formatError(null, parsed.error)); return; }
 
       const { id, cmd: cmdName, payload } = parsed;
+
+      // ── Permission check ────────────────────────────────────────────
+      if (!auth.canExecute(ws._role, cmdName)) {
+        ws.send(formatError(id, `Permission denied: ${cmdName} requires higher role (current: ${ws._role})`));
+        return;
+      }
 
       // ── Multi-table commands ──────────────────────────────────────────
       if (cmdName === "LIST_TABLES") {

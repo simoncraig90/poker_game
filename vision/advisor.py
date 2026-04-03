@@ -81,6 +81,130 @@ def card_display(s):
     return f"{rank}{sym}"
 
 
+# ── Board danger assessment ─────────────────────────────────────────────
+
+def assess_board_danger(hero_cards_str, board_cards_str):
+    """
+    Assess board danger and hero hand category.
+    Returns dict with danger_level (0-1), hand_category, and warnings.
+    Used to override CFR recommendations on dangerous boards.
+    """
+    if not board_cards_str or len(board_cards_str) < 3:
+        return {"danger": 0, "category": "PREFLOP", "warnings": [], "suppress_raise": False}
+
+    hero = [card_str_to_dict(c) for c in hero_cards_str]
+    hero = [c for c in hero if c]
+    board = [card_str_to_dict(c) for c in board_cards_str]
+    board = [c for c in board if c]
+
+    if len(hero) < 2:
+        return {"danger": 0, "category": "UNKNOWN", "warnings": [], "suppress_raise": False}
+
+    r1, r2 = hero[0]["rank"], hero[1]["rank"]
+    s1, s2 = hero[0]["suit"], hero[1]["suit"]
+    board_ranks = [c["rank"] for c in board]
+    board_suits = [c["suit"] for c in board]
+
+    warnings = []
+    danger = 0.0
+
+    # ── Hero hand category ──────────────────────────────────────────
+    hits_board = sum(1 for r in board_ranks if r == r1 or r == r2)
+    has_pair = r1 == r2
+    has_top_pair = (r1 == max(board_ranks) and r1 in board_ranks) or (r2 == max(board_ranks) and r2 in board_ranks)
+    has_set = has_pair and r1 in board_ranks
+    has_two_pair = r1 in board_ranks and r2 in board_ranks and r1 != r2
+
+    if has_set or has_two_pair:
+        category = "STRONG"
+    elif has_top_pair:
+        category = "TOP_PAIR"
+    elif hits_board > 0:
+        category = "PAIR"
+    else:
+        category = "NO_PAIR"
+
+    # ── Board texture dangers ───────────────────────────────────────
+
+    # Paired board
+    rank_counts = {}
+    for r in board_ranks:
+        rank_counts[r] = rank_counts.get(r, 0) + 1
+    board_pairs = sum(1 for c in rank_counts.values() if c >= 2)
+    if board_pairs >= 2:
+        warnings.append("DOUBLE_PAIRED")
+        danger += 0.3
+    elif board_pairs >= 1:
+        warnings.append("PAIRED")
+        danger += 0.15
+
+    # Flush possible
+    suit_counts = {}
+    for s in board_suits:
+        suit_counts[s] = suit_counts.get(s, 0) + 1
+    max_suit = max(suit_counts.values()) if suit_counts else 0
+    hero_has_flush = (s1 == s2 and suit_counts.get(s1, 0) >= 3)
+    if max_suit >= 4 and not hero_has_flush:
+        warnings.append("FLUSH_HEAVY")
+        danger += 0.35
+    elif max_suit >= 3 and not hero_has_flush:
+        warnings.append("FLUSH_DRAW")
+        danger += 0.15
+
+    # Straight possible
+    unique = sorted(set(board_ranks))
+    if 14 in unique:
+        unique = [1] + unique
+    max_conn = 1
+    conn = 1
+    for i in range(1, len(unique)):
+        if unique[i] - unique[i - 1] <= 2:
+            conn += 1
+        else:
+            conn = 1
+        max_conn = max(max_conn, conn)
+    if max_conn >= 4:
+        warnings.append("STRAIGHT_HEAVY")
+        danger += 0.35
+    elif max_conn >= 3:
+        warnings.append("STRAIGHT_POSSIBLE")
+        danger += 0.2
+
+    # High board (A or K on board, hero doesn't have it)
+    if 14 in board_ranks and r1 != 14 and r2 != 14:
+        danger += 0.1
+    if 13 in board_ranks and r1 != 13 and r2 != 13:
+        danger += 0.05
+
+    danger = min(1.0, danger)
+
+    # ── Should we suppress raise? ───────────────────────────────────
+    # Don't raise with weak hands on dangerous boards
+    # Check for strong draws (flush draw or open-ended straight draw)
+    has_flush_draw = False
+    if s1 == s2:
+        flush_count = sum(1 for s in board_suits if s == s1)
+        if flush_count >= 2:
+            has_flush_draw = True
+    has_overcards = (r1 > max(board_ranks) and r2 > max(board_ranks)) if board_ranks else False
+    strong_draw = has_flush_draw or (has_overcards and max(r1, r2) >= 13)
+
+    suppress_raise = False
+    if category == "NO_PAIR" and not strong_draw:
+        suppress_raise = True  # never raise with no pair and no draw postflop
+    if category == "PAIR" and not has_top_pair and danger >= 0.15:
+        suppress_raise = True  # don't raise middle/bottom pair on textured boards
+    if category == "TOP_PAIR" and danger > 0.35:
+        suppress_raise = True  # even top pair should be cautious on very scary boards
+
+    return {
+        "danger": danger,
+        "category": category,
+        "warnings": warnings,
+        "suppress_raise": suppress_raise,
+    }
+
+
 # ── Hand strength evaluation (heuristic, matching JS CFR abstraction) ────
 
 def evaluate_hand_strength(cards, board, phase):
@@ -264,6 +388,147 @@ def nn_hand_strength(hero_ints, board_ints, num_opponents=1):
     return prob
 
 
+# ── New equity model (board-texture aware) ──────────────────────────────
+
+EQUITY_MODEL_PATH = VISION_DIR / "models" / "equity_model.pt"
+_equity_model = None
+_equity_device = None
+
+
+def _load_equity_model():
+    """Lazy-load the board-texture-aware equity model."""
+    global _equity_model, _equity_device
+    if _equity_model is not None:
+        return _equity_model, _equity_device
+    if not EQUITY_MODEL_PATH.exists():
+        return None, None
+    try:
+        import torch
+        import torch.nn as nn
+
+        class EquityNet(nn.Module):
+            def __init__(self, embed_dim=32, hidden=256):
+                super().__init__()
+                self.card_embed = nn.Embedding(53, embed_dim, padding_idx=52)
+                input_dim = 2 * embed_dim + 5 * embed_dim + 14
+                self.net = nn.Sequential(
+                    nn.Linear(input_dim, hidden), nn.ReLU(), nn.Dropout(0.1),
+                    nn.Linear(hidden, hidden), nn.ReLU(), nn.Dropout(0.1),
+                    nn.Linear(hidden, hidden // 2), nn.ReLU(),
+                    nn.Linear(hidden // 2, 1), nn.Sigmoid(),
+                )
+            def forward(self, hero, board, features):
+                hero_emb = self.card_embed(hero).flatten(1)
+                board_emb = self.card_embed(board).flatten(1)
+                x = torch.cat([hero_emb, board_emb, features], dim=1)
+                return self.net(x)
+
+        device = torch.device("cpu")
+        model = EquityNet(embed_dim=32, hidden=256).to(device)
+        state_dict = torch.load(str(EQUITY_MODEL_PATH), map_location=device, weights_only=True)
+        model.load_state_dict(state_dict)
+        model.eval()
+        _equity_model = model
+        _equity_device = device
+        print("[Advisor] Equity model loaded (board-texture aware)")
+        return model, device
+    except Exception as e:
+        print(f"[Advisor] Could not load equity model: {e}")
+        return None, None
+
+
+def equity_model_predict(hero_cards_str, board_cards_str):
+    """
+    Predict equity using the board-texture-aware neural net.
+    hero_cards_str: list of card strings like ['Ah', 'Ks']
+    board_cards_str: list of card strings like ['Td', '5c', '2h']
+    Returns float 0-1 or None if model unavailable.
+    """
+    model, device = _load_equity_model()
+    if model is None:
+        return None
+
+    import torch
+
+    # Parse cards to ints (0-51)
+    hero_ints = [card_str_to_int(c) for c in hero_cards_str]
+    hero_ints = [x for x in hero_ints if x is not None]
+    if len(hero_ints) < 2:
+        return None
+
+    board_ints = [card_str_to_int(c) for c in board_cards_str]
+    board_ints = [x for x in board_ints if x is not None]
+
+    # Parse to dicts for feature extraction
+    hero_dicts = [card_str_to_dict(c) for c in hero_cards_str]
+    hero_dicts = [c for c in hero_dicts if c is not None]
+    board_dicts = [card_str_to_dict(c) for c in board_cards_str]
+    board_dicts = [c for c in board_dicts if c is not None]
+
+    r1, r2 = hero_dicts[0]["rank"], hero_dicts[1]["rank"]
+    s1, s2 = hero_dicts[0]["suit"], hero_dicts[1]["suit"]
+
+    # Hero features
+    suited = 1.0 if s1 == s2 else 0.0
+    pair = 1.0 if r1 == r2 else 0.0
+    gap = abs(r1 - r2) / 12.0
+    high_rank = max(r1, r2) / 14.0
+    low_rank = min(r1, r2) / 14.0
+
+    board_ranks = [c["rank"] for c in board_dicts]
+    board_suits = [c["suit"] for c in board_dicts]
+    hits = sum(1 for r in board_ranks if r == r1 or r == r2) / max(1, len(board_dicts)) if board_dicts else 0.0
+
+    # Flush draw
+    hero_flush_draw = 0.0
+    if suited and len(board_dicts) >= 2:
+        flush_count = sum(1 for c in board_dicts if c["suit"] == s1)
+        if flush_count >= 2:
+            hero_flush_draw = 1.0
+
+    # Board texture
+    rank_counts = {}
+    for r in board_ranks:
+        rank_counts[r] = rank_counts.get(r, 0) + 1
+    paired = 1.0 if any(c >= 2 for c in rank_counts.values()) else 0.0
+
+    suit_counts = {}
+    for s in board_suits:
+        suit_counts[s] = suit_counts.get(s, 0) + 1
+    max_suit = max(suit_counts.values()) if suit_counts else 0
+    flush3 = 1.0 if max_suit >= 3 else 0.0
+    flush4 = 1.0 if max_suit >= 4 else 0.0
+
+    unique_ranks = sorted(set(board_ranks))
+    if 14 in unique_ranks:
+        unique_ranks = [1] + unique_ranks
+    max_conn = 1
+    conn = 1
+    for i in range(1, len(unique_ranks)):
+        if unique_ranks[i] - unique_ranks[i - 1] <= 2:
+            conn += 1
+        else:
+            conn = 1
+        max_conn = max(max_conn, conn)
+    straight3 = 1.0 if max_conn >= 3 else 0.0
+    straight4 = 1.0 if max_conn >= 4 else 0.0
+    high_card = max(board_ranks) / 14.0 if board_ranks else 0.0
+    board_len = len(board_dicts) / 5.0
+
+    # Build tensors
+    hero_t = torch.tensor([hero_ints], dtype=torch.long, device=device)
+    board_padded = board_ints + [52] * (5 - len(board_ints))
+    board_t = torch.tensor([board_padded], dtype=torch.long, device=device)
+    features_t = torch.tensor([[
+        suited, pair, gap, high_rank, low_rank, hits, hero_flush_draw,
+        paired, flush3, flush4, straight3, straight4, high_card, board_len,
+    ]], dtype=torch.float32, device=device)
+
+    with torch.no_grad():
+        eq = model(hero_t, board_t, features_t).item()
+    return eq
+
+
 # ── CFR strategy lookup ──────────────────────────────────────────────────
 
 def phase_from_board_count(n):
@@ -309,7 +574,7 @@ class CFRLookup:
             print(f"[Advisor] WARNING: CFR strategy not found at {path}")
 
     def lookup(self, hero_cards_str, board_cards_str, pot, stack, bb=0.10,
-               action_history_str="", num_opponents=1, position="IP"):
+               action_history_str="", num_opponents=1, position="IP", facing_bet=False):
         """
         Look up CFR recommendation.
 
@@ -345,8 +610,10 @@ class CFRLookup:
 
         phase = phase_from_board_count(len(board_dicts))
 
-        # Hand strength (heuristic — matching CFR abstraction)
-        strength = evaluate_hand_strength(hero_dicts, board_dicts, phase)
+        # Hand strength — prefer equity model, fall back to heuristic
+        eq_model_strength = equity_model_predict(hero_cards_str, board_cards_str)
+        heuristic_strength = evaluate_hand_strength(hero_dicts, board_dicts, phase)
+        strength = eq_model_strength if eq_model_strength is not None else heuristic_strength
         bucket = strength_to_bucket(strength, 50)
 
         # Position-based bucket adjustment (IP plays wider preflop)
@@ -361,7 +628,7 @@ class CFRLookup:
         board_ints = [card_str_to_int(c) for c in board_cards_str]
         hero_ints = [x for x in hero_ints if x is not None]
         board_ints = [x for x in board_ints if x is not None]
-        nn_eq = None
+        nn_eq = eq_model_strength  # show the equity model prediction
         if len(hero_ints) == 2:
             nn_eq = nn_hand_strength(hero_ints, board_ints, num_opponents)
 
@@ -422,6 +689,34 @@ class CFRLookup:
 
         # Remove zero-probability actions
         simple_probs = {k: v for k, v in simple_probs.items() if v > 0.001}
+
+        # Remap actions when facing a bet:
+        # CFR strategies model CHECK/BET; remap to CALL/RAISE when facing
+        if facing_bet:
+            check_p = simple_probs.pop("CHECK", 0)
+            bet_p = simple_probs.pop("BET", 0)
+            simple_probs["CALL"] = simple_probs.get("CALL", 0) + check_p * 0.7
+            simple_probs["FOLD"] = simple_probs.get("FOLD", 0) + check_p * 0.3
+            simple_probs["RAISE"] = simple_probs.get("RAISE", 0) + bet_p
+            simple_probs = {k: v for k, v in simple_probs.items() if v > 0.001}
+            total_p = sum(simple_probs.values())
+            if total_p > 0:
+                simple_probs = {k: v / total_p for k, v in simple_probs.items()}
+
+        # Board danger check — suppress raise on dangerous boards with weak hands
+        board_check = assess_board_danger(hero_cards_str, board_cards_str)
+        if board_check["suppress_raise"]:
+            # Shift raise probability to call/fold
+            raise_p = simple_probs.pop("RAISE", 0) + simple_probs.pop("BET", 0)
+            if facing_bet:
+                simple_probs["CALL"] = simple_probs.get("CALL", 0) + raise_p * 0.5
+                simple_probs["FOLD"] = simple_probs.get("FOLD", 0) + raise_p * 0.5
+            else:
+                simple_probs["CHECK"] = simple_probs.get("CHECK", 0) + raise_p
+            simple_probs = {k: v for k, v in simple_probs.items() if v > 0.001}
+            total_p = sum(simple_probs.values())
+            if total_p > 0:
+                simple_probs = {k: v / total_p for k, v in simple_probs.items()}
 
         # Get recommended action (highest probability)
         recommended = max(simple_probs, key=simple_probs.get) if simple_probs else "CHECK"
@@ -881,6 +1176,9 @@ class Advisor:
         # Pre-load NN hand strength model in background
         if HAND_STRENGTH_MODEL_PATH.exists():
             threading.Thread(target=load_nn_model, daemon=True).start()
+        # Pre-load equity model (board-texture aware)
+        if EQUITY_MODEL_PATH.exists():
+            threading.Thread(target=_load_equity_model, daemon=True).start()
 
         # Overlay
         self.overlay = None
@@ -1135,7 +1433,7 @@ class Advisor:
                 current = ""    # checked to hero
             self.action_history = (prev + "-" + current).strip("-") if prev else current
 
-    def _format_solver_result(self, result, hero, board, phase, position):
+    def _format_solver_result(self, result, hero, board, phase, position, facing_bet=False):
         """Convert solver response to the same format as CFRLookup.lookup()."""
         strat = result.get("strategy", {})
         # Aggregate into simple actions
@@ -1149,6 +1447,33 @@ class Advisor:
             simple["BET"] = bet_sum
         if raise_sum > 0.01:
             simple["RAISE"] = raise_sum
+
+        # Remap actions when facing a bet:
+        # Solver models CHECK/BET; remap to CALL/RAISE when facing
+        if facing_bet:
+            check_p = simple.pop("CHECK", 0)
+            bet_p = simple.pop("BET", 0)
+            simple["CALL"] = simple.get("CALL", 0) + check_p * 0.7
+            simple["FOLD"] = simple.get("FOLD", 0) + check_p * 0.3
+            simple["RAISE"] = simple.get("RAISE", 0) + bet_p
+            simple = {k: v for k, v in simple.items() if v > 0.001}
+            total_p = sum(simple.values())
+            if total_p > 0:
+                simple = {k: v / total_p for k, v in simple.items()}
+
+        # Board danger check — suppress raise on dangerous boards
+        board_check = assess_board_danger(hero, board)
+        if board_check["suppress_raise"]:
+            raise_p = simple.pop("RAISE", 0) + simple.pop("BET", 0)
+            if facing_bet:
+                simple["CALL"] = simple.get("CALL", 0) + raise_p * 0.5
+                simple["FOLD"] = simple.get("FOLD", 0) + raise_p * 0.5
+            else:
+                simple["CHECK"] = simple.get("CHECK", 0) + raise_p
+            simple = {k: v for k, v in simple.items() if v > 0.001}
+            total_p = sum(simple.values())
+            if total_p > 0:
+                simple = {k: v / total_p for k, v in simple.items()}
 
         # Best action
         best_action = max(simple, key=simple.get) if simple else "CHECK"
@@ -1215,6 +1540,14 @@ class Advisor:
         facing_bet = state.get("facing_bet", False)
 
         phase = phase_from_board_count(len(board))
+
+        # Preflop: hero is always facing a bet (the BB) unless they ARE the BB with no raise
+        # If hero has action buttons visible and it's preflop, assume facing bet
+        # (the only exception is BB checking option, which has no Fold button)
+        if phase == "PREFLOP" and not facing_bet and state.get("hero_turn", False):
+            # Conservative: if we can't tell, assume facing bet preflop
+            # The red button detection may fail on some themes
+            facing_bet = True
         self._infer_action_history(state)
         position = state.get("position", "IP")
 
@@ -1240,7 +1573,7 @@ class Advisor:
                         ms = result.get("solveTimeMs", 0)
                         cached = result.get("cached", False)
                         print(f"[solver] {ms}ms cached={cached} strat={result['strategy']}")
-                    return self._format_solver_result(result, hero, board, phase, position)
+                    return self._format_solver_result(result, hero, board, phase, position, facing_bet=facing_bet)
             except Exception as e:
                 if self.debug:
                     print(f"[solver] error: {e}")
@@ -1255,6 +1588,7 @@ class Advisor:
             action_history_str=self.action_history.rstrip("-"),
             num_opponents=num_opp,
             position=position,
+            facing_bet=facing_bet,
         )
         return rec
 
@@ -1373,7 +1707,8 @@ class Advisor:
                     hero = state.get("hero_cards", [])
                     board = state.get("board_cards", [])
                     turn = state.get("hero_turn", False)
-                    print(f"[debug] hero={hero} board={board} turn={turn}")
+                    fb = state.get("facing_bet", False)
+                    print(f"[debug] hero={hero} board={board} turn={turn} facing_bet={fb}")
 
                 # 5. Update overlay whenever state changes
                 hero = state.get("hero_cards", [])
