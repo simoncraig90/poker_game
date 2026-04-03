@@ -14,15 +14,171 @@
  * Usage:
  *   node scripts/generate-rl-data.js                       # 100k hands, TAG
  *   node scripts/generate-rl-data.js --hands 50000
+ *   node scripts/generate-rl-data.js --strategy cfr        # use CFR strategy (recommended)
  *   node scripts/generate-rl-data.js --strategy neural     # use inference server
  *   node scripts/generate-rl-data.js --append              # append to existing file
  */
 
 const { createGame, ACTION, PHASE } = require("../src/index");
 const { getLegalActions } = require("../src/engine/betting");
+const { evaluateHandStrength: cfrEvalStrength, strengthToBucket, encodeAction: encodeCFRAction } = require("./cfr/abstraction");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+
+// ── CFR Strategy ──────────────────────────────────────────────────────
+
+const CFR_NUM_BUCKETS = 10;
+const CFR_POS_NAMES = ["BTN", "SB", "BB", "UTG", "MP", "CO"];
+
+function createCFRSixmaxStrategy(strategyPath) {
+  const fullPath = path.resolve(strategyPath);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`CFR strategy file not found: ${fullPath}`);
+  }
+  const strategyTable = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+  console.log(`[CFR] Loaded 6-max strategy with ${Object.keys(strategyTable).length} info sets`);
+
+  return function cfrSixmaxStrategy(seat, legal, state, rng) {
+    const { actions, callAmount, minBet, minRaise, maxRaise } = legal;
+    if (actions.length === 0) return null;
+    if (actions.length === 1) return { action: actions[0] };
+
+    const hand = state.hand;
+    const seatState = state.table.seats[seat];
+    const cards = seatState.holeCards || [];
+    const board = hand.board || [];
+    const phase = hand.phase;
+
+    // Hand strength and bucket (10 buckets for 6-max)
+    const strength = cfrEvalStrength(cards, board, phase);
+    const bucket = strengthToBucket(strength, CFR_NUM_BUCKETS);
+
+    // Stack bucket
+    const bb = state.table.bb || 10;
+    const bbs = (seatState.stack || 0) / bb;
+    const stackBucket = bbs < 30 ? 0 : bbs < 80 ? 1 : 2;
+
+    // Position: map seat relative to dealer
+    const dealer = hand.dealer ?? 0;
+    const numSeats = Object.keys(state.table.seats).length;
+    const relPos = ((seat - dealer) % numSeats + numSeats) % numSeats;
+    const pos = CFR_POS_NAMES[relPos] || "UTG";
+
+    // Count active players
+    let numActive = 0;
+    for (const k of Object.keys(state.table.seats)) {
+      const s = state.table.seats[k];
+      if (s && s.inHand && !s.folded) numActive++;
+    }
+
+    // Build action history from hand.actions
+    // Map engine actions to CFR compact notation, separated by street
+    const streetActions = { PREFLOP: "", FLOP: "", TURN: "", RIVER: "" };
+    let currentStreet = "PREFLOP";
+    if (hand.actions) {
+      for (const a of hand.actions) {
+        if (a.type === "BLIND_SB" || a.type === "BLIND_BB") continue;
+        if (a.type === "DEAL_FLOP") { currentStreet = "FLOP"; continue; }
+        if (a.type === "DEAL_TURN") { currentStreet = "TURN"; continue; }
+        if (a.type === "DEAL_RIVER") { currentStreet = "RIVER"; continue; }
+        // Include ALL player actions (not just opponents) for the history
+        if (a.type === "FOLD") streetActions[currentStreet] += "f";
+        else if (a.type === "CHECK") streetActions[currentStreet] += "k";
+        else if (a.type === "CALL") streetActions[currentStreet] += "c";
+        else if (a.type === "RAISE" || a.type === "BET") {
+          // Map to CFR sizing: check if it's closer to half-pot or all-in
+          const potSize = hand.pot || 1;
+          const amount = a.amount || 0;
+          if (amount >= seatState.stack * 0.9) {
+            streetActions[currentStreet] += (a.type === "BET" ? "ba" : "ra");
+          } else {
+            streetActions[currentStreet] += (a.type === "BET" ? "bh" : "rh");
+          }
+        }
+      }
+    }
+
+    // Build full history with street separators
+    const parts = [];
+    const streets = ["PREFLOP", "FLOP", "TURN", "RIVER"];
+    for (const st of streets) {
+      if (streetActions[st]) parts.push(streetActions[st]);
+      if (st === phase) break;
+    }
+    const actionHistory = parts.join("-");
+
+    // Try progressively simpler keys until we find a match
+    const key6 = `${phase}:${bucket}:s${stackBucket}:${pos}:${numActive}p:${actionHistory}`;
+    const keyNoHistory = `${phase}:${bucket}:s${stackBucket}:${pos}:${numActive}p:`;
+    const keySimple = `${phase}:${bucket}:s${stackBucket}:${pos}:${numActive}p`;
+    const strategy = strategyTable[key6] || strategyTable[keyNoHistory] || strategyTable[keySimple];
+
+    if (!strategy) {
+      // Fallback to TAG if no CFR match
+      return tagStrategy(seat, legal, state, rng);
+    }
+
+    // Extract action probabilities for legal engine actions
+    const actionProbs = [];
+    for (const engineAction of actions) {
+      let prob = 0;
+      if (engineAction === ACTION.FOLD) prob = strategy["FOLD"] || 0;
+      else if (engineAction === ACTION.CHECK) prob = strategy["CHECK"] || 0;
+      else if (engineAction === ACTION.CALL) prob = strategy["CALL"] || 0;
+      else if (engineAction === ACTION.BET) prob = (strategy["BET_HALF"] || 0) + (strategy["BET_POT"] || 0) + (strategy["BET_ALLIN"] || 0);
+      else if (engineAction === ACTION.RAISE) prob = (strategy["RAISE_HALF"] || 0) + (strategy["RAISE_POT"] || 0) + (strategy["RAISE_ALLIN"] || 0);
+      actionProbs.push({ action: engineAction, prob });
+    }
+
+    const totalProb = actionProbs.reduce((sum, ap) => sum + ap.prob, 0);
+    if (totalProb <= 0) {
+      return tagStrategy(seat, legal, state, rng);
+    }
+
+    // Sample from CFR distribution
+    const r = rng();
+    let cumulative = 0;
+    let chosen = actionProbs[actionProbs.length - 1].action;
+    for (const ap of actionProbs) {
+      cumulative += ap.prob / totalProb;
+      if (r < cumulative) {
+        chosen = ap.action;
+        break;
+      }
+    }
+
+    // Determine bet/raise sizing from CFR sub-action probabilities
+    if (chosen === ACTION.BET) {
+      const potSize = hand.pot || 1;
+      const halfP = strategy["BET_HALF"] || 0;
+      const potP = strategy["BET_POT"] || 0;
+      const allP = strategy["BET_ALLIN"] || 0;
+      const total = halfP + potP + allP;
+      const r2 = rng() * total;
+      let betAmount;
+      if (r2 < halfP) betAmount = Math.round(potSize * 0.5);
+      else if (r2 < halfP + potP) betAmount = Math.round(potSize);
+      else betAmount = seatState.stack;
+      return { action: chosen, amount: Math.max(minBet, Math.min(betAmount, seatState.stack)) };
+    }
+    if (chosen === ACTION.RAISE) {
+      const potSize = hand.pot || 1;
+      const halfP = strategy["RAISE_HALF"] || 0;
+      const potP = strategy["RAISE_POT"] || 0;
+      const allP = strategy["RAISE_ALLIN"] || 0;
+      const total = halfP + potP + allP;
+      const r2 = rng() * total;
+      let raiseAmount;
+      if (r2 < halfP) raiseAmount = callAmount + Math.round(potSize * 0.5);
+      else if (r2 < halfP + potP) raiseAmount = callAmount + Math.round(potSize);
+      else raiseAmount = seatState.stack;
+      return { action: chosen, amount: Math.max(minRaise, Math.min(raiseAmount, maxRaise)) };
+    }
+
+    return { action: chosen };
+  };
+}
 
 // ── Card Encoding ──────────────────────────────────────────────────────
 
@@ -83,6 +239,23 @@ function tagStrategy(seat, legal, state, rng) {
   const potSize = hand.pot || 0;
   const stack = seatState.stack;
   let strength = evaluateHandStrength(cards, hand.board || [], phase);
+
+  // Small epsilon for exploration (5%) — just enough to see all actions
+  // but not so much that garbage data poisons the reward signal
+  const epsilon = 0.05;
+  if (rng() < epsilon) {
+    const idx = Math.floor(rng() * actions.length) % actions.length;
+    const a = actions[idx];
+    let amount = null;
+    if (a === ACTION.BET) {
+      const frac = 0.5 + rng() * 0.5;
+      amount = Math.max(minBet, Math.min(Math.floor(potSize * frac), stack));
+    } else if (a === ACTION.RAISE) {
+      const frac = rng();
+      amount = Math.max(minRaise, Math.min(Math.floor(minRaise + frac * potSize), maxRaise));
+    }
+    return { action: a, amount };
+  }
 
   if (phase === PHASE.PREFLOP) {
     if (strength > 0.7 && actions.includes(ACTION.RAISE)) {
@@ -268,9 +441,18 @@ function generateData(opts = {}) {
   const strategies = [];
   const botNames = [];
 
+  // Load CFR strategy if needed (once, shared by all bots)
+  let cfrStrategy = null;
+  if (strategyName === "cfr") {
+    const cfrPath = path.join(__dirname, "..", "vision", "models", "cfr_strategy.json");
+    cfrStrategy = createCFRSixmaxStrategy(cfrPath);
+  }
+
   for (let i = 0; i < numSeats; i++) {
     botNames.push(`Bot${i + 1}`);
-    if (strategyName === "neural") {
+    if (strategyName === "cfr") {
+      strategies.push(cfrStrategy);
+    } else if (strategyName === "neural") {
       strategies.push(createNeuralStrategy(opts.port || 9200));
     } else {
       strategies.push(tagStrategy);
@@ -388,27 +570,45 @@ function generateData(opts = {}) {
       }
     }
 
-    // Write decision points with per-decision rewards
+    // Write decision points with shaped rewards
     for (let di = 0; di < handDecisions.length; di++) {
       const d = handDecisions[di];
       const handProfit = profits[d.seat] || 0;
-
-      // Per-decision reward:
-      // - For the LAST action by this seat: the hand profit (actual outcome)
-      // - For earlier actions: discounted future reward (γ=0.99)
-      // This ensures fold decisions get meaningful signal:
-      //   fold early = small loss (just blinds), fold after calling = bigger loss
-      let reward = handProfit;
 
       // Find how many more decisions this seat made after this one
       let futureSteps = 0;
       for (let dj = di + 1; dj < handDecisions.length; dj++) {
         if (handDecisions[dj].seat === d.seat) futureSteps++;
       }
-      // Discount: earlier decisions get slightly less credit/blame
-      const gamma = 0.99;
-      reward = handProfit * Math.pow(gamma, futureSteps);
 
+      // Shaped reward = discounted outcome + immediate action signal
+      const gamma = 0.95;
+      const outcomeReward = handProfit * Math.pow(gamma, futureSteps);
+
+      // Immediate signal based on action quality relative to hand strength
+      const strength = d.features.handStrength || 0.5;
+      const actionIdx = d.actionIdx;
+      let shaping = 0;
+      if (actionIdx === 0) {
+        // FOLD: good if weak, bad if strong
+        shaping = (strength < 0.35) ? 0.5 : -strength * 2;
+      } else if (actionIdx === 2) {
+        // CALL: penalize calling with weak hands (anti calling-station signal)
+        // Slightly reward calling with medium-strong hands
+        if (strength < 0.35) shaping = -1.0;       // calling station penalty
+        else if (strength < 0.5) shaping = -0.3;    // marginal call, slight penalty
+        else shaping = 0.2;                          // good call
+      } else if (actionIdx === 3 || actionIdx === 4) {
+        // BET/RAISE: reward with strong hands, penalize bluffs
+        if (strength > 0.6) shaping = strength * 1.5;  // value bet/raise
+        else if (strength > 0.4) shaping = 0.1;         // semi-bluff OK
+        else shaping = -0.5;                             // bad bluff
+      }
+      // Scale shaping relative to pot size
+      const potBB = (d.features.potNorm || 0) * 100;
+      shaping *= Math.min(potBB / 10, 1.0) * 0.5;
+
+      const reward = outcomeReward + shaping * BB;
       const rewardNorm = reward / BB; // normalize by big blind
       const record = {
         s: d.features,

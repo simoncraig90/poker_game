@@ -206,9 +206,23 @@ def train(args):
             entropy = -(probs * safe_log_probs).sum(dim=-1)
             entropy_bonus = entropy.mean()
 
-            # Pure imitation learning — cross-entropy on TAG actions
-            # RL fine-tuning needs proper reward shaping (future work)
-            loss = imitation_loss
+            # Reward-weighted imitation: weight each example by advantage
+            # Uses conservative temperature to stay close to data distribution
+            temperature = 2.0  # higher = more conservative (closer to uniform weighting)
+            advantage_weights = torch.exp((advantage / temperature).clamp(-3, 3))
+            advantage_weights = advantage_weights / advantage_weights.mean()
+
+            # Weighted cross-entropy
+            log_probs_all = F.log_softmax(action_logits, dim=-1)
+            per_sample_ce = -log_probs_all.gather(1, actions.unsqueeze(1)).squeeze(1)
+            weighted_ce = (advantage_weights.detach() * per_sample_ce).mean()
+
+            # Pure imitation first half, blend in reward-weighting second half
+            progress = epoch / args.epochs
+            rl_weight = max(0, (progress - 0.5) * 2.0)  # 0 first half, 0->1 second half
+            loss = ((1.0 - rl_weight) * imitation_loss
+                    + rl_weight * weighted_ce
+                    - args.entropy_weight * entropy_bonus)
 
             optimizer.zero_grad()
             loss.backward()
@@ -247,7 +261,20 @@ def train(args):
                 advantage = advantage.clamp(-5.0, 5.0)
                 policy_loss = -(advantage * action_log_probs).mean()
 
-                val_loss_sum += policy_loss.item()
+                # Validation: use same blend as training
+                imitation_loss_val = F.cross_entropy(action_logits, actions)
+                temperature = 2.0
+                advantage_weights_val = torch.exp((advantage / temperature).clamp(-3, 3))
+                advantage_weights_val = advantage_weights_val / advantage_weights_val.mean()
+                log_probs_all_val = F.log_softmax(action_logits, dim=-1)
+                per_sample_ce_val = -log_probs_all_val.gather(1, actions.unsqueeze(1)).squeeze(1)
+                weighted_ce_val = (advantage_weights_val * per_sample_ce_val).mean()
+
+                progress = epoch / args.epochs
+                rl_weight = max(0, (progress - 0.5) * 2.0)
+                val_loss = ((1.0 - rl_weight) * imitation_loss_val.item()
+                            + rl_weight * weighted_ce_val.item())
+                val_loss_sum += val_loss
                 val_batches += 1
 
                 # Accuracy: does the model predict the same action?

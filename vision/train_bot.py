@@ -241,59 +241,62 @@ def run_cycle(cycle_num, args, training_log):
             except (IndexError, ValueError):
                 pass
 
-    # ── Step 3: Evaluate neural bot vs TAG ────────────────────────────
-    server_proc = start_inference_server(MODEL_PATH)
-
+    # ── Step 3: Evaluate neural bot vs TAG (6-max, in-process) ─────────
     eval_cmd = [
-        NODE, str(SCRIPTS / "self-play-nn.js"),
+        PYTHON, "-u", str(ROOT / "fast_selfplay.py"),
         "--hands", str(args.eval_hands),
-        "--seats", "2",
-        "--mode", "nn-vs-tag",
-        "--seed", str(seed + 500),
+        "--seats", "6",
+        "--nn-seats", "1",
         "--greedy",
+        "--seed", str(seed + 500),
     ]
 
     rc, output = run_cmd(
         eval_cmd,
-        f"Cycle {cycle_num}: Evaluate neural vs TAG ({args.eval_hands} hands)",
-        env={"STRUCTURED_OUTPUT": "1"}
+        f"Cycle {cycle_num}: Evaluate neural vs 5 TAG ({args.eval_hands} hands, 6-max)",
     )
 
-    eval_results = parse_nn_results(output)
-    cycle_result["nn_vs_tag"] = eval_results
-
-    # Extract neural bot's bb/100
+    # Parse results from fast_selfplay output
+    eval_results = {"players": []}
     nn_bb100 = None
-    if "players" in eval_results:
-        for p in eval_results.get("players", []):
-            if "Neural" in p.get("name", ""):
-                nn_bb100 = p.get("bb100", 0)
-                break
+    for line in output.split("\n"):
+        line = line.strip()
+        if "Profit:" in line and "bb/100" in line:
+            try:
+                bb100_str = line.split("(")[1].split("bb/100")[0].strip()
+                bb100_val = float(bb100_str)
+            except (IndexError, ValueError):
+                continue
+            # The previous line has the player name
+        if "NeuralBot:" in line:
+            # Next relevant line has the profit
+            pass
+    # More robust parsing: look for NeuralBot profit line
+    lines = output.split("\n")
+    for i, line in enumerate(lines):
+        if "NeuralBot:" in line:
+            for j in range(i+1, min(i+5, len(lines))):
+                if "bb/100" in lines[j]:
+                    try:
+                        bb100_str = lines[j].split("(")[1].split("bb/100")[0].strip()
+                        nn_bb100 = float(bb100_str)
+                    except (IndexError, ValueError):
+                        pass
+                    break
+            break
+
     if nn_bb100 is None:
-        nn_bb100 = eval_results.get("nn_bb100", 0)
+        nn_bb100 = 0
+    cycle_result["nn_vs_tag"] = eval_results
     cycle_result["nn_vs_tag_bb100"] = nn_bb100
-    print(f"\n  Neural vs TAG: {nn_bb100:.1f} bb/100")
+    print(f"\n  Neural vs TAG (6-max): {nn_bb100:.1f} bb/100")
 
-    # ── Step 4: Evaluate neural bot vs previous version ───────────────
-    if cycle_num > 1 and PREV_MODEL_PATH.exists():
-        # Start a second server on a different port for the prev model
-        prev_port = INFERENCE_PORT + 1
-        prev_server = start_inference_server(PREV_MODEL_PATH, port=prev_port)
-
-        # Run neural (current, port 9200) vs neural (prev, port 9201)
-        # For this we need a custom approach - run current model on seat 0
-        # But self-play-nn.js only supports one port. So we just track
-        # improvement via the nn_vs_tag metric instead.
-        stop_inference_server(prev_server)
-
-        # Compare bb/100 across cycles
-        if len(training_log["cycles"]) > 0:
-            prev_bb100 = training_log["cycles"][-1].get("nn_vs_tag_bb100", 0)
-            improvement = (nn_bb100 or 0) - prev_bb100
-            cycle_result["improvement_bb100"] = improvement
-            print(f"  Improvement over last cycle: {improvement:+.1f} bb/100")
-
-    stop_inference_server(server_proc)
+    # ── Step 4: Track improvement across cycles ──────────────────────
+    if len(training_log["cycles"]) > 0:
+        prev_bb100 = training_log["cycles"][-1].get("nn_vs_tag_bb100", 0)
+        improvement = (nn_bb100 or 0) - prev_bb100
+        cycle_result["improvement_bb100"] = improvement
+        print(f"  Improvement over last cycle: {improvement:+.1f} bb/100")
 
     # ── Save previous model for comparison ────────────────────────────
     if MODEL_PATH.exists():

@@ -277,7 +277,146 @@ function archiveSession() {
   send("ARCHIVE_SESSION");
 }
 
-// ── Keyboard Shortcuts ─────────────────────────────────────────────────────
+// ── Auto-Actions ──────────────────────────────────────────────────────────
+
+function onAutoActionChange() {
+  // Mutual exclusion: only one auto-action at a time
+  const clicked = event.target;
+  if (clicked.checked) {
+    document.querySelectorAll('#auto-actions input[type="checkbox"]').forEach(cb => {
+      if (cb !== clicked) cb.checked = false;
+    });
+  }
+  // Try to execute immediately if it's our turn
+  tryAutoAction();
+}
+
+function tryAutoAction() {
+  const hand = state ? state.hand : null;
+  if (!hand || hand.actionSeat !== 0 || hand.phase === "COMPLETE") return false;
+  const legal = hand.legalActions;
+  if (!legal) return false;
+  const actions = legal.actions;
+
+  if (document.getElementById("auto-fold").checked) {
+    if (actions.includes("FOLD")) { sendAction("FOLD"); clearAutoActions(); return true; }
+    if (actions.includes("CHECK")) { sendAction("CHECK"); clearAutoActions(); return true; }
+  }
+  if (document.getElementById("auto-checkfold").checked) {
+    if (actions.includes("CHECK")) { sendAction("CHECK"); clearAutoActions(); return true; }
+    if (actions.includes("FOLD")) { sendAction("FOLD"); clearAutoActions(); return true; }
+  }
+  if (document.getElementById("auto-call").checked) {
+    if (actions.includes("CALL")) { sendAction("CALL"); clearAutoActions(); return true; }
+    if (actions.includes("CHECK")) { sendAction("CHECK"); clearAutoActions(); return true; }
+  }
+  return false;
+}
+
+function clearAutoActions() {
+  document.querySelectorAll('#auto-actions input[type="checkbox"]').forEach(cb => cb.checked = false);
+}
+
+// ── Bet Sizing Slider ─────────────────────────────────────────────────────
+
+let sliderMin = 0, sliderMax = 0;
+
+function updateSizingBar() {
+  const hand = state ? state.hand : null;
+  const legal = hand ? hand.legalActions : null;
+  const actions = legal ? legal.actions : [];
+  const isHeroTurn = hand && hand.actionSeat === 0 && hand.phase !== "COMPLETE";
+  const showSlider = isHeroTurn && (actions.includes("BET") || actions.includes("RAISE"));
+
+  document.getElementById("sizing-bar").classList.toggle("visible", showSlider);
+  if (!showSlider || !legal) return;
+
+  if (actions.includes("BET")) {
+    sliderMin = legal.minBet;
+    sliderMax = state.seats[0] ? state.seats[0].stack : legal.minBet;
+  } else {
+    sliderMin = legal.minRaise;
+    sliderMax = legal.maxRaise || sliderMin;
+  }
+
+  const slider = document.getElementById("bet-slider");
+  slider.min = sliderMin;
+  slider.max = sliderMax;
+  const pot = hand.pot || 0;
+  const defaultVal = Math.max(sliderMin, Math.min(Math.round(pot * 0.5), sliderMax));
+  slider.value = defaultVal;
+  document.getElementById("bet-input").value = defaultVal;
+  updateSliderDisplay(defaultVal);
+}
+
+function onSliderChange() {
+  const val = parseInt(document.getElementById("bet-slider").value);
+  document.getElementById("bet-input").value = val;
+  updateSliderDisplay(val);
+  const betBtn = document.getElementById("bet-btn");
+  const raiseBtn = document.getElementById("raise-btn");
+  if (!betBtn.disabled) betBtn.innerHTML = `Bet ${c$(val)}`;
+  if (!raiseBtn.disabled) raiseBtn.innerHTML = `Raise to ${c$(val)}`;
+}
+
+function updateSliderDisplay(val) {
+  document.getElementById("slider-value").textContent = c$(val);
+}
+
+function setSizingFraction(frac) {
+  const hand = state ? state.hand : null;
+  if (!hand) return;
+  const pot = hand.pot || 0;
+  const amount = Math.max(sliderMin, Math.min(Math.round(pot * frac), sliderMax));
+  document.getElementById("bet-slider").value = amount;
+  document.getElementById("bet-input").value = amount;
+  updateSliderDisplay(amount);
+  onSliderChange();
+}
+
+function setSizingAllIn() {
+  document.getElementById("bet-slider").value = sliderMax;
+  document.getElementById("bet-input").value = sliderMax;
+  updateSliderDisplay(sliderMax);
+  onSliderChange();
+}
+
+// ── Turn Timer ────────────────────────────────────────────────────────────
+
+let timerInterval = null;
+const TURN_TIME = 30;
+
+function startTurnTimer(seat) {
+  stopTurnTimer();
+  const seatEl = document.querySelector(`.seat[data-seat="${seat}"]`);
+  if (!seatEl) return;
+
+  let timerEl = seatEl.querySelector('.seat-timer');
+  if (!timerEl) {
+    timerEl = document.createElement('div');
+    timerEl.className = 'seat-timer';
+    timerEl.innerHTML = '<div class="seat-timer-fill" style="width:100%"></div>';
+    seatEl.appendChild(timerEl);
+  }
+  const fill = timerEl.querySelector('.seat-timer-fill');
+  fill.style.width = '100%';
+  timerEl.style.display = '';
+
+  const startTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const pct = Math.max(0, 100 - (elapsed / TURN_TIME) * 100);
+    fill.style.width = pct + '%';
+    if (pct <= 0) stopTurnTimer();
+  }, 200);
+}
+
+function stopTurnTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  document.querySelectorAll('.seat-timer').forEach(el => el.style.display = 'none');
+}
+
+// ── Keyboard Shortcuts ────────────────────────────────────────────────────
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT") return;
@@ -389,10 +528,29 @@ function render() {
   document.getElementById("table-info").textContent =
     `${state.tableName} | ${c$(state.sb)}/${c$(state.bb)} | ${handInfo} | Played: ${state.handsPlayed} | ${sidShort}`;
 
+  // Header table name (PS-style)
+  const headerName = document.getElementById("header-table-name");
+  if (headerName) headerName.textContent = state.tableName || "Pamina III";
+
   // Felt info text (like PS table name + stakes)
   const feltInfo = document.getElementById("felt-info");
   if (feltInfo) {
     feltInfo.innerHTML = `${state.tableName} - No Limit Hold'em<br>${c$(state.sb)}/${c$(state.bb)}`;
+  }
+
+  // Game status message (PS-style "Wait for Big Blind" etc.)
+  const statusText = document.getElementById("status-text");
+  if (statusText) {
+    if (!handActive && state.seats[0] && state.seats[0].status === "OCCUPIED") {
+      statusText.textContent = "Wait for Big Blind";
+    } else if (handActive && hand.actionSeat === 0) {
+      statusText.textContent = "Your turn";
+    } else if (handActive) {
+      const actingPlayer = state.seats[hand.actionSeat];
+      statusText.textContent = actingPlayer ? `${actingPlayer.player.name}'s turn` : "";
+    } else {
+      statusText.textContent = "";
+    }
   }
 
   // Seats
@@ -486,13 +644,20 @@ function render() {
   const board = (handActive && hand) ? hand.board : (showdownBoard || []);
   let boardHtml = "";
   for (let i = 0; i < 5; i++) {
-    if (board[i]) boardHtml += cardHtml(board[i]);
+    if (board[i]) {
+      boardHtml += cardHtml(board[i]);
+    } else if (handActive) {
+      boardHtml += '<span class="card-slot"></span>';
+    }
   }
   document.getElementById("board").innerHTML = boardHtml;
   document.getElementById("pot").textContent = handActive && hand.pot > 0 ? `Pot: ${c$(hand.pot)}` : "";
   document.getElementById("phase").textContent = handActive ? hand.phase : (showdownReveals ? "SHOWDOWN" : "");
 
   updateActionButtons();
+
+  // Try auto-actions after render (slight delay so state is current)
+  setTimeout(() => tryAutoAction(), 50);
 }
 
 function updateActionButtons() {
@@ -547,6 +712,16 @@ function updateActionButtons() {
   document.getElementById("start-btn").disabled = handActive || occupied < 2;
   // Always show start button when between hands
   document.getElementById("start-btn").style.display = handActive ? "none" : "";
+
+  // Update bet sizing slider
+  updateSizingBar();
+
+  // Update turn timer
+  if (hand && hand.actionSeat !== undefined && hand.phase !== "COMPLETE") {
+    startTurnTimer(hand.actionSeat);
+  } else {
+    stopTurnTimer();
+  }
 }
 
 // ── Banners ────────────────────────────────────────────────────────────────

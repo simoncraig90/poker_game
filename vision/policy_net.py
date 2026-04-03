@@ -68,7 +68,7 @@ class PolicyNet(nn.Module):
     def forward(self, cards, extra_features):
         """
         cards: (B, 7) long tensor - card indices 0-52
-        extra_features: (B, 10) float tensor - numeric features
+        extra_features: (B, 13) float tensor - numeric features
 
         Returns:
             action_logits: (B, 5) - raw logits for action distribution
@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
     # Dummy forward pass
     cards = torch.randint(0, 53, (4, 7))
-    extra = torch.randn(4, 10)
+    extra = torch.randn(4, 13)
     logits, sizing = model(cards, extra)
     print(f"Action logits shape: {logits.shape}")  # (4, 5)
     print(f"Sizing shape: {sizing.shape}")          # (4, 1)
