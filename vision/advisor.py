@@ -593,13 +593,45 @@ class SubgameSolver:
 
 # ── Screen capture and table detection ───────────────────────────────────
 
-def capture_screen():
-    """Capture the full screen."""
+def capture_screen(window_rect=None):
+    """Capture the full screen or a specific window region."""
     with mss.mss() as sct:
-        monitor = sct.monitors[1]
+        if window_rect:
+            left, top, right, bottom = window_rect
+            monitor = {"left": left, "top": top, "width": right - left, "height": bottom - top}
+        else:
+            monitor = sct.monitors[1]
         img = sct.grab(monitor)
         frame = np.array(img)
         return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
+
+def find_poker_window_by_table(table_id):
+    """Find a specific Poker Lab browser window by table ID. Returns rect or None."""
+    try:
+        import win32gui
+        import re
+        best = None
+        best_area = 0
+        def cb(hwnd, _):
+            nonlocal best, best_area
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            title = win32gui.GetWindowText(hwnd)
+            rect = win32gui.GetWindowRect(hwnd)
+            w, h = rect[2] - rect[0], rect[3] - rect[1]
+            if w < 300 or h < 400:
+                return
+            # Match table ID in title
+            m = re.search(r'table=(\d+)', title)
+            tid = m.group(1) if m else ("1" if "Poker Lab" in title else None)
+            if tid == str(table_id) and w * h > best_area:
+                best = rect
+                best_area = w * h
+        win32gui.EnumWindows(cb, None)
+        return best
+    except ImportError:
+        return None
 
 
 def find_table_region(frame):
@@ -801,10 +833,18 @@ class Advisor:
     Main advisor loop: capture -> detect -> recommend -> display.
     """
 
-    def __init__(self, use_overlay=True, terminal=False, debug=False):
+    def __init__(self, use_overlay=True, terminal=False, debug=False, table_id=None):
         self.use_overlay = use_overlay
         self.terminal = terminal
         self.debug = debug
+        self.table_id = table_id
+        self.window_rect = None
+        if table_id is not None:
+            self.window_rect = find_poker_window_by_table(table_id)
+            if self.window_rect:
+                print(f"[Advisor] Targeting table {table_id} at {self.window_rect}")
+            else:
+                print(f"[Advisor] Table {table_id} window not found — using full screen")
 
         # Load CFR strategy (table lookup — fast fallback)
         self.cfr = CFRLookup()
@@ -1296,8 +1336,11 @@ class Advisor:
 
                 last_capture = now
 
-                # 1. Capture screen
-                frame = capture_screen()
+                # 1. Capture screen (or specific window)
+                # Re-find window periodically in case it moved
+                if self.table_id is not None and frame_count % 20 == 0:
+                    self.window_rect = find_poker_window_by_table(self.table_id)
+                frame = capture_screen(self.window_rect)
 
                 # 2. Find table
                 region = find_table_region(frame)
@@ -1511,6 +1554,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Show detection debug info")
     parser.add_argument("--demo", action="store_true", help="Run demo mode (no screen capture)")
     parser.add_argument("--no-overlay", action="store_true", help="Disable overlay window")
+    parser.add_argument("--table", type=int, default=None, help="Target specific table window by ID (for multi-table)")
     args = parser.parse_args()
 
     if args.demo:
@@ -1522,6 +1566,7 @@ def main():
         use_overlay=use_overlay,
         terminal=args.terminal or args.debug,
         debug=args.debug,
+        table_id=args.table,
     )
     advisor.run()
 
