@@ -226,7 +226,7 @@ def run(args):
         if tracker.actions_taken > 0:
             log_path = VISION_DIR / "data" / f"bot_action_log_table{tracker.table_id}.json"
             tracker.logger.save(str(log_path))
-            print(f"  Table {tracker.table_id}: {tracker.actions_taken} actions → {log_path}")
+            print(f"  Table {tracker.table_id}: {tracker.actions_taken} actions -> {log_path}")
 
     # Save combined log
     combined = {
@@ -244,7 +244,7 @@ def run(args):
     combined_path = VISION_DIR / "data" / "bot_action_log_multitable.json"
     with open(combined_path, "w") as f:
         json.dump(combined, f, indent=2)
-    print(f"  Combined log → {combined_path}")
+    print(f"  Combined log -> {combined_path}")
 
 
 def main():
