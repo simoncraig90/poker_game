@@ -155,20 +155,54 @@ def is_between_hands(frame):
     return len(buttons) == 0
 
 
+# ── Action Logger ────────────────────────────────────────────────────────
+
+class ActionLogger:
+    """Records detailed per-action data for humanness scoring."""
+
+    def __init__(self):
+        self.actions = []
+        self.session_start = time.time()
+
+    def record(self, action, think_time, move_time, hesitation,
+               click_x, click_y, btn_cx, btn_cy, btn_action):
+        self.actions.append({
+            "timestamp": time.time(),
+            "session_elapsed": time.time() - self.session_start,
+            "action": btn_action,
+            "think_time": round(think_time, 4),
+            "move_time": round(move_time, 4),
+            "hesitation": round(hesitation, 4),
+            "total_time": round(think_time + move_time + hesitation, 4),
+            "click_x": click_x,
+            "click_y": click_y,
+            "btn_center_x": btn_cx,
+            "btn_center_y": btn_cy,
+            "click_offset_x": click_x - btn_cx,
+            "click_offset_y": click_y - btn_cy,
+        })
+
+    def save(self, path):
+        import json
+        with open(path, "w") as f:
+            json.dump({
+                "session_duration": time.time() - self.session_start,
+                "total_actions": len(self.actions),
+                "actions": self.actions,
+            }, f, indent=2)
+
+
 # ── Click Automation ─────────────────────────────────────────────────────
 
-def click_button(button, win_rect, humanize=True):
-    """Click a detected button on screen."""
+def click_button(button, win_rect, humanize=True, logger=None):
+    """Click a detected button on screen. Returns timing data."""
     left, top, _, _ = win_rect
-    screen_x = left + button["cx"]
-    screen_y = top + button["cy"]
+    btn_cx = left + button["cx"]
+    btn_cy = top + button["cy"]
+    screen_x = btn_cx
+    screen_y = btn_cy
 
     if humanize:
-        # Human-like behavior:
-        # - Random offset from button center (humans don't click exact center)
-        # - Variable think time (0.5-3s, log-normal distribution like real humans)
-        # - Mouse moves in a slight curve
-        # - Small pause between move and click
         screen_x += random.randint(-6, 6)
         screen_y += random.randint(-3, 3)
 
@@ -182,12 +216,22 @@ def click_button(button, win_rect, humanize=True):
         pyautogui.moveTo(screen_x, screen_y, duration=move_time)
 
         # Small pause before click (finger hesitation)
-        time.sleep(random.uniform(0.02, 0.08))
+        hesitation = random.uniform(0.02, 0.08)
+        time.sleep(hesitation)
         pyautogui.click()
     else:
         # Bot-like: consistent fast timing (detectable!)
-        time.sleep(0.05)
+        think_time = 0.05
+        move_time = 0.0
+        hesitation = 0.0
+        time.sleep(think_time)
         pyautogui.click(screen_x, screen_y)
+
+    if logger:
+        logger.record(action=button["action"], think_time=think_time,
+                      move_time=move_time, hesitation=hesitation,
+                      click_x=screen_x, click_y=screen_y,
+                      btn_cx=btn_cx, btn_cy=btn_cy, btn_action=button["action"])
 
 
 # ── Strategy ─────────────────────────────────────────────────────────────
@@ -237,6 +281,7 @@ def run(args):
     print("  Watching screen... (Ctrl+C to stop)")
     print()
 
+    logger = ActionLogger()
     actions_taken = 0
     frames_captured = 0
     last_action_time = 0
@@ -274,7 +319,7 @@ def run(args):
                 if has_fold_or_check:
                     btn = choose_action(buttons)
                     if btn:
-                        click_button(btn, rect, humanize=not args.instant)
+                        click_button(btn, rect, humanize=not args.instant, logger=logger)
                         actions_taken += 1
                         last_action_time = now
                         elapsed = now - start_time
@@ -298,6 +343,11 @@ def run(args):
 
     elapsed = time.time() - start_time
     print(f"\n  Done: {actions_taken} actions in {elapsed:.0f}s ({frames_captured} frames)")
+
+    # Save action log for humanness scoring
+    log_path = VISION_DIR / "data" / "bot_action_log.json"
+    logger.save(str(log_path))
+    print(f"  Action log saved to {log_path}")
 
 
 def main():
