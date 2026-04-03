@@ -1,26 +1,31 @@
 """
-Screen-reading bot — plays the lab client by reading pixels and clicking.
+Screen-reading bot — plays the poker client by reading pixels and clicking.
 
-No OCR or neural networks — uses fast color/template detection only.
-Designed to be lightweight and responsive (~100ms per frame).
+Behaves exactly like a real bot would on PokerStars:
+  - No server/API access — only sees what's on screen
+  - Detects game state purely from pixels (button colors, seat highlights)
+  - Clicks buttons via mouse automation
+  - Optional humanization (random delays, mouse curves, click offset)
 
 Detection approach:
-  1. Find the Poker Lab browser window
-  2. Detect action buttons by color (red=fold, green=check/call, grey=raise)
-  3. Read pot/stack amounts from known pixel regions (TODO: template digits)
-  4. Click buttons via pyautogui with humanized timing
+  1. Find the browser window by title
+  2. Capture the window at ~5 FPS
+  3. Detect action buttons by color (red=fold, green=check/call, grey=raise)
+  4. Detect hero's turn via green seat highlight glow
+  5. Choose action and click the button
+  6. Wait for next turn
 
 Usage:
-  python vision/screen_bot.py                    # play with TAG decisions
-  python vision/screen_bot.py --instant          # no humanization (bot-like)
-  python vision/screen_bot.py --hands 50         # stop after N hands
+  python vision/screen_bot.py                    # play like a human
+  python vision/screen_bot.py --instant          # bot-like instant clicks
+  python vision/screen_bot.py --hands 50         # stop after ~50 actions
+  python vision/screen_bot.py --save-frames      # save each frame for analysis
 """
 
 import argparse
-import json
+import os
 import random
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -33,7 +38,6 @@ try:
     pyautogui.PAUSE = 0.02
     pyautogui.FAILSAFE = True
 except ImportError:
-    pyautogui = None
     print("ERROR: pip install pyautogui")
     sys.exit(1)
 
@@ -41,9 +45,11 @@ try:
     import win32gui
     import win32con
 except ImportError:
-    win32gui = None
     print("ERROR: pip install pywin32")
     sys.exit(1)
+
+VISION_DIR = Path(__file__).resolve().parent
+FRAMES_DIR = VISION_DIR / "captures" / "bot_frames"
 
 
 # ── Window Management ────────────────────────────────────────────────────
@@ -70,15 +76,14 @@ def capture_window(rect):
         return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
 
-# ── Button Detection (fast, color-based) ─────────────────────────────────
+# ── Pixel Detection ──────────────────────────────────────────────────────
 
 def find_buttons(frame):
     """
-    Find action buttons in the bottom 15% of the frame by color.
-    Returns list of {action, cx, cy, x, y, w, h}.
+    Find action buttons in the bottom of the frame by color.
+    Returns list of {action, cx, cy, w, h}.
     """
     h, w = frame.shape[:2]
-    # Action bar is in the bottom ~12% of the window
     bar_top = int(h * 0.88)
     bar = frame[bar_top:, :]
     bar_h, bar_w = bar.shape[:2]
@@ -86,50 +91,35 @@ def find_buttons(frame):
 
     buttons = []
 
-    # Red button (Fold): H in [0,10] or [170,180], S>80, V>60
+    # Red (Fold)
     red1 = cv2.inRange(hsv, np.array([0, 80, 60]), np.array([10, 255, 255]))
     red2 = cv2.inRange(hsv, np.array([170, 80, 60]), np.array([180, 255, 255]))
-    red_mask = red1 | red2
-    fold_btn = _largest_contour(red_mask, min_area=300)
-    if fold_btn:
-        x, y, bw, bh = fold_btn
-        buttons.append({
-            "action": "FOLD",
-            "cx": x + bw // 2, "cy": bar_top + y + bh // 2,
-            "x": x, "y": bar_top + y, "w": bw, "h": bh,
-        })
+    btn = _find_button_rect(red1 | red2)
+    if btn:
+        x, y, bw, bh = btn
+        buttons.append({"action": "FOLD", "cx": x + bw // 2, "cy": bar_top + y + bh // 2, "w": bw, "h": bh})
 
-    # Green button (Check/Call): H in [35,85], S>80, V>60
+    # Green (Check / Call)
     green_mask = cv2.inRange(hsv, np.array([35, 80, 60]), np.array([85, 255, 255]))
-    green_btn = _largest_contour(green_mask, min_area=300)
-    if green_btn:
-        x, y, bw, bh = green_btn
-        buttons.append({
-            "action": "CHECK_CALL",
-            "cx": x + bw // 2, "cy": bar_top + y + bh // 2,
-            "x": x, "y": bar_top + y, "w": bw, "h": bh,
-        })
+    btn = _find_button_rect(green_mask)
+    if btn:
+        x, y, bw, bh = btn
+        buttons.append({"action": "CHECK_CALL", "cx": x + bw // 2, "cy": bar_top + y + bh // 2, "w": bw, "h": bh})
 
-    # Grey buttons (Bet/Raise): H any, S<50, V in [30,130]
-    # These are harder — look for rectangular regions right of the green button
+    # Grey (Bet / Raise) — look for button-shaped grey regions
     grey_mask = cv2.inRange(hsv, np.array([0, 0, 30]), np.array([180, 50, 130]))
     contours, _ = cv2.findContours(grey_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in contours:
         area = cv2.contourArea(c)
-        if area > 300:
+        if 400 < area < bar_w * bar_h * 0.3:
             x, y, bw, bh = cv2.boundingRect(c)
-            # Must be button-shaped (wider than tall, reasonable size)
-            if bw > bh * 0.5 and bw < bar_w * 0.5:
-                buttons.append({
-                    "action": "BET_RAISE",
-                    "cx": x + bw // 2, "cy": bar_top + y + bh // 2,
-                    "x": x, "y": bar_top + y, "w": bw, "h": bh,
-                })
+            if bw > 30 and bh > 10 and bw < bar_w * 0.5:
+                buttons.append({"action": "BET_RAISE", "cx": x + bw // 2, "cy": bar_top + y + bh // 2, "w": bw, "h": bh})
 
     return buttons
 
 
-def _largest_contour(mask, min_area=100):
+def _find_button_rect(mask, min_area=300):
     """Find the largest contour in a mask. Returns (x,y,w,h) or None."""
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -140,56 +130,62 @@ def _largest_contour(mask, min_area=100):
     return cv2.boundingRect(largest)
 
 
-# ── Active Seat Detection ────────────────────────────────────────────────
-
-def detect_active_seat(frame):
+def is_hero_turn(frame):
     """
-    Check if there's a green glow around the hero seat (bottom of screen),
-    indicating it's hero's turn.
+    Detect if it's hero's turn by looking for the green highlight glow
+    around the hero seat panel (bottom center of screen).
     """
     h, w = frame.shape[:2]
-    # Hero seat is in bottom 25%, center 40%
-    roi = frame[int(h * 0.72):int(h * 0.88), int(w * 0.3):int(w * 0.7)]
+    # Hero seat area: bottom 25%, center 50%
+    roi = frame[int(h * 0.70):int(h * 0.90), int(w * 0.25):int(w * 0.75)]
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
-    # Green highlight glow: bright green pixels
-    green = cv2.inRange(hsv, np.array([40, 100, 150]), np.array([80, 255, 255]))
+    # The active seat has a bright green glow/border
+    green = cv2.inRange(hsv, np.array([40, 100, 140]), np.array([80, 255, 255]))
     green_pct = cv2.countNonZero(green) / max(green.size, 1)
+    return green_pct > 0.003  # >0.3% bright green pixels
 
-    return green_pct > 0.005  # >0.5% green pixels = active highlight
 
-
-# ── Timer Detection ──────────────────────────────────────────────────────
-
-def detect_timer(frame):
-    """Detect the green/yellow timer bar at the bottom of the hero seat."""
-    h, w = frame.shape[:2]
-    # Timer bar region: just below hero seat, thin strip
-    roi = frame[int(h * 0.85):int(h * 0.87), int(w * 0.3):int(w * 0.7)]
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    colored = cv2.inRange(hsv, np.array([20, 80, 100]), np.array([85, 255, 255]))
-    return cv2.countNonZero(colored) > 50
+def is_between_hands(frame):
+    """
+    Detect if we're between hands — no action buttons visible,
+    and the "Deal" button or empty board area.
+    """
+    buttons = find_buttons(frame)
+    return len(buttons) == 0
 
 
 # ── Click Automation ─────────────────────────────────────────────────────
 
 def click_button(button, win_rect, humanize=True):
-    """Click a button with optional humanization."""
+    """Click a detected button on screen."""
     left, top, _, _ = win_rect
     screen_x = left + button["cx"]
     screen_y = top + button["cy"]
 
     if humanize:
-        # Human-like: random offset, variable delay, curved mouse movement
-        screen_x += random.randint(-4, 4)
-        screen_y += random.randint(-2, 2)
-        delay = random.uniform(0.4, 2.5)
-        time.sleep(delay)
-        pyautogui.moveTo(screen_x, screen_y, duration=random.uniform(0.08, 0.25))
-        time.sleep(random.uniform(0.03, 0.1))
+        # Human-like behavior:
+        # - Random offset from button center (humans don't click exact center)
+        # - Variable think time (0.5-3s, log-normal distribution like real humans)
+        # - Mouse moves in a slight curve
+        # - Small pause between move and click
+        screen_x += random.randint(-6, 6)
+        screen_y += random.randint(-3, 3)
+
+        # Log-normal think time (median ~1s, can be 0.5-4s)
+        think_time = random.lognormvariate(0, 0.5)
+        think_time = max(0.4, min(think_time, 4.0))
+        time.sleep(think_time)
+
+        # Move mouse with slight duration variation
+        move_time = random.uniform(0.06, 0.2)
+        pyautogui.moveTo(screen_x, screen_y, duration=move_time)
+
+        # Small pause before click (finger hesitation)
+        time.sleep(random.uniform(0.02, 0.08))
         pyautogui.click()
     else:
-        # Bot-like: instant
+        # Bot-like: consistent fast timing (detectable!)
         time.sleep(0.05)
         pyautogui.click(screen_x, screen_y)
 
@@ -198,114 +194,33 @@ def click_button(button, win_rect, humanize=True):
 
 def choose_action(buttons):
     """
-    Simple strategy based on available buttons.
-    Prefers: CHECK_CALL > FOLD (for now — just to test the loop).
+    Choose which button to click based on what's available.
+    Pure check/call strategy for testing the loop.
     """
     by_action = {b["action"]: b for b in buttons}
 
-    # If check/call is available, take it
     if "CHECK_CALL" in by_action:
         return by_action["CHECK_CALL"]
-    # Otherwise fold
     if "FOLD" in by_action:
         return by_action["FOLD"]
-    # Last resort: any button
     if buttons:
         return buttons[0]
     return None
-
-
-# ── WS Dealer (auto-deals hands via WebSocket) ──────────────────────────
-
-class WSDealerThread(threading.Thread):
-    """Background thread that deals hands and tracks game state via WS."""
-
-    def __init__(self):
-        super().__init__(daemon=True)
-        self.ws = None
-        self.state = {}
-        self.is_hero_turn = False
-        self.hand_active = False
-        self.hands_played = 0
-        self.running = True
-
-    def run(self):
-        from websocket import create_connection, WebSocketTimeoutException
-        try:
-            self.ws = create_connection("ws://localhost:9100")
-            self.ws.settimeout(1.0)
-            msg = json.loads(self.ws.recv())
-            self.state = msg.get("state", {})
-            print(f"  [Dealer] Connected, hands={self.state.get('handsPlayed', 0)}")
-        except Exception as e:
-            print(f"  [Dealer] Connection failed: {e}")
-            return
-
-        while self.running:
-            try:
-                raw = self.ws.recv()
-                msg = json.loads(raw)
-
-                # Update state
-                if msg.get("state") and "seats" in msg.get("state", {}):
-                    self.state = msg["state"]
-                if msg.get("welcome"):
-                    self.state = msg.get("state", self.state)
-
-                # Track events
-                for evt in msg.get("events", []):
-                    if evt.get("type") == "HAND_END":
-                        self.hands_played += 1
-                        self.hand_active = False
-                    if evt.get("type") == "HAND_START":
-                        self.hand_active = True
-
-                # Update hero turn status
-                hand = self.state.get("hand")
-                if hand and hand.get("phase") not in (None, "COMPLETE"):
-                    self.hand_active = True
-                    self.is_hero_turn = hand.get("actionSeat") == 0
-                else:
-                    self.hand_active = False
-                    self.is_hero_turn = False
-
-                # Auto-deal if no active hand
-                if not self.hand_active:
-                    time.sleep(2.0)  # PS-like delay between hands
-                    try:
-                        self.ws.send(json.dumps({"id": f"deal-{self.hands_played}", "cmd": "START_HAND", "payload": {}}))
-                    except Exception:
-                        pass
-
-            except WebSocketTimeoutException:
-                # If no messages and no active hand, try dealing
-                if not self.hand_active:
-                    try:
-                        self.ws.send(json.dumps({"id": f"deal-{self.hands_played}", "cmd": "START_HAND", "payload": {}}))
-                    except Exception:
-                        pass
-            except Exception:
-                break
-
-    def stop(self):
-        self.running = False
-        if self.ws:
-            try:
-                self.ws.close()
-            except Exception:
-                pass
 
 
 # ── Main Loop ────────────────────────────────────────────────────────────
 
 def run(args):
     print("=" * 50)
-    print("  SCREEN BOT — Pixel Reading + Click")
+    print("  SCREEN BOT — Pure Pixel Reading")
     print("=" * 50)
+    print("  No server access — screen only, like a real bot")
+    print()
 
+    # Find the browser window
     window = find_poker_window()
     if not window:
-        print("  Poker Lab window not found!")
+        print("  ERROR: Poker Lab window not found!")
         print("  Open http://localhost:9100 in a browser first.")
         return
 
@@ -314,65 +229,82 @@ def run(args):
     print(f"  Window: {title}")
     print(f"  Rect: {rect}")
     print(f"  Humanize: {not args.instant}")
-    print(f"  Max hands: {args.hands or 'unlimited'}")
-
-    # Start WS dealer thread (auto-deals hands)
-    dealer = WSDealerThread()
-    dealer.start()
-    time.sleep(3)  # let it connect + deal first hand
+    print(f"  Max actions: {args.hands or 'unlimited'}")
+    if args.save_frames:
+        FRAMES_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"  Saving frames to: {FRAMES_DIR}")
+    print()
+    print("  Watching screen... (Ctrl+C to stop)")
     print()
 
     actions_taken = 0
-    hands_at_start = dealer.hands_played
+    frames_captured = 0
     last_action_time = 0
-    cooldown = 1.5  # minimum seconds between actions
+    min_action_gap = 1.0  # don't click faster than 1/sec even in instant mode
     start_time = time.time()
-
-    print("  Running... (Ctrl+C to stop, move mouse to corner to abort)")
-    print()
+    consecutive_idle = 0
 
     try:
-        while True:
-            # Check hand limit
-            hands_done = dealer.hands_played - hands_at_start
-            if args.hands > 0 and hands_done >= args.hands:
-                break
+        while args.hands == 0 or actions_taken < args.hands:
+            # Refresh window rect (in case it was moved/resized)
+            window = find_poker_window()
+            if not window:
+                print("  Window lost! Waiting...")
+                time.sleep(2)
+                continue
+            _, rect = window
 
-            # Capture
+            # Capture the window
             frame = capture_window(rect)
+            frames_captured += 1
+
+            # Save frame if requested
+            if args.save_frames and frames_captured % 20 == 0:
+                cv2.imwrite(str(FRAMES_DIR / f"frame_{frames_captured:05d}.png"), frame)
 
             # Detect buttons
             buttons = find_buttons(frame)
-
-            # Only act if buttons visible, cooldown elapsed, and dealer says it's our turn
             now = time.time()
-            if buttons and (now - last_action_time) > cooldown:
-                is_turn = dealer.is_hero_turn or detect_active_seat(frame)
 
-                if is_turn and len(buttons) >= 1:
+            if buttons and (now - last_action_time) > min_action_gap:
+                # If action buttons are visible, it's hero's turn
+                # (the client hides them when it's not — same as PS)
+                has_fold_or_check = any(b["action"] in ("FOLD", "CHECK_CALL") for b in buttons)
+
+                if has_fold_or_check:
                     btn = choose_action(buttons)
                     if btn:
                         click_button(btn, rect, humanize=not args.instant)
                         actions_taken += 1
                         last_action_time = now
                         elapsed = now - start_time
-                        print(f"  [{actions_taken}] {btn['action']} ({hands_done} hands) | {elapsed:.0f}s")
+                        print(f"  [{actions_taken}] {btn['action']} | {elapsed:.0f}s elapsed | {frames_captured} frames")
+                        consecutive_idle = 0
+                else:
+                    consecutive_idle += 1
+            else:
+                consecutive_idle += 1
 
+            # Periodic status
+            if consecutive_idle > 0 and consecutive_idle % 50 == 0:
+                elapsed = now - start_time
+                print(f"  ... waiting ({actions_taken} actions, {elapsed:.0f}s, {frames_captured} frames)")
+
+            # ~5 FPS capture rate
             time.sleep(0.2)
 
     except KeyboardInterrupt:
         pass
 
-    dealer.stop()
-    hands_done = dealer.hands_played - hands_at_start
     elapsed = time.time() - start_time
-    print(f"\n  Done: {hands_done} hands, {actions_taken} actions in {elapsed:.0f}s")
+    print(f"\n  Done: {actions_taken} actions in {elapsed:.0f}s ({frames_captured} frames)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Screen-reading poker bot")
-    parser.add_argument("--instant", action="store_true", help="No humanization")
-    parser.add_argument("--hands", type=int, default=0, help="Stop after N hands (0=unlimited)")
+    parser = argparse.ArgumentParser(description="Screen-reading poker bot (pure pixel, no API)")
+    parser.add_argument("--instant", action="store_true", help="Bot-like instant clicks (no humanization)")
+    parser.add_argument("--hands", type=int, default=0, help="Stop after N actions (0=unlimited)")
+    parser.add_argument("--save-frames", action="store_true", help="Save captured frames for analysis")
     run(parser.parse_args())
 
 

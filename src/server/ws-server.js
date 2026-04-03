@@ -331,6 +331,32 @@ function startServer(userConfig = {}) {
         if (handsPlayed > 0 && handsPlayed % 5 === 0) {
           storage.updateMeta(session.sessionId, { handsPlayed, lastEventAt: new Date().toISOString() });
         }
+
+        // ── Server-side auto-deal (like PokerStars) ────────────────────
+        // If hand just ended, auto-deal next hand after 3 seconds
+        const hasHandEnd = result.events.some((e) => e.type === "HAND_END");
+        if (hasHandEnd) {
+          setTimeout(() => {
+            try {
+              const state = session.getState();
+              const occupied = Object.values(state.seats).filter((s) => s.status === "OCCUPIED").length;
+              if (occupied >= 2 && (!state.hand || state.hand.phase === "COMPLETE")) {
+                const dealResult = session.dispatch(command(CMD.START_HAND, {}));
+                if (dealResult.ok && dealResult.events.length > 0) {
+                  const dealBroadcast = formatBroadcast(dealResult.events);
+                  for (const client of clients) {
+                    if (client.readyState === 1) client.send(dealBroadcast);
+                  }
+                  // Record action prompt time for bot detection
+                  const newState = session.getState();
+                  if (newState.hand && newState.hand.actionSeat != null) {
+                    actionPromptTimes[newState.hand.actionSeat] = Date.now();
+                  }
+                }
+              }
+            } catch (e) { /* auto-deal failure is benign */ }
+          }, 3000);
+        }
       }
 
       if (result.ok && result.events.length > 0) {
