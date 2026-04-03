@@ -1064,7 +1064,11 @@ class OverlayWindow:
         self.probs_label.config(text="")
 
     def show_recommendation(self, hero_cards, board_cards, rec):
-        """Display a CFR recommendation."""
+        """Display a CFR recommendation (legacy — calls show_info)."""
+        self.show_info(hero_cards, board_cards, rec)
+
+    def show_info(self, hero_cards, board_cards, info):
+        """Display hand info: equity, preflop chart, pot odds."""
         # Cards line
         hero_str = " ".join(card_display(c) for c in hero_cards)
         board_str = " ".join(card_display(c) for c in board_cards) if board_cards else ""
@@ -1073,43 +1077,65 @@ class OverlayWindow:
             cards_text += f"  |  {board_str}"
         self.cards_label.config(text=cards_text, fg="#e0e0e0")
 
-        # Equity line
-        eq_text = f"Equity: {rec['equity']:.0%}"
-        if rec.get("nn_equity") is not None:
-            eq_text += f"  (NN: {rec['nn_equity']:.0%})"
-        eq_text += f"  [B{rec['bucket']}]"
-        self.equity_label.config(text=eq_text)
+        phase = info.get("phase", "PREFLOP")
 
-        # Recommendation line — color coded
-        action = rec["recommended"]
-        action_upper = action.upper().split()[0]
+        if phase == "PREFLOP":
+            # Preflop: show chart verdict + equity
+            pf = info.get("preflop", {})
+            action = pf.get("action", "")
+            hand_key = pf.get("hand_key", "")
+            note = pf.get("note", "")
+            eq = info.get("equity", 0)
 
-        if action_upper in ("RAISE", "BET"):
-            color = "#00e676"  # green
-            bg = "#1a3a1e"
-        elif action_upper in ("CALL", "CHECK"):
-            color = "#42a5f5"  # blue
-            bg = "#1a2a3e"
-        elif action_upper == "FOLD":
-            color = "#ef5350"  # red
-            bg = "#3a1a1e"
+            # Color code the action
+            if action == "RAISE":
+                color = "#00e676"  # green
+                bg = "#1a3a1e"
+            elif action == "CALL":
+                color = "#42a5f5"  # blue
+                bg = "#1a2a3e"
+            else:
+                color = "#ef5350"  # red
+                bg = "#3a1a1e"
+
+            self.rec_label.config(text=f"{hand_key}  {action} {note}", fg=color, bg=bg)
+            self.equity_label.config(text=f"Equity: {eq:.0%}")
+            self.probs_label.config(text="")
         else:
-            color = "#ffffff"
-            bg = "#1a1a2e"
+            # Postflop: show equity + board danger + pot odds
+            eq = info.get("equity", 0)
+            danger = info.get("danger", {})
+            pot_odds = info.get("pot_odds", "")
 
-        prob_pct = f"{rec['rec_prob']:.0%}" if rec['rec_prob'] < 1.0 else ""
-        fallback_tag = " [heuristic]" if rec.get("fallback") else ""
-        rec_text = f">>> {action} {prob_pct}{fallback_tag}"
-        self.rec_label.config(text=rec_text, fg=color, bg=bg)
+            # Equity color: green if strong, yellow if medium, red if weak
+            if eq >= 0.60:
+                eq_color = "#00e676"  # strong
+                bg = "#1a3a1e"
+                verdict = "STRONG"
+            elif eq >= 0.40:
+                eq_color = "#ffd740"  # medium
+                bg = "#3a3a1e"
+                verdict = "MEDIUM"
+            else:
+                eq_color = "#ef5350"  # weak
+                bg = "#3a1a1e"
+                verdict = "WEAK"
 
-        # Probabilities line
-        probs = rec["action_probs"]
-        parts = []
-        short = {"FOLD": "F", "CHECK": "X", "CALL": "C", "BET": "B", "RAISE": "R"}
-        for a in ["FOLD", "CHECK", "CALL", "BET", "RAISE"]:
-            if a in probs and probs[a] > 0.01:
-                parts.append(f"{short[a]}:{probs[a]:.0%}")
-        self.probs_label.config(text="  ".join(parts))
+            self.rec_label.config(text=f"Equity {eq:.0%}  {verdict}", fg=eq_color, bg=bg)
+
+            # Danger warnings
+            warnings = danger.get("warnings", [])
+            if warnings:
+                warn_text = " ".join(warnings)
+                self.equity_label.config(text=f"Board: {warn_text}", fg="#ff9800")
+            else:
+                self.equity_label.config(text="Board: clean", fg="#888888")
+
+            # Pot odds line
+            if pot_odds:
+                self.probs_label.config(text=pot_odds)
+            else:
+                self.probs_label.config(text="")
 
     def update(self):
         """Process pending Tk events (call from main loop)."""
@@ -1532,65 +1558,77 @@ class Advisor:
         }
 
     def _get_recommendation(self, state):
-        """Get recommendation: try real-time solver first, fall back to table lookup."""
+        """Get hand info: equity, preflop chart, pot odds. No action recommendations."""
         hero = state["hero_cards"]
         board = state["board_cards"]
         pot = state.get("pot") or 0.10
-        num_opp = state.get("num_opponents", 1)
         facing_bet = state.get("facing_bet", False)
 
         phase = phase_from_board_count(len(board))
-
-        # Preflop: hero is always facing a bet (the BB) unless they ARE the BB with no raise
-        # If hero has action buttons visible and it's preflop, assume facing bet
-        # (the only exception is BB checking option, which has no Fold button)
-        if phase == "PREFLOP" and not facing_bet and state.get("hero_turn", False):
-            # Conservative: if we can't tell, assume facing bet preflop
-            # The red button detection may fail on some themes
-            facing_bet = True
-        self._infer_action_history(state)
         position = state.get("position", "IP")
 
-        stack = 10.0
-        bb = 0.10
+        # Map IP/OOP to 6-max position estimate
+        # TODO: improve with actual dealer button position detection
+        pos_6max = "BTN" if position == "IP" else "MP"
 
-        # Tier 1: Real-time subgame solver
-        if self.solver and len(hero) >= 2:
-            try:
-                result = self.solver.solve(
-                    hero_cards=hero,
-                    board_cards=board,
-                    pot=pot,
-                    hero_stack=stack,
-                    opp_stack=stack,
-                    street=phase,
-                    hero_position=position,
-                    action_history=self.action_history.rstrip("-"),
-                    facing_bet=facing_bet,
-                )
-                if result and result.get("strategy") and len(result["strategy"]) > 0:
-                    if self.debug:
-                        ms = result.get("solveTimeMs", 0)
-                        cached = result.get("cached", False)
-                        print(f"[solver] {ms}ms cached={cached} strat={result['strategy']}")
-                    return self._format_solver_result(result, hero, board, phase, position, facing_bet=facing_bet)
-            except Exception as e:
-                if self.debug:
-                    print(f"[solver] error: {e}")
+        # Preflop facing bet detection
+        if phase == "PREFLOP" and not facing_bet and state.get("hero_turn", False):
+            facing_bet = True
 
-        # Tier 2: Pre-trained table lookup
-        rec = self.cfr.lookup(
-            hero_cards_str=hero,
-            board_cards_str=board,
-            pot=pot,
-            stack=stack,
-            bb=bb,
-            action_history_str=self.action_history.rstrip("-"),
-            num_opponents=num_opp,
-            position=position,
-            facing_bet=facing_bet,
-        )
-        return rec
+        # Get equity from the trained model (or heuristic fallback)
+        eq = equity_model_predict(hero, board)
+        if eq is None:
+            hero_dicts = [card_str_to_dict(c) for c in hero]
+            board_dicts = [card_str_to_dict(c) for c in board]
+            hero_dicts = [c for c in hero_dicts if c]
+            board_dicts = [c for c in board_dicts if c]
+            eq = evaluate_hand_strength(hero_dicts, board_dicts, phase)
+
+        info = {
+            "phase": phase,
+            "equity": eq,
+            "position": pos_6max,
+        }
+
+        if phase == "PREFLOP" and len(hero) >= 2:
+            # Preflop chart lookup
+            from preflop_chart import preflop_advice
+            pf = preflop_advice(hero[0], hero[1], pos_6max, facing_raise=facing_bet)
+            info["preflop"] = pf
+
+            if self.debug:
+                print(f"[preflop] {pf['hand_key']} {pos_6max} facing={facing_bet} -> {pf['action']} {pf['note']}")
+        else:
+            # Postflop: board danger + pot odds
+            danger = assess_board_danger(hero, board)
+            info["danger"] = danger
+
+            # Pot odds calculation
+            if facing_bet and pot and pot > 0:
+                # Estimate call amount as ~50-75% of pot (can't read exact bet from screen)
+                est_call = pot * 0.6
+                pot_odds = est_call / (pot + est_call)
+                if eq >= pot_odds:
+                    info["pot_odds"] = f"Pot odds ~{pot_odds:.0%} | Equity {eq:.0%} | +EV call"
+                else:
+                    info["pot_odds"] = f"Pot odds ~{pot_odds:.0%} | Equity {eq:.0%} | -EV call"
+            else:
+                info["pot_odds"] = ""
+
+            if self.debug:
+                warn_str = " ".join(danger.get("warnings", [])) or "clean"
+                print(f"[postflop] eq={eq:.0%} board={warn_str} cat={danger.get('category', '?')}")
+
+        # For backward compatibility with _log_recommendation
+        info["action_probs"] = {}
+        info["recommended"] = ""
+        info["rec_prob"] = 0
+        info["nn_equity"] = eq
+        info["info_key"] = f"{phase}:{pos_6max}"
+        info["bucket"] = strength_to_bucket(eq, 50)
+        info["fallback"] = False
+
+        return info
 
     def _update_session_display(self):
         """Update overlay title with session stats."""
@@ -1622,32 +1660,34 @@ class Advisor:
         with open(log_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def _print_recommendation(self, state, rec):
-        """Print recommendation to terminal."""
+    def _print_recommendation(self, state, info):
+        """Print hand info to terminal."""
         hero_str = " ".join(card_display(c) for c in state["hero_cards"])
         board_str = " ".join(card_display(c) for c in state["board_cards"]) if state["board_cards"] else "(preflop)"
 
-        eq_str = f"{rec['equity']:.0%}"
-        nn_str = f" / NN:{rec['nn_equity']:.0%}" if rec.get("nn_equity") is not None else ""
+        phase = info.get("phase", "PREFLOP")
+        eq = info.get("equity", 0)
 
-        probs = rec["action_probs"]
-        prob_parts = []
-        for a in ["FOLD", "CHECK", "CALL", "BET", "RAISE"]:
-            if a in probs and probs[a] > 0.01:
-                prob_parts.append(f"{a} {probs[a]:.0%}")
-
-        fallback = " [heuristic]" if rec.get("fallback") else ""
         print(f"\n{'='*50}")
         print(f"  Hero: {hero_str}  |  Board: {board_str}")
-        print(f"  Equity: {eq_str}{nn_str}  Bucket: {rec['bucket']}")
-        print(f"  >>> {rec['recommended']} ({', '.join(prob_parts)}){fallback}")
-        print(f"  Key: {rec['info_key']}")
+
+        if phase == "PREFLOP":
+            pf = info.get("preflop", {})
+            print(f"  Equity: {eq:.0%}  |  {pf.get('hand_key', '??')}  {info.get('position', '?')}")
+            print(f"  Chart: {pf.get('action', '?')} {pf.get('note', '')}")
+        else:
+            danger = info.get("danger", {})
+            warnings = " ".join(danger.get("warnings", [])) or "clean"
+            print(f"  Equity: {eq:.0%}  |  Board: {warnings}")
+            if info.get("pot_odds"):
+                print(f"  {info['pot_odds']}")
+
         print(f"{'='*50}")
 
     def run(self):
         """Main loop: capture, detect, recommend, display."""
         print("\n" + "=" * 50)
-        print("  POKER ADVISOR — Real-time CFR Recommendations")
+        print("  POKER ADVISOR — Equity + Preflop Chart")
         print("=" * 50)
         print("  Looking for PokerStars table...")
         print("  Right-click overlay to close | Ctrl+C to exit")
