@@ -1246,10 +1246,19 @@ class Advisor:
         lab_dir = os.path.join(os.path.dirname(__file__), "templates", "screen_cards")
         if os.path.isdir(lab_dir) and not hasattr(self, '_lab_templates'):
             self._lab_templates = {}
+            self._bad_templates = set()  # templates with wrong dimensions
             for f in os.listdir(lab_dir):
                 if f.endswith('.png'):
                     label = f.replace('.png', '')
-                    self._lab_templates[label] = cv2.imread(os.path.join(lab_dir, f))
+                    img = cv2.imread(os.path.join(lab_dir, f))
+                    self._lab_templates[label] = img
+                    # Flag full-card templates that are actually narrow crops
+                    if '_narrow' not in label:
+                        h_t, w_t = img.shape[:2]
+                        if w_t < 70:  # standard full cards are 78px wide
+                            self._bad_templates.add(label)
+            if self._bad_templates:
+                print(f"[Advisor] Bad templates (wrong size): {', '.join(sorted(self._bad_templates))}")
 
         results = []
         h, w = table_img.shape[:2]
@@ -1287,8 +1296,10 @@ class Advisor:
 
                 if hasattr(self, '_lab_templates'):
                     for label, tmpl in self._lab_templates.items():
-                        # Skip narrow-specific templates for full cards
+                        # Skip narrow-specific templates and known bad templates
                         if '_narrow' in label:
+                            continue
+                        if hasattr(self, '_bad_templates') and label in self._bad_templates:
                             continue
                         # Check aspect ratio similarity
                         tmpl_h, tmpl_w = tmpl.shape[:2]
