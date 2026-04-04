@@ -1492,9 +1492,16 @@ class Advisor:
 
         if elements is not None:
             # YOLO path (fast) — with fallback for missed detections
-            # Card identification: OCR rank (reliable) + template suit (best effort)
-            hero_cards = self._identify_cards_hybrid(table_img, elements.get("hero_card", []))[:2]
-            board_cards = self._identify_cards_hybrid(table_img, elements.get("board_card", []))[:5]
+            # Card identification: CNN (trained on PS templates)
+            try:
+                if not hasattr(self, '_card_cnn'):
+                    from card_cnn_detect import CardCNNDetector
+                    self._card_cnn = CardCNNDetector()
+                hero_cards = self._card_cnn.identify_cards(table_img, elements.get("hero_card", [])[:2])
+                board_cards = self._card_cnn.identify_cards(table_img, elements.get("board_card", [])[:5])
+            except Exception:
+                hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]
+                board_cards = self._identify_cards(table_img, elements.get("board_card", []))[:5]
             hero_turn = len(elements.get("action_button", [])) > 0
 
             # Fallback: if YOLO missed hero cards, try color-based detection
