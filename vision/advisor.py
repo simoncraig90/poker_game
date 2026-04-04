@@ -1258,23 +1258,40 @@ class Advisor:
         if not card_boxes:
             return []
 
-        # Try screen-captured templates first (exact match for both PS and lab)
+        # Load PS-native templates first (captured from PokerStars), then lab templates as fallback
+        ps_dir = os.path.join(os.path.dirname(__file__), "templates", "ps_cards")
         lab_dir = os.path.join(os.path.dirname(__file__), "templates", "screen_cards")
-        if os.path.isdir(lab_dir) and not hasattr(self, '_lab_templates'):
+        if not hasattr(self, '_lab_templates'):
             self._lab_templates = {}
-            self._bad_templates = set()  # templates with wrong dimensions
-            for f in os.listdir(lab_dir):
-                if f.endswith('.png'):
-                    label = f.replace('.png', '')
-                    img = cv2.imread(os.path.join(lab_dir, f))
-                    self._lab_templates[label] = img
-                    # Flag full-card templates that are actually narrow crops
-                    if '_narrow' not in label:
+            self._ps_templates = {}
+            self._bad_templates = set()
+
+            # PS templates (priority)
+            if os.path.isdir(ps_dir):
+                for f in os.listdir(ps_dir):
+                    if f.endswith('.png') and '_narrow' not in f:
+                        label = f.replace('.png', '')
+                        img = cv2.imread(os.path.join(ps_dir, f))
+                        # Skip overlapping crops (width should be > 60% of height for single card)
                         h_t, w_t = img.shape[:2]
-                        if w_t < 70:  # standard full cards are 78px wide
-                            self._bad_templates.add(label)
+                        if w_t > h_t * 0.55:
+                            self._ps_templates[label] = img
+                if self._ps_templates:
+                    print(f"[Advisor] PS templates: {', '.join(sorted(self._ps_templates.keys()))}")
+
+            # Lab templates (fallback)
+            if os.path.isdir(lab_dir):
+                for f in os.listdir(lab_dir):
+                    if f.endswith('.png'):
+                        label = f.replace('.png', '')
+                        img = cv2.imread(os.path.join(lab_dir, f))
+                        self._lab_templates[label] = img
+                        if '_narrow' not in label:
+                            h_t, w_t = img.shape[:2]
+                            if w_t < 70:
+                                self._bad_templates.add(label)
             if self._bad_templates:
-                print(f"[Advisor] Bad templates (wrong size): {', '.join(sorted(self._bad_templates))}")
+                print(f"[Advisor] Bad lab templates: {', '.join(sorted(self._bad_templates))}")
 
         results = []
         h, w = table_img.shape[:2]
@@ -1310,13 +1327,21 @@ class Advisor:
                 crop_aspect = crop_w / max(1, crop_h)
                 top_matches = []  # (score, label)
 
+                # Try PS templates first (native resolution), then lab templates
+                all_templates = {}
+                if hasattr(self, '_ps_templates'):
+                    all_templates.update(self._ps_templates)
                 if hasattr(self, '_lab_templates'):
                     for label, tmpl in self._lab_templates.items():
-                        # Skip narrow-specific templates and known bad templates
                         if '_narrow' in label:
                             continue
                         if hasattr(self, '_bad_templates') and label in self._bad_templates:
                             continue
+                        if label not in all_templates:  # PS templates take priority
+                            all_templates[label] = tmpl
+
+                if all_templates:
+                    for label, tmpl in all_templates.items():
                         # Check aspect ratio similarity
                         tmpl_h, tmpl_w = tmpl.shape[:2]
                         tmpl_aspect = tmpl_w / max(1, tmpl_h)
