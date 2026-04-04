@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #2b2b2b; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  body { font-family: 'Roboto Condensed', Helvetica, sans-serif; background: #2b2b2b; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
   #header {
     background: #2b2b2b; padding: 0 10px; display: flex; align-items: center;
@@ -58,10 +58,10 @@
     content: '♠  POKERSTARS'; position: absolute;
     left: 50%; top: 46%;
     transform: translate(-50%, -50%);
-    font-family: 'Arial', sans-serif;
-    font-size: 14px; font-weight: 700;
+    font-family: 'Roboto Condensed', sans-serif;
+    font-size: 20px; font-weight: 700;
     letter-spacing: 5px;
-    color: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.10);
     z-index: 1; pointer-events: none;
     text-transform: uppercase;
   }
@@ -150,10 +150,10 @@
     background-image: url('ps_assets/card_back.png');
     background-size: 100% 100%;
     background-position: 0 0;
-    width: 36px; height: 50px; border-radius: 3px;
+    width: 38px; height: 53px; border-radius: 3px;
     box-shadow: 1px 2px 5px rgba(0,0,0,0.7);
   }
-  .card.facedown + .card.facedown { margin-left: -14px; transform: rotate(10deg); }
+  .card.facedown + .card.facedown { margin-left: -15px; transform: rotate(10deg); }
   .card.empty-slot { background: transparent; border: none; box-shadow: none; width: 0; height: 0; overflow: hidden; background-image: none; }
 
   /* ── HERO CARDS — match PS layout exactly ── */
@@ -168,7 +168,7 @@
     box-shadow: 2px 3px 10px rgba(0,0,0,0.7);
   }
   .hero-cards .card + .card {
-    margin-left: -30px; /* PS overlap ~45% visible */
+    margin-left: -30px; /* PS overlap */
     position: relative;
     top: 6px;
   }
@@ -198,7 +198,7 @@
   /* ── BOARD — positioned from PS screenshot measurements ── */
   #board-area { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
   #board { display: flex; gap: 4px; justify-content: center; min-height: 65px; position: relative; }
-  #board .card { width: 54px; height: 78px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  #board .card { width: 54px; height: 78px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
   /* Dark card slots on the felt — visible before cards are dealt */
   .card-slot { width: 54px; height: 78px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
   /* ── POT ── */
@@ -216,7 +216,7 @@
   }
   #action-bar button {
     padding: 10px 4px; border: none; border-radius: 10px; cursor: pointer;
-    font-family: 'Roboto Condensed', sans-serif; font-size: 16px; font-weight: 700;
+    font-family: 'Roboto Condensed', sans-serif; font-size: 17px; font-weight: 700;
     flex: 1; min-width: 0; white-space: normal; letter-spacing: 0.3px;
     transition: background 0.15s;
     box-shadow: 0 3px 10px rgba(0,0,0,0.5);

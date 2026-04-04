@@ -122,7 +122,13 @@ const fs = require('fs');
     await Page.loadEventFired();
     await new Promise(r => setTimeout(r, 5000));
     // Inject board + action state
-    // Match PS reference: 2h Qd Jd 3c board, Ts As hero
+    // Disconnect WS and kill timers to freeze state
+    await Runtime.evaluate({ expression: `
+        if (ws) { ws.onmessage = null; ws.onclose = null; ws.close(); }
+        var id = window.setTimeout(function(){}, 0);
+        while (id--) { window.clearTimeout(id); window.clearInterval(id); }
+    ` });
+    await new Promise(r => setTimeout(r, 500));
     await Runtime.evaluate({ expression: `
         if (state && state.hand) {
             state.hand.board = ['2h','Qd','Jd','3c'];
@@ -130,7 +136,29 @@ const fs = require('fs');
             state.hand.actionSeat = 0;
             state.hand.phase = 'TURN';
             state.hand.legalActions = { actions: ['FOLD','CALL','RAISE'], callAmount: 140, minRaise: 280, maxRaise: 800 };
-            if (state.seats[0]) { state.seats[0].holeCards = ['Ts','As']; }
+            // Match all players from PS screenshot
+            var players = [
+                {seat:0, name:'Skurj_poker', stack:1887, cards:['Ts','As']},
+                {seat:1, name:'gionni228', stack:1241},
+                {seat:2, name:'segard', stack:995},
+                {seat:3, name:'thangkorean', stack:1278},
+                {seat:4, name:'samianovais', stack:794},
+                {seat:5, name:'gioccolive', stack:1311},
+            ];
+            for (var p of players) {
+                if (state.seats[p.seat]) {
+                    state.seats[p.seat].player = {name: p.name};
+                    state.seats[p.seat].stack = p.stack;
+                    state.seats[p.seat].status = 'OCCUPIED';
+                    if (p.cards) state.seats[p.seat].holeCards = p.cards;
+                    if (p.seat !== 0) {
+                        state.seats[p.seat].inHand = true;
+                        state.seats[p.seat].folded = false;
+                    }
+                }
+            }
+            state.tableName = 'Haidea IV';
+            state.button = 5;
             render();
         }
     ` });
