@@ -33,9 +33,9 @@ def detect_lab_cards(table_img):
 
     hero_cards = []
 
-    # Card 1 (left) — measured from lab screenshot
-    hx1 = int(tw * 0.22)
-    hy1 = int(th * 0.63)
+    # Card 1 (left) — measured from Chrome DevTools capture
+    hx1 = int(tw * 0.28)
+    hy1 = int(th * 0.62)
     hero_cards.append({
         "x": hx1, "y": hy1, "w": hero_card_w, "h": hero_card_h,
         "cx": hx1 + hero_card_w // 2, "cy": hy1 + hero_card_h // 2,
