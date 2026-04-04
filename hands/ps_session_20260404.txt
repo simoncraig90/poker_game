@@ -1,0 +1,3133 @@
+﻿Transcript for last 1 day of play requested by Skurj_poker (simon.craig90@gmail.com)
+
+*********** # 1 **************
+PokerStars Hand #260337187538:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:14:01 ET
+Table 'Haidea IV' 6-max Seat #6 is the button
+Seat 1: bigrexxx14 ($12.05 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($16.26 in chips)
+Seat 4: Skurj_poker ($8.89 in chips)
+Seat 5: sabinn ($10 in chips)
+Seat 6: Alipiogreco ($18.63 in chips)
+bigrexxx14: posts small blind $0.05
+mr_MP&1: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Js Kc]
+SzNorbert12: folds
+Skurj_poker: calls $0.10
+sabinn: folds
+Alipiogreco: folds
+bigrexxx14: calls $0.05
+mr_MP&1: checks
+*** FLOP *** [Ks Qc 8s]
+bigrexxx14: bets $0.20
+mr_MP&1: raises $0.51 to $0.71
+Skurj_poker: raises $0.51 to $1.22
+bigrexxx14: calls $1.02
+mr_MP&1: calls $0.51
+*** TURN *** [Ks Qc 8s] [6d]
+bigrexxx14: checks
+mr_MP&1: checks
+Skurj_poker: bets $1.88
+bigrexxx14: calls $1.88
+mr_MP&1: calls $1.88
+*** RIVER *** [Ks Qc 8s 6d] [3h]
+bigrexxx14: checks
+mr_MP&1: checks
+Skurj_poker: bets $4.56
+bigrexxx14: raises $4.29 to $8.85 and is all-in
+mr_MP&1: folds
+Skurj_poker: calls $1.13 and is all-in
+Uncalled bet ($3.16) returned to bigrexxx14
+*** SHOW DOWN ***
+bigrexxx14: shows [Qs Kh] (two pair, Kings and Queens)
+Skurj_poker: shows [Js Kc] (a pair of Kings)
+bigrexxx14 collected $19.98 from pot
+*** SUMMARY ***
+Total pot $20.98 | Rake $1
+Board [Ks Qc 8s 6d 3h]
+Seat 1: bigrexxx14 (small blind) showed [Qs Kh] and won ($19.98) with two pair, Kings and Queens
+Seat 2: mr_MP&1 (big blind) folded on the River
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker showed [Js Kc] and lost with a pair of Kings
+Seat 5: sabinn folded before Flop (didn't bet)
+Seat 6: Alipiogreco (button) folded before Flop (didn't bet)
+
+
+*********** # 2 **************
+PokerStars Hand #260337176360:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:12:42 ET
+Table 'Haidea IV' 6-max Seat #5 is the button
+Seat 1: bigrexxx14 ($11.27 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($16.26 in chips)
+Seat 4: Skurj_poker ($9.70 in chips)
+Seat 5: sabinn ($10 in chips)
+Seat 6: Alipiogreco ($18.68 in chips)
+Alipiogreco: posts small blind $0.05
+bigrexxx14: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Js Jc]
+mr_MP&1: folds
+SzNorbert12: folds
+Skurj_poker: raises $0.10 to $0.20
+sabinn: folds
+Alipiogreco: folds
+bigrexxx14: calls $0.10
+*** FLOP *** [9d 6s 8h]
+bigrexxx14: bets $0.20
+Skurj_poker: calls $0.20
+*** TURN *** [9d 6s 8h] [Ah]
+bigrexxx14: bets $0.41
+Skurj_poker: calls $0.41
+*** RIVER *** [9d 6s 8h Ah] [Kd]
+bigrexxx14: bets $1
+Skurj_poker: folds
+Uncalled bet ($1) returned to bigrexxx14
+bigrexxx14 collected $1.59 from pot
+*** SUMMARY ***
+Total pot $1.67 | Rake $0.08
+Board [9d 6s 8h Ah Kd]
+Seat 1: bigrexxx14 (big blind) collected ($1.59)
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker folded on the River
+Seat 5: sabinn (button) folded before Flop (didn't bet)
+Seat 6: Alipiogreco (small blind) folded before Flop
+
+
+*********** # 3 **************
+PokerStars Hand #260337162629:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:11:05 ET
+Table 'Haidea IV' 6-max Seat #4 is the button
+Seat 1: bigrexxx14 ($10.36 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($16.26 in chips)
+Seat 4: Skurj_poker ($9.70 in chips)
+Seat 5: sabinn ($10 in chips)
+Seat 6: Alipiogreco ($18.78 in chips)
+sabinn: posts small blind $0.05
+Alipiogreco: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ah 4s]
+bigrexxx14: calls $0.10
+mr_MP&1: raises $0.30 to $0.40
+SzNorbert12: folds
+Skurj_poker: folds
+sabinn: folds
+Alipiogreco: folds
+bigrexxx14: calls $0.30
+*** FLOP *** [7h 6d 8h]
+bigrexxx14: checks
+mr_MP&1: checks
+*** TURN *** [7h 6d 8h] [3h]
+bigrexxx14: bets $0.45
+mr_MP&1: calls $0.45
+*** RIVER *** [7h 6d 8h 3h] [4h]
+bigrexxx14: bets $0.88
+mr_MP&1: folds
+Uncalled bet ($0.88) returned to bigrexxx14
+bigrexxx14 collected $1.76 from pot
+*** SUMMARY ***
+Total pot $1.85 | Rake $0.09
+Board [7h 6d 8h 3h 4h]
+Seat 1: bigrexxx14 collected ($1.76)
+Seat 2: mr_MP&1 folded on the River
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: sabinn (small blind) folded before Flop
+Seat 6: Alipiogreco (big blind) folded before Flop
+
+
+*********** # 4 **************
+PokerStars Hand #260337157208:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:10:27 ET
+Table 'Haidea IV' 6-max Seat #3 is the button
+Seat 1: bigrexxx14 ($10.36 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($15.99 in chips)
+Seat 4: Skurj_poker ($9.75 in chips)
+Seat 5: sabinn ($10 in chips)
+Seat 6: Alipiogreco ($18.78 in chips)
+Skurj_poker: posts small blind $0.05
+sabinn: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [2d Kd]
+Alipiogreco: folds
+bigrexxx14: folds
+mr_MP&1: folds
+SzNorbert12: raises $0.15 to $0.25
+Skurj_poker: folds
+sabinn: calls $0.15
+*** FLOP *** [6s 3h Ac]
+sabinn: checks
+SzNorbert12: bets $0.17
+sabinn: folds
+Uncalled bet ($0.17) returned to SzNorbert12
+SzNorbert12 collected $0.52 from pot
+SzNorbert12: doesn't show hand
+*** SUMMARY ***
+Total pot $0.55 | Rake $0.03
+Board [6s 3h Ac]
+Seat 1: bigrexxx14 folded before Flop (didn't bet)
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (button) collected ($0.52)
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 5: sabinn (big blind) folded on the Flop
+Seat 6: Alipiogreco folded before Flop (didn't bet)
+
+
+*********** # 5 **************
+PokerStars Hand #260337149080:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:09:29 ET
+Table 'Haidea IV' 6-max Seat #2 is the button
+Seat 1: bigrexxx14 ($9.17 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($17.21 in chips)
+Seat 4: Skurj_poker ($9.85 in chips)
+SzNorbert12: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6h 5h]
+bigrexxx14: calls $0.10
+mr_MP&1: folds
+SzNorbert12: raises $0.50 to $0.60
+Skurj_poker: folds
+ichithekill leaves the table
+bigrexxx14: calls $0.50
+*** FLOP *** [8h 6d Jc]
+SzNorbert12: bets $0.62
+bigrexxx14: raises $0.62 to $1.24
+SzNorbert12: folds
+Uncalled bet ($0.62) returned to bigrexxx14
+bigrexxx14 collected $2.41 from pot
+sabinn joins the table at seat #5
+*** SUMMARY ***
+Total pot $2.54 | Rake $0.13
+Board [8h 6d Jc]
+Seat 1: bigrexxx14 collected ($2.41)
+Seat 2: mr_MP&1 (button) folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (small blind) folded on the Flop
+Seat 4: Skurj_poker (big blind) folded before Flop
+
+
+*********** # 6 **************
+PokerStars Hand #260337146489:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:09:11 ET
+Table 'Haidea IV' 6-max Seat #1 is the button
+Seat 1: bigrexxx14 ($9.17 in chips)
+Seat 2: mr_MP&1 ($10.25 in chips)
+Seat 3: SzNorbert12 ($17.31 in chips)
+Seat 4: Skurj_poker ($9.85 in chips)
+mr_MP&1: posts small blind $0.05
+SzNorbert12: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6c 2h]
+Skurj_poker: folds
+bigrexxx14: folds
+mr_MP&1: raises $0.20 to $0.30
+SzNorbert12: folds
+Uncalled bet ($0.20) returned to mr_MP&1
+mr_MP&1 collected $0.20 from pot
+mr_MP&1: doesn't show hand
+*** SUMMARY ***
+Total pot $0.20 | Rake $0
+Seat 1: bigrexxx14 (button) folded before Flop (didn't bet)
+Seat 2: mr_MP&1 (small blind) collected ($0.20)
+Seat 3: SzNorbert12 (big blind) folded before Flop
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+
+
+*********** # 7 **************
+PokerStars Hand #260337141464:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:08:36 ET
+Table 'Haidea IV' 6-max Seat #6 is the button
+Seat 1: bigrexxx14 ($9.08 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($17.31 in chips)
+Seat 4: Skurj_poker ($9.85 in chips)
+Seat 6: Alipiogreco ($18.78 in chips)
+bigrexxx14: posts small blind $0.05
+mr_MP&1: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qd 7s]
+SzNorbert12: folds
+Skurj_poker: folds
+Alipiogreco has timed out
+Alipiogreco: folds
+bigrexxx14: calls $0.05
+mr_MP&1: checks
+*** FLOP *** [Ts Js 6c]
+bigrexxx14: bets $0.10
+mr_MP&1: folds
+Uncalled bet ($0.10) returned to bigrexxx14
+bigrexxx14 collected $0.19 from pot
+*** SUMMARY ***
+Total pot $0.20 | Rake $0.01
+Board [Ts Js 6c]
+Seat 1: bigrexxx14 (small blind) collected ($0.19)
+Seat 2: mr_MP&1 (big blind) folded on the Flop
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 6: Alipiogreco (button) folded before Flop (didn't bet)
+
+
+*********** # 8 **************
+PokerStars Hand #260337139160:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:08:20 ET
+Table 'Haidea IV' 6-max Seat #4 is the button
+Seat 1: bigrexxx14 ($9.03 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($17.31 in chips)
+Seat 4: Skurj_poker ($9.85 in chips)
+Seat 6: Alipiogreco ($18.83 in chips)
+Alipiogreco: posts small blind $0.05
+bigrexxx14: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9c 5c]
+mr_MP&1: folds
+SzNorbert12: folds
+Skurj_poker: folds
+Alipiogreco: folds
+Uncalled bet ($0.05) returned to bigrexxx14
+bigrexxx14 collected $0.10 from pot
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 1: bigrexxx14 (big blind) collected ($0.10)
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 6: Alipiogreco (small blind) folded before Flop
+
+
+*********** # 9 **************
+PokerStars Hand #260337135779:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:07:56 ET
+Table 'Haidea IV' 6-max Seat #3 is the button
+Seat 1: bigrexxx14 ($8.89 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($17.31 in chips)
+Seat 4: Skurj_poker ($9.90 in chips)
+Seat 6: Alipiogreco ($18.93 in chips)
+Skurj_poker: posts small blind $0.05
+Alipiogreco: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [2c 9c]
+bigrexxx14: calls $0.10
+mr_MP&1: folds
+SzNorbert12: folds
+Skurj_poker: folds
+Alipiogreco: checks
+*** FLOP *** [2s Qc Ad]
+Alipiogreco: checks
+bigrexxx14: bets $0.10
+Alipiogreco: folds
+Uncalled bet ($0.10) returned to bigrexxx14
+bigrexxx14 collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [2s Qc Ad]
+Seat 1: bigrexxx14 collected ($0.24)
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (button) folded before Flop (didn't bet)
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 6: Alipiogreco (big blind) folded on the Flop
+
+
+*********** # 10 **************
+PokerStars Hand #260337126495:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:06:52 ET
+Table 'Haidea IV' 6-max Seat #2 is the button
+Seat 1: bigrexxx14 ($8.89 in chips)
+Seat 2: mr_MP&1 ($10.35 in chips)
+Seat 3: SzNorbert12 ($18.95 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.59 in chips)
+Seat 6: Alipiogreco ($17.36 in chips)
+SzNorbert12: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4c 6s]
+ichithekill: folds
+Alipiogreco: raises $0.14 to $0.24
+bigrexxx14: folds
+mr_MP&1: folds
+SzNorbert12: raises $0.86 to $1.10
+Skurj_poker: folds
+Alipiogreco: calls $0.86
+*** FLOP *** [3c 5h 4s]
+SzNorbert12: bets $0.54
+Alipiogreco: calls $0.54
+*** TURN *** [3c 5h 4s] [2d]
+SzNorbert12: checks
+Alipiogreco: checks
+*** RIVER *** [3c 5h 4s 2d] [9s]
+SzNorbert12: checks
+Alipiogreco: bets $1.61
+SzNorbert12: folds
+Uncalled bet ($1.61) returned to Alipiogreco
+Alipiogreco collected $3.21 from pot
+Alipiogreco: doesn't show hand
+*** SUMMARY ***
+Total pot $3.38 | Rake $0.17
+Board [3c 5h 4s 2d 9s]
+Seat 1: bigrexxx14 folded before Flop (didn't bet)
+Seat 2: mr_MP&1 (button) folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (small blind) folded on the River
+Seat 4: Skurj_poker (big blind) folded before Flop
+Seat 5: ichithekill folded before Flop (didn't bet)
+Seat 6: Alipiogreco collected ($3.21)
+
+
+*********** # 11 **************
+PokerStars Hand #260337121432:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:06:17 ET
+Table 'Haidea IV' 6-max Seat #1 is the button
+Seat 1: bigrexxx14 ($8.89 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($19.05 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.84 in chips)
+Seat 6: Alipiogreco ($17.36 in chips)
+mr_MP&1: posts small blind $0.05
+SzNorbert12: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ts Qh]
+Skurj_poker: folds
+ichithekill: raises $0.15 to $0.25
+Alipiogreco: folds
+bigrexxx14: folds
+mr_MP&1: raises $0.90 to $1.15
+SzNorbert12: folds
+ichithekill: folds
+Uncalled bet ($0.90) returned to mr_MP&1
+mr_MP&1 collected $0.60 from pot
+mr_MP&1: doesn't show hand
+*** SUMMARY ***
+Total pot $0.60 | Rake $0
+Seat 1: bigrexxx14 (button) folded before Flop (didn't bet)
+Seat 2: mr_MP&1 (small blind) collected ($0.60)
+Seat 3: SzNorbert12 (big blind) folded before Flop
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: ichithekill folded before Flop
+Seat 6: Alipiogreco folded before Flop (didn't bet)
+
+
+*********** # 12 **************
+PokerStars Hand #260337119013:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:06:01 ET
+Table 'Haidea IV' 6-max Seat #6 is the button
+Seat 1: bigrexxx14 ($8.94 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($19.05 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.84 in chips)
+Seat 6: Alipiogreco ($17.21 in chips)
+bigrexxx14: posts small blind $0.05
+mr_MP&1: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8c 9d]
+SzNorbert12: folds
+Skurj_poker: folds
+ichithekill: folds
+Alipiogreco: raises $0.10 to $0.20
+bigrexxx14: folds
+mr_MP&1: folds
+Uncalled bet ($0.10) returned to Alipiogreco
+Alipiogreco collected $0.25 from pot
+Alipiogreco: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: bigrexxx14 (small blind) folded before Flop
+Seat 2: mr_MP&1 (big blind) folded before Flop
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: ichithekill folded before Flop (didn't bet)
+Seat 6: Alipiogreco (button) collected ($0.25)
+
+
+*********** # 13 **************
+PokerStars Hand #260337116420:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:05:43 ET
+Table 'Haidea IV' 6-max Seat #5 is the button
+Seat 1: bigrexxx14 ($9.04 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($18.90 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.84 in chips)
+Seat 6: Alipiogreco ($17.26 in chips)
+Alipiogreco: posts small blind $0.05
+bigrexxx14: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [5h 7h]
+mr_MP&1: folds
+SzNorbert12: raises $0.15 to $0.25
+Skurj_poker: folds
+ichithekill: folds
+Alipiogreco: folds
+bigrexxx14: folds
+Uncalled bet ($0.15) returned to SzNorbert12
+SzNorbert12 collected $0.25 from pot
+SzNorbert12: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: bigrexxx14 (big blind) folded before Flop
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 collected ($0.25)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: ichithekill (button) folded before Flop (didn't bet)
+Seat 6: Alipiogreco (small blind) folded before Flop
+
+
+*********** # 14 **************
+PokerStars Hand #260337108801:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:04:50 ET
+Table 'Haidea IV' 6-max Seat #4 is the button
+Seat 1: bigrexxx14 ($8.90 in chips)
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($18.90 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.89 in chips)
+Seat 6: Alipiogreco ($17.36 in chips)
+ichithekill: posts small blind $0.05
+Alipiogreco: posts big blind $0.10
+bigrexxx14: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Tc Qc]
+bigrexxx14: checks
+mr_MP&1: folds
+SzNorbert12: folds
+Skurj_poker: folds
+ichithekill: folds
+Alipiogreco: checks
+*** FLOP *** [5c 4h 8s]
+Alipiogreco: checks
+bigrexxx14: bets $0.24
+Alipiogreco: folds
+Uncalled bet ($0.24) returned to bigrexxx14
+bigrexxx14 collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [5c 4h 8s]
+Seat 1: bigrexxx14 collected ($0.24)
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 folded before Flop (didn't bet)
+Seat 4: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: ichithekill (small blind) folded before Flop
+Seat 6: Alipiogreco (big blind) folded on the Flop
+
+
+*********** # 15 **************
+PokerStars Hand #260337105525:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:04:27 ET
+Table 'Haidea IV' 6-max Seat #3 is the button
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($18.90 in chips)
+Seat 4: Skurj_poker ($10.05 in chips)
+Seat 5: ichithekill ($10.84 in chips)
+Seat 6: Alipiogreco ($17.36 in chips)
+Skurj_poker: posts small blind $0.05
+ichithekill: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8s 7s]
+Alipiogreco: folds
+mr_MP&1: folds
+SzNorbert12: folds
+Skurj_poker: folds
+Uncalled bet ($0.05) returned to ichithekill
+ichithekill collected $0.10 from pot
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 2: mr_MP&1 folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (button) folded before Flop (didn't bet)
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 5: ichithekill (big blind) collected ($0.10)
+Seat 6: Alipiogreco folded before Flop (didn't bet)
+
+
+*********** # 16 **************
+PokerStars Hand #260337103276:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 21:04:12 ET
+Table 'Haidea IV' 6-max Seat #2 is the button
+Seat 2: mr_MP&1 ($10 in chips)
+Seat 3: SzNorbert12 ($18.95 in chips)
+Seat 4: Skurj_poker ($10 in chips)
+Seat 5: ichithekill ($10.84 in chips)
+Seat 6: Alipiogreco ($17.36 in chips)
+SzNorbert12: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Th 2h]
+ichithekill: folds
+bigrexxx14 joins the table at seat #1
+Alipiogreco: folds
+mr_MP&1: folds
+SzNorbert12: folds
+Uncalled bet ($0.05) returned to Skurj_poker
+Skurj_poker collected $0.10 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 2: mr_MP&1 (button) folded before Flop (didn't bet)
+Seat 3: SzNorbert12 (small blind) folded before Flop
+Seat 4: Skurj_poker (big blind) collected ($0.10)
+Seat 5: ichithekill folded before Flop (didn't bet)
+Seat 6: Alipiogreco folded before Flop (didn't bet)
+
+
+*********** # 17 **************
+PokerStars Hand #260335757277:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:49:09 ET
+Table 'Elara III' 6-max Seat #4 is the button
+Seat 1: Skurj_poker ($11.41 in chips)
+Seat 2: Macha.juan ($17.47 in chips)
+Seat 3: Anjin88 ($9.55 in chips)
+Seat 4: chabou1976 ($2.83 in chips)
+Seat 5: ZANERPVP ($42.84 in chips)
+Seat 6: S.Artsiom.O. ($12.49 in chips)
+ZANERPVP: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [2s 5s]
+Skurj_poker: folds
+Skurj_poker leaves the table
+Macha.juan: raises $0.15 to $0.25
+Anjin88: folds
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Uncalled bet ($0.15) returned to Macha.juan
+Macha.juan collected $0.25 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 2: Macha.juan collected ($0.25)
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 (button) folded before Flop (didn't bet)
+Seat 5: ZANERPVP (small blind) folded before Flop
+Seat 6: S.Artsiom.O. (big blind) folded before Flop
+
+
+*********** # 18 **************
+PokerStars Hand #260335747359:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:48:21 ET
+Table 'Elara III' 6-max Seat #3 is the button
+Seat 1: Skurj_poker ($11.41 in chips)
+Seat 2: Macha.juan ($16.92 in chips)
+Seat 3: Anjin88 ($9.09 in chips)
+Seat 4: chabou1976 ($2.88 in chips)
+Seat 5: ZANERPVP ($42.94 in chips)
+Seat 6: S.Artsiom.O. ($12.49 in chips)
+chabou1976: posts small blind $0.05
+ZANERPVP: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ks 5d]
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Macha.juan: raises $0.15 to $0.25
+Anjin88: calls $0.25
+chabou1976: folds
+ZANERPVP: folds
+*** FLOP *** [As Jd 5c]
+Macha.juan: bets $0.20
+Anjin88: calls $0.20
+*** TURN *** [As Jd 5c] [7s]
+Macha.juan: bets $2.15
+Anjin88: folds
+Uncalled bet ($2.15) returned to Macha.juan
+Macha.juan collected $1 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $1.05 | Rake $0.05
+Board [As Jd 5c 7s]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 2: Macha.juan collected ($1)
+Seat 3: Anjin88 (button) folded on the Turn
+Seat 4: chabou1976 (small blind) folded before Flop
+Seat 5: ZANERPVP (big blind) folded before Flop
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 19 **************
+PokerStars Hand #260335730018:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:46:58 ET
+Table 'Elara III' 6-max Seat #2 is the button
+Seat 1: Skurj_poker ($11.41 in chips)
+Seat 2: Macha.juan ($16.01 in chips)
+Seat 3: Anjin88 ($8.69 in chips)
+Seat 4: chabou1976 ($2.98 in chips)
+Seat 5: ZANERPVP ($42.94 in chips)
+Seat 6: S.Artsiom.O. ($12.49 in chips)
+Anjin88: posts small blind $0.05
+chabou1976: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3s 9h]
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Macha.juan: raises $0.15 to $0.25
+Anjin88: calls $0.20
+chabou1976: folds
+*** FLOP *** [6c 8c Qs]
+Anjin88: checks
+Macha.juan: bets $0.19
+Anjin88: calls $0.19
+*** TURN *** [6c 8c Qs] [2d]
+Anjin88: checks
+Macha.juan: checks
+*** RIVER *** [6c 8c Qs 2d] [Ks]
+Anjin88: bets $0.47
+Macha.juan: raises $2.24 to $2.71
+Anjin88: folds
+Uncalled bet ($2.24) returned to Macha.juan
+Macha.juan collected $1.82 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $1.92 | Rake $0.10
+Board [6c 8c Qs 2d Ks]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 2: Macha.juan (button) collected ($1.82)
+Seat 3: Anjin88 (small blind) folded on the River
+Seat 4: chabou1976 (big blind) folded before Flop
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 20 **************
+PokerStars Hand #260335719911:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:46:10 ET
+Table 'Elara III' 6-max Seat #1 is the button
+Seat 1: Skurj_poker ($11.41 in chips)
+Seat 2: Macha.juan ($16.06 in chips)
+Seat 3: Anjin88 ($10.18 in chips)
+Seat 4: chabou1976 ($2.98 in chips)
+Seat 5: ZANERPVP ($42.94 in chips)
+Seat 6: S.Artsiom.O. ($11.10 in chips)
+Macha.juan: posts small blind $0.05
+Anjin88: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8s 3h]
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: raises $0.17 to $0.27
+Skurj_poker: folds
+Macha.juan: folds
+Anjin88: calls $0.17
+*** FLOP *** [6d 5h 8h]
+Anjin88: checks
+S.Artsiom.O.: bets $0.42
+Anjin88: calls $0.42
+*** TURN *** [6d 5h 8h] [Ks]
+Anjin88: checks
+S.Artsiom.O.: bets $0.80
+Anjin88: calls $0.80
+*** RIVER *** [6d 5h 8h Ks] [Jd]
+Anjin88: checks
+S.Artsiom.O.: bets $9.61 and is all-in
+Anjin88: folds
+Uncalled bet ($9.61) returned to S.Artsiom.O.
+S.Artsiom.O. collected $2.88 from pot
+S.Artsiom.O.: doesn't show hand
+*** SUMMARY ***
+Total pot $3.03 | Rake $0.15
+Board [6d 5h 8h Ks Jd]
+Seat 1: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 2: Macha.juan (small blind) folded before Flop
+Seat 3: Anjin88 (big blind) folded on the River
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. collected ($2.88)
+
+
+*********** # 21 **************
+PokerStars Hand #260335714196:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:45:43 ET
+Table 'Elara III' 6-max Seat #6 is the button
+Seat 1: Skurj_poker ($11.51 in chips)
+Seat 2: Macha.juan ($15.96 in chips)
+Seat 3: Anjin88 ($10.18 in chips)
+Seat 4: chabou1976 ($2.98 in chips)
+Seat 5: ZANERPVP ($42.94 in chips)
+Seat 6: S.Artsiom.O. ($11.10 in chips)
+Skurj_poker: posts small blind $0.05
+Macha.juan: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ts 8d]
+Anjin88: folds
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: calls $0.05
+Macha.juan: raises $0.25 to $0.35
+Skurj_poker: folds
+Uncalled bet ($0.25) returned to Macha.juan
+Macha.juan collected $0.20 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $0.20 | Rake $0
+Seat 1: Skurj_poker (small blind) folded before Flop
+Seat 2: Macha.juan (big blind) collected ($0.20)
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (button) folded before Flop (didn't bet)
+
+
+*********** # 22 **************
+PokerStars Hand #260335697308:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:44:22 ET
+Table 'Elara III' 6-max Seat #5 is the button
+Seat 1: Skurj_poker ($11.61 in chips)
+Seat 2: Macha.juan ($15.96 in chips)
+Seat 3: Anjin88 ($9.95 in chips)
+Seat 4: chabou1976 ($3.08 in chips)
+Seat 5: ZANERPVP ($42.94 in chips)
+Seat 6: S.Artsiom.O. ($11.15 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6s 8c]
+Macha.juan: folds
+Anjin88: calls $0.10
+chabou1976: calls $0.10
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker has timed out
+Skurj_poker: checks
+*** FLOP *** [Jc Qc 3d]
+Skurj_poker: checks
+Anjin88: checks
+chabou1976: checks
+*** TURN *** [Jc Qc 3d] [Qd]
+Skurj_poker: checks
+Anjin88: bets $0.17
+chabou1976: folds
+Skurj_poker: folds
+Uncalled bet ($0.17) returned to Anjin88
+Anjin88 collected $0.33 from pot
+*** SUMMARY ***
+Total pot $0.35 | Rake $0.02
+Board [Jc Qc 3d Qd]
+Seat 1: Skurj_poker (big blind) folded on the Turn
+Seat 2: Macha.juan folded before Flop (didn't bet)
+Seat 3: Anjin88 collected ($0.33)
+Seat 4: chabou1976 folded on the Turn
+Seat 5: ZANERPVP (button) folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (small blind) folded before Flop
+
+
+*********** # 23 **************
+PokerStars Hand #260335693574:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:44:04 ET
+Table 'Elara III' 6-max Seat #4 is the button
+Seat 1: Skurj_poker ($11.61 in chips)
+Seat 2: Macha.juan ($15.96 in chips)
+Seat 3: Anjin88 ($10 in chips)
+Seat 4: chabou1976 ($3.18 in chips)
+Seat 5: ZANERPVP ($42.99 in chips)
+Seat 6: S.Artsiom.O. ($10.95 in chips)
+ZANERPVP: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+Anjin88: posts small blind $0.05
+*** HOLE CARDS ***
+Dealt to Skurj_poker [5s 8s]
+Skurj_poker: folds
+Macha.juan: folds
+Anjin88: folds
+chabou1976: calls $0.10
+ZANERPVP: folds
+S.Artsiom.O.: raises $0.60 to $0.70
+chabou1976: folds
+Uncalled bet ($0.60) returned to S.Artsiom.O.
+S.Artsiom.O. collected $0.30 from pot
+S.Artsiom.O.: doesn't show hand
+*** SUMMARY ***
+Total pot $0.30 | Rake $0
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 2: Macha.juan folded before Flop (didn't bet)
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 (button) folded before Flop
+Seat 5: ZANERPVP (small blind) folded before Flop
+Seat 6: S.Artsiom.O. (big blind) collected ($0.30)
+
+
+*********** # 24 **************
+PokerStars Hand #260335685066:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:43:23 ET
+Table 'Elara III' 6-max Seat #2 is the button
+Seat 1: Skurj_poker ($11.61 in chips)
+Seat 2: Macha.juan ($15.69 in chips)
+Seat 4: chabou1976 ($3.23 in chips)
+Seat 5: ZANERPVP ($43.24 in chips)
+Seat 6: S.Artsiom.O. ($10.95 in chips)
+chabou1976: posts small blind $0.05
+ZANERPVP: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qc 5s]
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Macha.juan: raises $0.15 to $0.25
+chabou1976: folds
+ZANERPVP: calls $0.15
+*** FLOP *** [Tc Qs Kc]
+ZANERPVP: checks
+Macha.juan: bets $0.39
+ZANERPVP: folds
+Uncalled bet ($0.39) returned to Macha.juan
+Macha.juan collected $0.52 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $0.55 | Rake $0.03
+Board [Tc Qs Kc]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 2: Macha.juan (button) collected ($0.52)
+Seat 4: chabou1976 (small blind) folded before Flop
+Seat 5: ZANERPVP (big blind) folded on the Flop
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 25 **************
+PokerStars Hand #260335657895:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:41:14 ET
+Table 'Elara III' 6-max Seat #1 is the button
+Seat 1: Skurj_poker ($11.61 in chips)
+Seat 2: Macha.juan ($19.84 in chips)
+Seat 3: Anjin88 ($12.20 in chips)
+Seat 4: chabou1976 ($3.23 in chips)
+Seat 5: ZANERPVP ($27.89 in chips)
+Seat 6: S.Artsiom.O. ($10.95 in chips)
+Macha.juan: posts small blind $0.05
+Anjin88: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3d 2h]
+chabou1976: folds
+ZANERPVP: raises $0.15 to $0.25
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Macha.juan: raises $0.85 to $1.10
+Anjin88: calls $1
+ZANERPVP: calls $0.85
+*** FLOP *** [7h 3h 4c]
+Macha.juan: bets $1.04
+Anjin88: calls $1.04
+ZANERPVP: calls $1.04
+*** TURN *** [7h 3h 4c] [6s]
+Macha.juan: bets $2.01
+Anjin88: raises $8.05 to $10.06 and is all-in
+ZANERPVP: raises $15.69 to $25.75 and is all-in
+Macha.juan: folds
+Uncalled bet ($15.69) returned to ZANERPVP
+ZANERPVP has timed out
+*** RIVER *** [7h 3h 4c 6s] [2c]
+*** SHOW DOWN ***
+Anjin88: shows [Kh As] (high card Ace)
+ZANERPVP: shows [5d 5c] (a straight, Three to Seven)
+ZANERPVP collected $27.55 from pot
+*** SUMMARY ***
+Total pot $28.55 | Rake $1
+Board [7h 3h 4c 6s 2c]
+Seat 1: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 2: Macha.juan (small blind) folded on the Turn
+Seat 3: Anjin88 (big blind) showed [Kh As] and lost with high card Ace
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP showed [5d 5c] and won ($27.55) with a straight, Three to Seven
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 26 **************
+PokerStars Hand #260335650477:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:40:39 ET
+Table 'Elara III' 6-max Seat #6 is the button
+Seat 1: Skurj_poker ($11.81 in chips)
+Seat 2: Macha.juan ($19.64 in chips)
+Seat 3: Anjin88 ($12.20 in chips)
+Seat 4: chabou1976 ($3.23 in chips)
+Seat 5: ZANERPVP ($27.89 in chips)
+Seat 6: S.Artsiom.O. ($10.95 in chips)
+Skurj_poker: posts small blind $0.05
+Macha.juan: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ks 8s]
+Anjin88: folds
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: raises $0.10 to $0.20
+Macha.juan: raises $0.55 to $0.75
+Skurj_poker: folds
+Uncalled bet ($0.55) returned to Macha.juan
+Macha.juan collected $0.40 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $0.40 | Rake $0
+Seat 1: Skurj_poker (small blind) folded before Flop
+Seat 2: Macha.juan (big blind) collected ($0.40)
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (button) folded before Flop (didn't bet)
+
+
+*********** # 27 **************
+PokerStars Hand #260335646250:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:40:19 ET
+Table 'Elara III' 6-max Seat #5 is the button
+Seat 1: Skurj_poker ($11.91 in chips)
+Seat 3: Anjin88 ($12.20 in chips)
+Seat 4: chabou1976 ($3.08 in chips)
+Seat 5: ZANERPVP ($27.89 in chips)
+Seat 6: S.Artsiom.O. ($11 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4s Tc]
+Anjin88: folds
+chabou1976: raises $0.10 to $0.20
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Uncalled bet ($0.10) returned to chabou1976
+chabou1976 collected $0.25 from pot
+chabou1976: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: Skurj_poker (big blind) folded before Flop
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 collected ($0.25)
+Seat 5: ZANERPVP (button) folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (small blind) folded before Flop
+
+
+*********** # 28 **************
+PokerStars Hand #260335635420:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:39:28 ET
+Table 'Elara III' 6-max Seat #4 is the button
+Seat 1: Skurj_poker ($11.91 in chips)
+Seat 3: Anjin88 ($12.30 in chips)
+Seat 4: chabou1976 ($3.08 in chips)
+Seat 5: ZANERPVP ($27.94 in chips)
+Seat 6: S.Artsiom.O. ($10.86 in chips)
+ZANERPVP: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6h 8s]
+Skurj_poker: folds
+Anjin88 is connected
+Anjin88: calls $0.10
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: checks
+*** FLOP *** [8c Kc Qs]
+S.Artsiom.O.: checks
+Anjin88: checks
+*** TURN *** [8c Kc Qs] [Ad]
+S.Artsiom.O.: checks
+Anjin88: checks
+*** RIVER *** [8c Kc Qs Ad] [4c]
+S.Artsiom.O.: checks
+Anjin88: checks
+*** SHOW DOWN ***
+S.Artsiom.O.: shows [2s 2c] (a pair of Deuces)
+Anjin88: mucks hand
+S.Artsiom.O. collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [8c Kc Qs Ad 4c]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 3: Anjin88 mucked [7s Ts]
+Seat 4: chabou1976 (button) folded before Flop (didn't bet)
+Seat 5: ZANERPVP (small blind) folded before Flop
+Seat 6: S.Artsiom.O. (big blind) showed [2s 2c] and won ($0.24) with a pair of Deuces
+
+
+*********** # 29 **************
+PokerStars Hand #260335623876:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:38:34 ET
+Table 'Elara III' 6-max Seat #3 is the button
+Seat 1: Skurj_poker ($11.91 in chips)
+Seat 3: Anjin88 ($12.30 in chips)
+Seat 4: chabou1976 ($2.56 in chips)
+Seat 5: ZANERPVP ($28.52 in chips)
+Seat 6: S.Artsiom.O. ($10.86 in chips)
+chabou1976: posts small blind $0.05
+ZANERPVP: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4c 4d]
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Anjin88: folds
+Anjin88 is disconnected
+chabou1976: calls $0.05
+ZANERPVP: checks
+*** FLOP *** [9c Kc 3h]
+chabou1976: checks
+ZANERPVP: bets $0.10
+chabou1976: calls $0.10
+*** TURN *** [9c Kc 3h] [As]
+chabou1976: checks
+ZANERPVP: checks
+*** RIVER *** [9c Kc 3h As] [8c]
+Anjin88 is disconnected
+chabou1976: bets $0.38
+ZANERPVP: calls $0.38
+*** SHOW DOWN ***
+chabou1976: shows [Qd Ah] (a pair of Aces)
+ZANERPVP: mucks hand
+chabou1976 collected $1.10 from pot
+*** SUMMARY ***
+Total pot $1.16 | Rake $0.06
+Board [9c Kc 3h As 8c]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 3: Anjin88 (button) folded before Flop (didn't bet)
+Seat 4: chabou1976 (small blind) showed [Qd Ah] and won ($1.10) with a pair of Aces
+Seat 5: ZANERPVP (big blind) mucked [9h 2d]
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 30 **************
+PokerStars Hand #260335608251:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:37:21 ET
+Table 'Elara III' 6-max Seat #1 is the button
+Seat 1: Skurj_poker ($8.84 in chips)
+Seat 3: Anjin88 ($15.29 in chips)
+Seat 4: chabou1976 ($2.96 in chips)
+Seat 5: ZANERPVP ($28.52 in chips)
+Seat 6: S.Artsiom.O. ($10.86 in chips)
+Anjin88: posts small blind $0.05
+chabou1976: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ks Ac]
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: raises $0.10 to $0.20
+Anjin88: calls $0.15
+chabou1976: calls $0.10
+*** FLOP *** [Qd Ad 3s]
+Anjin88: checks
+chabou1976: bets $0.10
+Skurj_poker: raises $0.10 to $0.20
+Anjin88: calls $0.20
+chabou1976: calls $0.10
+*** TURN *** [Qd Ad 3s] [Jh]
+Anjin88: checks
+chabou1976: checks
+Skurj_poker: bets $0.50
+Anjin88: calls $0.50
+chabou1976: folds
+*** RIVER *** [Qd Ad 3s Jh] [7d]
+Anjin88: checks
+Skurj_poker: bets $2.09
+Anjin88: calls $2.09
+*** SHOW DOWN ***
+Skurj_poker: shows [Ks Ac] (a pair of Aces)
+Anjin88: mucks hand
+Skurj_poker collected $6.06 from pot
+*** SUMMARY ***
+Total pot $6.38 | Rake $0.32
+Board [Qd Ad 3s Jh 7d]
+Seat 1: Skurj_poker (button) showed [Ks Ac] and won ($6.06) with a pair of Aces
+Seat 3: Anjin88 (small blind) mucked [2c Ah]
+Seat 4: chabou1976 (big blind) folded on the Turn
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. folded before Flop (didn't bet)
+
+
+*********** # 31 **************
+PokerStars Hand #260335604160:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:37:03 ET
+Table 'Elara III' 6-max Seat #6 is the button
+Seat 1: Skurj_poker ($8.89 in chips)
+Seat 3: Anjin88 ($15.24 in chips)
+Seat 4: chabou1976 ($2.96 in chips)
+Seat 5: ZANERPVP ($28.52 in chips)
+Seat 6: S.Artsiom.O. ($10.86 in chips)
+Skurj_poker: posts small blind $0.05
+Anjin88: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kc 5s]
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Uncalled bet ($0.05) returned to Anjin88
+Anjin88 collected $0.10 from pot
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 1: Skurj_poker (small blind) folded before Flop
+Seat 3: Anjin88 (big blind) collected ($0.10)
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (button) folded before Flop (didn't bet)
+
+
+*********** # 32 **************
+PokerStars Hand #260335591394:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:36:04 ET
+Table 'Elara III' 6-max Seat #5 is the button
+Seat 1: Skurj_poker ($9.85 in chips)
+Seat 3: Anjin88 ($15.24 in chips)
+Seat 4: chabou1976 ($2.96 in chips)
+Seat 5: ZANERPVP ($28.52 in chips)
+Seat 6: S.Artsiom.O. ($10 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8s 8h]
+Anjin88: folds
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: raises $0.20 to $0.30
+Skurj_poker: calls $0.20
+*** FLOP *** [As 7d 2h]
+S.Artsiom.O.: bets $0.29
+Skurj_poker: calls $0.29
+*** TURN *** [As 7d 2h] [Qh]
+S.Artsiom.O.: checks
+Skurj_poker: checks
+*** RIVER *** [As 7d 2h Qh] [Kh]
+S.Artsiom.O.: bets $0.37
+Skurj_poker: calls $0.37
+*** SHOW DOWN ***
+S.Artsiom.O.: shows [9h Ks] (a pair of Kings)
+Skurj_poker: mucks hand
+S.Artsiom.O. collected $1.82 from pot
+*** SUMMARY ***
+Total pot $1.92 | Rake $0.10
+Board [As 7d 2h Qh Kh]
+Seat 1: Skurj_poker (big blind) mucked [8s 8h]
+Seat 3: Anjin88 folded before Flop (didn't bet)
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP (button) folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (small blind) showed [9h Ks] and won ($1.82) with a pair of Kings
+
+
+*********** # 33 **************
+PokerStars Hand #260335573804:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:34:43 ET
+Table 'Elara III' 6-max Seat #4 is the button
+Seat 1: Skurj_poker ($9.85 in chips)
+Seat 3: Anjin88 ($13.17 in chips)
+Seat 4: chabou1976 ($3.06 in chips)
+Seat 5: ZANERPVP ($28.57 in chips)
+Seat 6: S.Artsiom.O. ($10.20 in chips)
+ZANERPVP: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4c 2s]
+Skurj_poker: folds
+Anjin88: calls $0.10
+chabou1976: calls $0.10
+ZANERPVP: folds
+S.Artsiom.O.: raises $0.60 to $0.70
+Anjin88: calls $0.60
+chabou1976: folds
+*** FLOP *** [2d 4h Ah]
+S.Artsiom.O.: checks
+Anjin88: checks
+*** TURN *** [2d 4h Ah] [4d]
+S.Artsiom.O.: bets $0.59
+Anjin88: calls $0.59
+*** RIVER *** [2d 4h Ah 4d] [9d]
+S.Artsiom.O.: bets $0.85
+Anjin88: raises $4.29 to $5.14
+S.Artsiom.O.: folds
+Uncalled bet ($4.29) returned to Anjin88
+Anjin88 collected $4.21 from pot
+*** SUMMARY ***
+Total pot $4.43 | Rake $0.22
+Board [2d 4h Ah 4d 9d]
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 3: Anjin88 collected ($4.21)
+Seat 4: chabou1976 (button) folded before Flop
+Seat 5: ZANERPVP (small blind) folded before Flop
+Seat 6: S.Artsiom.O. (big blind) folded on the River
+
+
+*********** # 34 **************
+PokerStars Hand #260335571171:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:34:31 ET
+Table 'Elara III' 6-max Seat #3 is the button
+Seat 1: Skurj_poker ($9.85 in chips)
+Seat 3: Anjin88 ($13.17 in chips)
+Seat 4: chabou1976 ($3.11 in chips)
+Seat 5: ZANERPVP ($28.67 in chips)
+Seat 6: S.Artsiom.O. ($10.05 in chips)
+chabou1976: posts small blind $0.05
+ZANERPVP: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3c 9s]
+S.Artsiom.O.: raises $0.18 to $0.28
+Skurj_poker: folds
+Anjin88: folds
+chabou1976: folds
+ZANERPVP: folds
+Uncalled bet ($0.18) returned to S.Artsiom.O.
+S.Artsiom.O. collected $0.25 from pot
+S.Artsiom.O.: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: Skurj_poker folded before Flop (didn't bet)
+Seat 3: Anjin88 (button) folded before Flop (didn't bet)
+Seat 4: chabou1976 (small blind) folded before Flop
+Seat 5: ZANERPVP (big blind) folded before Flop
+Seat 6: S.Artsiom.O. collected ($0.25)
+
+
+*********** # 35 **************
+PokerStars Hand #260335562634:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:33:52 ET
+Table 'Elara III' 6-max Seat #1 is the button
+Seat 1: Skurj_poker ($9.85 in chips)
+Seat 2: Macha.juan ($19.69 in chips)
+Seat 3: Anjin88 ($13.27 in chips)
+Seat 4: chabou1976 ($2.79 in chips)
+Seat 5: ZANERPVP ($28.67 in chips)
+Seat 6: S.Artsiom.O. ($10.25 in chips)
+Macha.juan: posts small blind $0.05
+Anjin88: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [7s Kd]
+chabou1976: raises $0.10 to $0.20
+ZANERPVP: folds
+S.Artsiom.O.: calls $0.20
+Skurj_poker: folds
+Macha.juan: folds
+Anjin88: folds
+*** FLOP *** [Kc Jd 7d]
+chabou1976: bets $0.26
+S.Artsiom.O.: folds
+Uncalled bet ($0.26) returned to chabou1976
+chabou1976 collected $0.52 from pot
+chabou1976: doesn't show hand
+*** SUMMARY ***
+Total pot $0.55 | Rake $0.03
+Board [Kc Jd 7d]
+Seat 1: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 2: Macha.juan (small blind) folded before Flop
+Seat 3: Anjin88 (big blind) folded before Flop
+Seat 4: chabou1976 collected ($0.52)
+Seat 5: ZANERPVP folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. folded on the Flop
+
+
+*********** # 36 **************
+PokerStars Hand #260335548817:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:32:49 ET
+Table 'Elara III' 6-max Seat #6 is the button
+Seat 1: Skurj_poker ($9.90 in chips)
+Seat 2: Macha.juan ($19.79 in chips)
+Seat 3: Anjin88 ($13.52 in chips)
+Seat 4: chabou1976 ($2.79 in chips)
+Seat 5: ZANERPVP ($28.30 in chips)
+Seat 6: S.Artsiom.O. ($10.25 in chips)
+Skurj_poker: posts small blind $0.05
+Macha.juan: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [5c 9s]
+Anjin88: calls $0.10
+chabou1976: folds
+ZANERPVP: raises $0.15 to $0.25
+S.Artsiom.O.: folds
+Skurj_poker: folds
+Macha.juan: folds
+Anjin88: calls $0.15
+*** FLOP *** [9d Jc Qh]
+Anjin88: checks
+ZANERPVP: bets $0.16
+Anjin88: folds
+Uncalled bet ($0.16) returned to ZANERPVP
+ZANERPVP collected $0.62 from pot
+ZANERPVP: doesn't show hand
+*** SUMMARY ***
+Total pot $0.65 | Rake $0.03
+Board [9d Jc Qh]
+Seat 1: Skurj_poker (small blind) folded before Flop
+Seat 2: Macha.juan (big blind) folded before Flop
+Seat 3: Anjin88 folded on the Flop
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP collected ($0.62)
+Seat 6: S.Artsiom.O. (button) folded before Flop (didn't bet)
+
+
+*********** # 37 **************
+PokerStars Hand #260335538952:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 18:32:04 ET
+Table 'Elara III' 6-max Seat #5 is the button
+Seat 1: Skurj_poker ($10 in chips)
+Seat 2: Macha.juan ($19.42 in chips)
+Seat 3: Anjin88 ($13.77 in chips)
+Seat 4: chabou1976 ($2.79 in chips)
+Seat 5: ZANERPVP ($28.30 in chips)
+Seat 6: S.Artsiom.O. ($10.30 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kc Js]
+Macha.juan: raises $0.15 to $0.25
+Anjin88: calls $0.25
+chabou1976: folds
+ZANERPVP: folds
+S.Artsiom.O.: folds
+Skurj_poker: folds
+*** FLOP *** [6c 2d 4h]
+Macha.juan: bets $0.20
+Anjin88: folds
+Uncalled bet ($0.20) returned to Macha.juan
+Macha.juan collected $0.62 from pot
+Macha.juan: doesn't show hand
+*** SUMMARY ***
+Total pot $0.65 | Rake $0.03
+Board [6c 2d 4h]
+Seat 1: Skurj_poker (big blind) folded before Flop
+Seat 2: Macha.juan collected ($0.62)
+Seat 3: Anjin88 folded on the Flop
+Seat 4: chabou1976 folded before Flop (didn't bet)
+Seat 5: ZANERPVP (button) folded before Flop (didn't bet)
+Seat 6: S.Artsiom.O. (small blind) folded before Flop
+
+
+*********** # 38 **************
+PokerStars Hand #260334438164:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:12:42 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($9.38 in chips)
+Seat 3: Skurj_poker ($1.17 in chips)
+Seat 4: S.Artsiom.O. ($10.95 in chips)
+Seat 5: Marot_br ($12.33 in chips)
+Seat 6: Hernagon ($16.39 in chips)
+Pit-Hunter83: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kc 3h]
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: folds
+cutter2468: raises $0.15 to $0.25
+Pit-Hunter83: calls $0.20
+Skurj_poker: calls $0.15
+*** FLOP *** [9d Tc Ad]
+Pit-Hunter83: bets $0.20
+Skurj_poker: calls $0.20
+cutter2468: calls $0.20
+*** TURN *** [9d Tc Ad] [2h]
+Pit-Hunter83: bets $0.20
+Skurj_poker: calls $0.20
+cutter2468: raises $1.41 to $1.61
+Pit-Hunter83: calls $1.41
+Skurj_poker: calls $0.52 and is all-in
+*** RIVER *** [9d Tc Ad 2h] [Ts]
+Pit-Hunter83: checks
+cutter2468: bets $7.94 and is all-in
+Pit-Hunter83: calls $7.32 and is all-in
+Uncalled bet ($0.62) returned to cutter2468
+*** SHOW DOWN ***
+cutter2468: shows [As Ah] (a full house, Aces full of Tens)
+Pit-Hunter83: shows [9s Td] (a full house, Tens full of Nines)
+cutter2468 collected $15.60 from side pot
+Skurj_poker: shows [Kc 3h] (a pair of Tens)
+cutter2468 collected $3.33 from main pot
+*** SUMMARY ***
+Total pot $19.93 Main pot $3.33. Side pot $15.60. | Rake $1
+Board [9d Tc Ad 2h Ts]
+Seat 1: cutter2468 (button) showed [As Ah] and won ($18.93) with a full house, Aces full of Tens
+Seat 2: Pit-Hunter83 (small blind) showed [9s Td] and lost with a full house, Tens full of Nines
+Seat 3: Skurj_poker (big blind) showed [Kc 3h] and lost with a pair of Tens
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 39 **************
+PokerStars Hand #260334423469:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:11:44 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($8.28 in chips)
+Seat 3: Skurj_poker ($1.57 in chips)
+Seat 4: S.Artsiom.O. ($10.95 in chips)
+Seat 5: Marot_br ($12.33 in chips)
+Seat 6: Hernagon ($16.79 in chips)
+cutter2468: posts small blind $0.05
+Pit-Hunter83: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kh 9s]
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: calls $0.10
+cutter2468: raises $0.30 to $0.40
+Pit-Hunter83: calls $0.30
+Skurj_poker: calls $0.30
+Hernagon: calls $0.30
+*** FLOP *** [2d 3d 3s]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+Hernagon: checks
+*** TURN *** [2d 3d 3s] [8s]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+Hernagon: checks
+*** RIVER *** [2d 3d 3s 8s] [4d]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+Hernagon: checks
+*** SHOW DOWN ***
+cutter2468: shows [Ac Jd] (a pair of Threes)
+Pit-Hunter83: shows [Ah Kc] (a pair of Threes - Ace+King kicker)
+Skurj_poker: mucks hand
+Hernagon: mucks hand
+Pit-Hunter83 collected $1.50 from pot
+*** SUMMARY ***
+Total pot $1.60 | Rake $0.10
+Board [2d 3d 3s 8s 4d]
+Seat 1: cutter2468 (small blind) showed [Ac Jd] and lost with a pair of Threes
+Seat 2: Pit-Hunter83 (big blind) showed [Ah Kc] and won ($1.50) with a pair of Threes
+Seat 3: Skurj_poker mucked [Kh 9s]
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon (button) mucked [6h 7h]
+
+
+*********** # 40 **************
+PokerStars Hand #260334410052:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:10:50 ET
+Table 'Caecilia IV' 6-max Seat #5 is the button
+Seat 1: cutter2468 ($10.09 in chips)
+Seat 2: Pit-Hunter83 ($8.38 in chips)
+Seat 3: Skurj_poker ($1.34 in chips)
+Seat 4: S.Artsiom.O. ($10.95 in chips)
+Seat 5: Marot_br ($12.33 in chips)
+Seat 6: Hernagon ($16.84 in chips)
+Hernagon: posts small blind $0.05
+cutter2468: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8c Ad]
+Pit-Hunter83: calls $0.10
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: folds
+cutter2468: checks
+*** FLOP *** [6s Tc 2s]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+*** TURN *** [6s Tc 2s] [Ah]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+*** RIVER *** [6s Tc 2s Ah] [4d]
+cutter2468: checks
+Pit-Hunter83: checks
+Skurj_poker: bets $1.24 and is all-in
+cutter2468: folds
+Pit-Hunter83: folds
+Uncalled bet ($1.24) returned to Skurj_poker
+Skurj_poker collected $0.33 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.35 | Rake $0.02
+Board [6s Tc 2s Ah 4d]
+Seat 1: cutter2468 (big blind) folded on the River
+Seat 2: Pit-Hunter83 folded on the River
+Seat 3: Skurj_poker collected ($0.33)
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br (button) folded before Flop (didn't bet)
+Seat 6: Hernagon (small blind) folded before Flop
+
+
+*********** # 41 **************
+PokerStars Hand #260334394793:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:09:50 ET
+Table 'Caecilia IV' 6-max Seat #4 is the button
+Seat 1: cutter2468 ($10.09 in chips)
+Seat 2: Pit-Hunter83 ($8.38 in chips)
+Seat 3: Skurj_poker ($2.24 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.38 in chips)
+Seat 6: Hernagon ($16.94 in chips)
+Marot_br: posts small blind $0.05
+Hernagon: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9h Qc]
+cutter2468: folds
+Pit-Hunter83: folds
+Skurj_poker: calls $0.10
+S.Artsiom.O.: raises $0.30 to $0.40
+Marot_br: folds
+Hernagon: folds
+Skurj_poker: calls $0.30
+*** FLOP *** [8c 7h 7s]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+*** TURN *** [8c 7h 7s] [8s]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+*** RIVER *** [8c 7h 7s 8s] [Jd]
+Skurj_poker: checks
+S.Artsiom.O.: bets $0.50
+Skurj_poker: calls $0.50
+*** SHOW DOWN ***
+S.Artsiom.O.: shows [Jc Qh] (two pair, Jacks and Eights)
+Skurj_poker: mucks hand
+S.Artsiom.O. collected $1.85 from pot
+*** SUMMARY ***
+Total pot $1.95 | Rake $0.10
+Board [8c 7h 7s 8s Jd]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 folded before Flop (didn't bet)
+Seat 3: Skurj_poker mucked [9h Qc]
+Seat 4: S.Artsiom.O. (button) showed [Jc Qh] and won ($1.85) with two pair, Jacks and Eights
+Seat 5: Marot_br (small blind) folded before Flop
+Seat 6: Hernagon (big blind) folded before Flop
+
+
+*********** # 42 **************
+PokerStars Hand #260334384371:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:09:08 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: cutter2468 ($10.09 in chips)
+Seat 2: Pit-Hunter83 ($9.21 in chips)
+Seat 3: Skurj_poker ($2.24 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.48 in chips)
+Seat 6: Hernagon ($16.05 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Marot_br: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6s 6h]
+Hernagon: raises $0.20 to $0.30
+cutter2468: folds
+Pit-Hunter83: calls $0.30
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Marot_br: folds
+*** FLOP *** [5c 6c 9d]
+Hernagon: checks
+Pit-Hunter83: checks
+*** TURN *** [5c 6c 9d] [9c]
+Hernagon: bets $0.53
+Pit-Hunter83: calls $0.53
+*** RIVER *** [5c 6c 9d 9c] [2d]
+Hernagon: bets $1.29
+Pit-Hunter83: folds
+Uncalled bet ($1.29) returned to Hernagon
+Hernagon collected $1.72 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $1.81 | Rake $0.09
+Board [5c 6c 9d 9c 2d]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 folded on the River
+Seat 3: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 4: S.Artsiom.O. (small blind) folded before Flop
+Seat 5: Marot_br (big blind) folded before Flop
+Seat 6: Hernagon collected ($1.72)
+
+
+*********** # 43 **************
+PokerStars Hand #260334368862:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:08:07 ET
+Table 'Caecilia IV' 6-max Seat #2 is the button
+Seat 1: cutter2468 ($10.09 in chips)
+Seat 2: Pit-Hunter83 ($9.41 in chips)
+Seat 3: Skurj_poker ($1.96 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.48 in chips)
+Seat 6: Hernagon ($16.05 in chips)
+Skurj_poker: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Jc 7s]
+Marot_br: folds
+Hernagon: folds
+cutter2468: folds
+Pit-Hunter83: calls $0.10
+Skurj_poker: calls $0.05
+S.Artsiom.O.: checks
+*** FLOP *** [5c Js Ks]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+Pit-Hunter83: checks
+*** TURN *** [5c Js Ks] [Td]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+Pit-Hunter83: checks
+*** RIVER *** [5c Js Ks Td] [8s]
+Skurj_poker: bets $0.10
+S.Artsiom.O.: folds
+Pit-Hunter83: calls $0.10
+*** SHOW DOWN ***
+Skurj_poker: shows [Jc 7s] (a pair of Jacks)
+Pit-Hunter83: mucks hand
+Skurj_poker collected $0.48 from pot
+*** SUMMARY ***
+Total pot $0.50 | Rake $0.02
+Board [5c Js Ks Td 8s]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (button) mucked [8h Ah]
+Seat 3: Skurj_poker (small blind) showed [Jc 7s] and won ($0.48) with a pair of Jacks
+Seat 4: S.Artsiom.O. (big blind) folded on the River
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 44 **************
+PokerStars Hand #260334351496:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:06:59 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: cutter2468 ($10.09 in chips)
+Seat 2: Pit-Hunter83 ($9.46 in chips)
+Seat 3: Skurj_poker ($5.70 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.48 in chips)
+Seat 6: Hernagon ($12.64 in chips)
+Pit-Hunter83: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9d Js]
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: raises $0.15 to $0.25
+cutter2468: folds
+Pit-Hunter83: folds
+Skurj_poker: calls $0.15
+*** FLOP *** [5h 9s Tc]
+Skurj_poker: checks
+Hernagon: bets $0.26
+Skurj_poker: raises $0.26 to $0.52
+Hernagon: calls $0.26
+*** TURN *** [5h 9s Tc] [7d]
+Skurj_poker: bets $0.76
+Hernagon: calls $0.76
+*** RIVER *** [5h 9s Tc 7d] [Jc]
+Skurj_poker: checks
+Hernagon: bets $2.21
+Skurj_poker: calls $2.21
+*** SHOW DOWN ***
+Hernagon: shows [As 8s] (a straight, Seven to Jack)
+Skurj_poker: mucks hand
+Hernagon collected $7.15 from pot
+*** SUMMARY ***
+Total pot $7.53 | Rake $0.38
+Board [5h 9s Tc 7d Jc]
+Seat 1: cutter2468 (button) folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (small blind) folded before Flop
+Seat 3: Skurj_poker (big blind) mucked [9d Js]
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon showed [As 8s] and won ($7.15) with a straight, Seven to Jack
+
+
+*********** # 45 **************
+PokerStars Hand #260334340431:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:06:17 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: cutter2468 ($10.14 in chips)
+Seat 2: Pit-Hunter83 ($10.26 in chips)
+Seat 3: Skurj_poker ($5.80 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.48 in chips)
+Seat 6: Hernagon ($11.78 in chips)
+cutter2468: posts small blind $0.05
+Pit-Hunter83: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9c 4c]
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: raises $0.70 to $0.80
+cutter2468: folds
+Pit-Hunter83: calls $0.70
+Skurj_poker: folds
+*** FLOP *** [8s Tc 2s]
+Pit-Hunter83: checks
+Hernagon: bets $10.98 and is all-in
+Pit-Hunter83: folds
+Uncalled bet ($10.98) returned to Hernagon
+Hernagon collected $1.66 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $1.75 | Rake $0.09
+Board [8s Tc 2s]
+Seat 1: cutter2468 (small blind) folded before Flop
+Seat 2: Pit-Hunter83 (big blind) folded on the Flop
+Seat 3: Skurj_poker folded before Flop
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon (button) collected ($1.66)
+
+
+*********** # 46 **************
+PokerStars Hand #260334331234:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:05:41 ET
+Table 'Caecilia IV' 6-max Seat #5 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($10.36 in chips)
+Seat 3: Skurj_poker ($5.80 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.48 in chips)
+Seat 6: Hernagon ($11.83 in chips)
+Hernagon: posts small blind $0.05
+cutter2468: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4s Ad]
+Pit-Hunter83: calls $0.10
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Marot_br: folds
+Hernagon: folds
+cutter2468: checks
+*** FLOP *** [4h As Qs]
+cutter2468: checks
+Pit-Hunter83: checks
+*** TURN *** [4h As Qs] [4c]
+cutter2468: checks
+Pit-Hunter83: checks
+*** RIVER *** [4h As Qs 4c] [Kc]
+cutter2468: checks
+Pit-Hunter83: checks
+*** SHOW DOWN ***
+cutter2468: shows [Ks 7d] (two pair, Kings and Fours)
+Pit-Hunter83: mucks hand
+cutter2468 collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [4h As Qs 4c Kc]
+Seat 1: cutter2468 (big blind) showed [Ks 7d] and won ($0.24) with two pair, Kings and Fours
+Seat 2: Pit-Hunter83 mucked [8d 5h]
+Seat 3: Skurj_poker folded before Flop (didn't bet)
+Seat 4: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 5: Marot_br (button) folded before Flop (didn't bet)
+Seat 6: Hernagon (small blind) folded before Flop
+
+
+*********** # 47 **************
+PokerStars Hand #260334314552:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:04:36 ET
+Table 'Caecilia IV' 6-max Seat #4 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($10.36 in chips)
+Seat 3: Skurj_poker ($6.30 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($12.98 in chips)
+Seat 6: Hernagon ($10.91 in chips)
+Marot_br: posts small blind $0.05
+Hernagon: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qs 4s]
+cutter2468: folds
+Pit-Hunter83: folds
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Marot_br: calls $0.05
+Hernagon: checks
+*** FLOP *** [9c 8c 5h]
+Marot_br: checks
+Hernagon: bets $0.40
+Skurj_poker: calls $0.40
+Marot_br: calls $0.40
+*** TURN *** [9c 8c 5h] [3s]
+Marot_br: checks
+Hernagon: bets $1.90
+Skurj_poker: folds
+Marot_br: folds
+Uncalled bet ($1.90) returned to Hernagon
+Hernagon collected $1.42 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $1.50 | Rake $0.08
+Board [9c 8c 5h 3s]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 folded before Flop (didn't bet)
+Seat 3: Skurj_poker folded on the Turn
+Seat 4: S.Artsiom.O. (button) folded before Flop (didn't bet)
+Seat 5: Marot_br (small blind) folded on the Turn
+Seat 6: Hernagon (big blind) collected ($1.42)
+
+
+*********** # 48 **************
+PokerStars Hand #260334301819:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:03:45 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($10.86 in chips)
+Seat 3: Skurj_poker ($8 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($10.93 in chips)
+Seat 6: Hernagon ($10.91 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Marot_br: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qs Jd]
+Hernagon: folds
+cutter2468: folds
+Pit-Hunter83: calls $0.10
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Marot_br: checks
+*** FLOP *** [2c 7s 4d]
+Marot_br: checks
+Pit-Hunter83: bets $0.20
+Skurj_poker: raises $0.20 to $0.40
+Marot_br: calls $0.40
+Pit-Hunter83: calls $0.20
+*** TURN *** [2c 7s 4d] [Kc]
+Marot_br: checks
+Pit-Hunter83: checks
+Skurj_poker: checks
+*** RIVER *** [2c 7s 4d Kc] [8c]
+Marot_br: bets $1.20
+Pit-Hunter83: folds
+Skurj_poker: calls $1.20
+*** SHOW DOWN ***
+Marot_br: shows [7c Ks] (two pair, Kings and Sevens)
+Skurj_poker: mucks hand
+Marot_br collected $3.75 from pot
+*** SUMMARY ***
+Total pot $3.95 | Rake $0.20
+Board [2c 7s 4d Kc 8c]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 folded on the River
+Seat 3: Skurj_poker (button) mucked [Qs Jd]
+Seat 4: S.Artsiom.O. (small blind) folded before Flop
+Seat 5: Marot_br (big blind) showed [7c Ks] and won ($3.75) with two pair, Kings and Sevens
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 49 **************
+PokerStars Hand #260334293293:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:03:12 ET
+Table 'Caecilia IV' 6-max Seat #2 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($11.11 in chips)
+Seat 3: Skurj_poker ($8.66 in chips)
+Seat 4: S.Artsiom.O. ($10 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($10.91 in chips)
+Skurj_poker: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9c 6d]
+Marot_br: raises $0.15 to $0.25
+Hernagon: folds
+cutter2468: folds
+Pit-Hunter83: calls $0.25
+Skurj_poker: calls $0.20
+S.Artsiom.O.: folds
+*** FLOP *** [6s Kd Ah]
+Skurj_poker: checks
+Marot_br: checks
+Pit-Hunter83: checks
+*** TURN *** [6s Kd Ah] [3d]
+Skurj_poker: bets $0.41
+Marot_br: calls $0.41
+Pit-Hunter83: folds
+*** RIVER *** [6s Kd Ah 3d] [7d]
+Skurj_poker: checks
+Marot_br: checks
+*** SHOW DOWN ***
+Skurj_poker: shows [9c 6d] (a pair of Sixes)
+Marot_br: shows [Ks Qh] (a pair of Kings)
+Marot_br collected $1.59 from pot
+*** SUMMARY ***
+Total pot $1.67 | Rake $0.08
+Board [6s Kd Ah 3d 7d]
+Seat 1: cutter2468 folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (button) folded on the Turn
+Seat 3: Skurj_poker (small blind) showed [9c 6d] and lost with a pair of Sixes
+Seat 4: S.Artsiom.O. (big blind) folded before Flop
+Seat 5: Marot_br showed [Ks Qh] and won ($1.59) with a pair of Kings
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 50 **************
+PokerStars Hand #260334282639:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:02:28 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($11.16 in chips)
+Seat 3: Skurj_poker ($7.87 in chips)
+Seat 5: Marot_br ($10.61 in chips)
+Seat 6: Hernagon ($10.91 in chips)
+Pit-Hunter83: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [7s 8h]
+Marot_br: raises $0.15 to $0.25
+Hernagon: folds
+cutter2468: folds
+Pit-Hunter83: folds
+Skurj_poker: calls $0.15
+*** FLOP *** [2c 6c 9d]
+Skurj_poker: checks
+Marot_br: bets $0.16
+Skurj_poker: calls $0.16
+*** TURN *** [2c 6c 9d] [7d]
+Skurj_poker: checks
+Marot_br: checks
+*** RIVER *** [2c 6c 9d 7d] [Qh]
+Skurj_poker: bets $0.42
+Marot_br: calls $0.42
+*** SHOW DOWN ***
+Skurj_poker: shows [7s 8h] (a pair of Sevens)
+Marot_br: mucks hand
+Skurj_poker collected $1.62 from pot
+*** SUMMARY ***
+Total pot $1.71 | Rake $0.09
+Board [2c 6c 9d 7d Qh]
+Seat 1: cutter2468 (button) folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (small blind) folded before Flop
+Seat 3: Skurj_poker (big blind) showed [7s 8h] and won ($1.62) with a pair of Sevens
+Seat 5: Marot_br mucked [Ks 2s]
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 51 **************
+PokerStars Hand #260334276020:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:02:00 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($11.01 in chips)
+Seat 3: Skurj_poker ($7.97 in chips)
+Seat 5: Marot_br ($10.61 in chips)
+Seat 6: Hernagon ($10.91 in chips)
+cutter2468: posts small blind $0.05
+Pit-Hunter83: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ah 2h]
+Skurj_poker: calls $0.10
+Marot_br: folds
+Hernagon: folds
+cutter2468: folds
+Pit-Hunter83: raises $0.30 to $0.40
+Skurj_poker: folds
+Uncalled bet ($0.30) returned to Pit-Hunter83
+Pit-Hunter83 collected $0.25 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: cutter2468 (small blind) folded before Flop
+Seat 2: Pit-Hunter83 (big blind) collected ($0.25)
+Seat 3: Skurj_poker folded before Flop
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon (button) folded before Flop (didn't bet)
+
+
+*********** # 52 **************
+PokerStars Hand #260334260270:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 17:00:50 ET
+Table 'Caecilia IV' 6-max Seat #5 is the button
+Seat 1: cutter2468 ($10 in chips)
+Seat 2: Pit-Hunter83 ($11.21 in chips)
+Seat 3: Skurj_poker ($7.97 in chips)
+Seat 5: Marot_br ($10.19 in chips)
+Seat 6: Hernagon ($10.96 in chips)
+Hernagon: posts small blind $0.05
+cutter2468 is connected
+cutter2468: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3d 4c]
+Pit-Hunter83: raises $0.10 to $0.20
+Skurj_poker: folds
+Marot_br: calls $0.20
+Hernagon: folds
+cutter2468: calls $0.10
+*** FLOP *** [Kh Jc Ad]
+cutter2468: checks
+Pit-Hunter83: checks
+Marot_br: checks
+*** TURN *** [Kh Jc Ad] [4h]
+cutter2468: checks
+Pit-Hunter83: checks
+Marot_br: bets $0.16
+cutter2468: folds
+Pit-Hunter83: folds
+Uncalled bet ($0.16) returned to Marot_br
+Marot_br collected $0.62 from pot
+Marot_br: doesn't show hand
+*** SUMMARY ***
+Total pot $0.65 | Rake $0.03
+Board [Kh Jc Ad 4h]
+Seat 1: cutter2468 (big blind) folded on the Turn
+Seat 2: Pit-Hunter83 folded on the Turn
+Seat 3: Skurj_poker folded before Flop (didn't bet)
+Seat 5: Marot_br (button) collected ($0.62)
+Seat 6: Hernagon (small blind) folded before Flop
+
+
+*********** # 53 **************
+PokerStars Hand #260334245218:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:59:22 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: AndyGux ($13.69 in chips)
+Seat 2: Pit-Hunter83 ($9.34 in chips)
+Seat 3: Skurj_poker ($7.97 in chips)
+Seat 5: Marot_br ($12.22 in chips)
+Seat 6: Hernagon ($11.06 in chips)
+Marot_br: posts small blind $0.05
+Hernagon: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9h 5c]
+AndyGux: folds
+Pit-Hunter83: calls $0.10
+AndyGux leaves the table
+Skurj_poker: folds
+Marot_br: raises $0.35 to $0.45
+S.Artsiom.O. joins the table at seat #4
+Hernagon is disconnected
+Hernagon is connected
+Hernagon: folds
+Pit-Hunter83: calls $0.35
+*** FLOP *** [Ks 6h Qh]
+Marot_br: bets $0.29
+Pit-Hunter83: raises $0.29 to $0.58
+Marot_br: calls $0.29
+*** TURN *** [Ks 6h Qh] [5d]
+Marot_br: checks
+Pit-Hunter83: bets $1
+Marot_br: calls $1
+*** RIVER *** [Ks 6h Qh 5d] [4d]
+Marot_br: checks
+Pit-Hunter83: checks
+*** SHOW DOWN ***
+Marot_br: shows [Ts Kc] (a pair of Kings)
+Pit-Hunter83: shows [8h 7h] (a straight, Four to Eight)
+Pit-Hunter83 collected $3.90 from pot
+cutter2468 joins the table at seat #1
+*** SUMMARY ***
+Total pot $4.16 | Rake $0.26
+Board [Ks 6h Qh 5d 4d]
+Seat 1: AndyGux folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 showed [8h 7h] and won ($3.90) with a straight, Four to Eight
+Seat 3: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: Marot_br (small blind) showed [Ts Kc] and lost with a pair of Kings
+Seat 6: Hernagon (big blind) folded before Flop
+
+
+*********** # 54 **************
+PokerStars Hand #260334239835:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:58:49 ET
+Table 'Caecilia IV' 6-max Seat #2 is the button
+Seat 1: AndyGux ($13.69 in chips)
+Seat 2: Pit-Hunter83 ($9.44 in chips)
+Seat 3: Skurj_poker ($8.02 in chips)
+Seat 5: Marot_br ($12.08 in chips)
+Seat 6: Hernagon ($11.06 in chips)
+Skurj_poker: posts small blind $0.05
+Marot_br: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [5d 2s]
+Hernagon: folds
+AndyGux: folds
+Pit-Hunter83: calls $0.10
+Skurj_poker: folds
+Marot_br: checks
+*** FLOP *** [As Kd 7h]
+Marot_br: checks
+Pit-Hunter83: checks
+*** TURN *** [As Kd 7h] [5h]
+Marot_br: checks
+Pit-Hunter83: checks
+*** RIVER *** [As Kd 7h 5h] [6s]
+Marot_br: checks
+Pit-Hunter83: checks
+*** SHOW DOWN ***
+Marot_br: shows [7s Jc] (a pair of Sevens)
+Pit-Hunter83: mucks hand
+Marot_br collected $0.24 from pot
+weuber 157 leaves the table
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [As Kd 7h 5h 6s]
+Seat 1: AndyGux folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (button) mucked [2c 3s]
+Seat 3: Skurj_poker (small blind) folded before Flop
+Seat 5: Marot_br (big blind) showed [7s Jc] and won ($0.24) with a pair of Sevens
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 55 **************
+PokerStars Hand #260334236979:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:58:32 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: AndyGux ($13.69 in chips)
+Seat 2: Pit-Hunter83 ($9.34 in chips)
+Seat 3: Skurj_poker ($8.12 in chips)
+Seat 5: Marot_br ($12.08 in chips)
+Seat 6: Hernagon ($11.06 in chips)
+Pit-Hunter83: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kc 4s]
+Marot_br: folds
+Hernagon: folds
+AndyGux: folds
+Pit-Hunter83: raises $0.10 to $0.20
+Skurj_poker: folds
+Uncalled bet ($0.10) returned to Pit-Hunter83
+Pit-Hunter83 collected $0.20 from pot
+*** SUMMARY ***
+Total pot $0.20 | Rake $0
+Seat 1: AndyGux (button) folded before Flop (didn't bet)
+Seat 2: Pit-Hunter83 (small blind) collected ($0.20)
+Seat 3: Skurj_poker (big blind) folded before Flop
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 56 **************
+PokerStars Hand #260334232287:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:58:04 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: AndyGux ($13.74 in chips)
+Seat 2: Pit-Hunter83 ($9.44 in chips)
+Seat 3: Skurj_poker ($8.12 in chips)
+Seat 5: Marot_br ($11.93 in chips)
+Seat 6: Hernagon ($11.06 in chips)
+AndyGux: posts small blind $0.05
+Pit-Hunter83: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4h Ac]
+Skurj_poker: folds
+Marot_br: raises $0.15 to $0.25
+Hernagon: folds
+AndyGux: folds
+Pit-Hunter83: folds
+Uncalled bet ($0.15) returned to Marot_br
+Marot_br collected $0.25 from pot
+Marot_br: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: AndyGux (small blind) folded before Flop
+Seat 2: Pit-Hunter83 (big blind) folded before Flop
+Seat 3: Skurj_poker folded before Flop (didn't bet)
+Seat 5: Marot_br collected ($0.25)
+Seat 6: Hernagon (button) folded before Flop (didn't bet)
+
+
+*********** # 57 **************
+PokerStars Hand #260334221287:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:56:57 ET
+Table 'Caecilia IV' 6-max Seat #5 is the button
+Seat 1: AndyGux ($13.84 in chips)
+Seat 2: Pit-Hunter83 ($8.92 in chips)
+Seat 3: Skurj_poker ($8.12 in chips)
+Seat 5: Marot_br ($11.93 in chips)
+Seat 6: Hernagon ($11.56 in chips)
+Hernagon: posts small blind $0.05
+AndyGux: posts big blind $0.10
+Pit-Hunter83: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Kc 3s]
+Pit-Hunter83: raises $0.10 to $0.20
+Skurj_poker: folds
+Marot_br: folds
+Hernagon: calls $0.15
+AndyGux: folds
+*** FLOP *** [4h 3h 2s]
+Hernagon: checks
+Pit-Hunter83: checks
+*** TURN *** [4h 3h 2s] [Ts]
+Hernagon: checks
+Pit-Hunter83: bets $0.30
+Hernagon: calls $0.30
+*** RIVER *** [4h 3h 2s Ts] [Js]
+Hernagon: checks
+Pit-Hunter83: bets $0.40
+Hernagon: folds
+Uncalled bet ($0.40) returned to Pit-Hunter83
+Pit-Hunter83 collected $1.02 from pot
+*** SUMMARY ***
+Total pot $1.10 | Rake $0.08
+Board [4h 3h 2s Ts Js]
+Seat 1: AndyGux (big blind) folded before Flop
+Seat 2: Pit-Hunter83 collected ($1.02)
+Seat 3: Skurj_poker folded before Flop (didn't bet)
+Seat 5: Marot_br (button) folded before Flop (didn't bet)
+Seat 6: Hernagon (small blind) folded on the River
+
+
+*********** # 58 **************
+PokerStars Hand #260334212619:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:56:04 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: AndyGux ($13.84 in chips)
+Seat 3: Skurj_poker ($8.12 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.71 in chips)
+Marot_br: posts small blind $0.05
+Hernagon: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qc 6s]
+AndyGux: folds
+Skurj_poker: folds
+Marot_br: raises $0.20 to $0.30
+Hernagon: calls $0.20
+*** FLOP *** [7h 8c 3c]
+Marot_br: bets $0.17
+Hernagon: calls $0.17
+*** TURN *** [7h 8c 3c] [4d]
+Marot_br: bets $0.27
+Pit-Hunter83 joins the table at seat #2
+Hernagon: calls $0.27
+*** RIVER *** [7h 8c 3c 4d] [5d]
+Marot_br: checks
+Hernagon: bets $1.41
+Marot_br: calls $1.41
+*** SHOW DOWN ***
+Hernagon: shows [Tc 9h] (high card Ten)
+Marot_br: shows [As 7c] (a pair of Sevens)
+Marot_br collected $4.08 from pot
+*** SUMMARY ***
+Total pot $4.30 | Rake $0.22
+Board [7h 8c 3c 4d 5d]
+Seat 1: AndyGux folded before Flop (didn't bet)
+Seat 3: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: Marot_br (small blind) showed [As 7c] and won ($4.08) with a pair of Sevens
+Seat 6: Hernagon (big blind) showed [Tc 9h] and lost with high card Ten
+
+
+*********** # 59 **************
+PokerStars Hand #260334209099:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:55:42 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: AndyGux ($13.84 in chips)
+Seat 3: Skurj_poker ($8.17 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.56 in chips)
+Skurj_poker: posts small blind $0.05
+Renge Miyauchi leaves the table
+Marot_br: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qs 4s]
+Hernagon: raises $0.15 to $0.25
+AndyGux: folds
+Skurj_poker: folds
+Marot_br: folds
+Uncalled bet ($0.15) returned to Hernagon
+Hernagon collected $0.25 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: AndyGux (button) folded before Flop (didn't bet)
+Seat 3: Skurj_poker (small blind) folded before Flop
+Seat 5: Marot_br (big blind) folded before Flop
+Seat 6: Hernagon collected ($0.25)
+
+
+*********** # 60 **************
+PokerStars Hand #260334203486:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:55:09 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: AndyGux ($13.94 in chips)
+Seat 3: Skurj_poker ($8.08 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.56 in chips)
+AndyGux: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [7h 4h]
+Marot_br: folds
+Hernagon: folds
+AndyGux: calls $0.05
+Skurj_poker: checks
+*** FLOP *** [3s 7c Qs]
+AndyGux: checks
+Skurj_poker: checks
+*** TURN *** [3s 7c Qs] [5h]
+AndyGux: checks
+Skurj_poker: checks
+*** RIVER *** [3s 7c Qs 5h] [Ks]
+AndyGux: checks
+Skurj_poker: checks
+*** SHOW DOWN ***
+AndyGux: shows [9h 8h] (high card King)
+Skurj_poker: shows [7h 4h] (a pair of Sevens)
+Skurj_poker collected $0.19 from pot
+*** SUMMARY ***
+Total pot $0.20 | Rake $0.01
+Board [3s 7c Qs 5h Ks]
+Seat 1: AndyGux (small blind) showed [9h 8h] and lost with high card King
+Seat 3: Skurj_poker (big blind) showed [7h 4h] and won ($0.19) with a pair of Sevens
+Seat 5: Marot_br folded before Flop (didn't bet)
+Seat 6: Hernagon (button) folded before Flop (didn't bet)
+
+
+*********** # 61 **************
+PokerStars Hand #260334198783:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:54:50 ET
+Table 'Caecilia IV' 6-max Seat #5 is the button
+Seat 1: AndyGux ($14.04 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($8.08 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.46 in chips)
+Hernagon: posts small blind $0.05
+AndyGux: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3d Ts]
+Renge Miyauchi: folds
+Skurj_poker: folds
+Marot_br: folds
+Hernagon: raises $0.15 to $0.25
+AndyGux: folds
+Uncalled bet ($0.15) returned to Hernagon
+Hernagon collected $0.20 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $0.20 | Rake $0
+Seat 1: AndyGux (big blind) folded before Flop
+Seat 2: Renge Miyauchi folded before Flop (didn't bet)
+Seat 3: Skurj_poker folded before Flop (didn't bet)
+Seat 5: Marot_br (button) folded before Flop (didn't bet)
+Seat 6: Hernagon (small blind) collected ($0.20)
+
+
+*********** # 62 **************
+PokerStars Hand #260334189763:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:54:14 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: AndyGux ($14.04 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.94 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.56 in chips)
+Marot_br: posts small blind $0.05
+Hernagon: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3h Ks]
+AndyGux: folds
+Renge Miyauchi: folds
+Skurj_poker: calls $0.10
+Marot_br: folds
+Hernagon: checks
+*** FLOP *** [7d 9d 8c]
+Hernagon: checks
+Skurj_poker: checks
+*** TURN *** [7d 9d 8c] [7s]
+Hernagon: checks
+Skurj_poker: checks
+*** RIVER *** [7d 9d 8c 7s] [Qc]
+Hernagon: checks
+Skurj_poker: checks
+*** SHOW DOWN ***
+Hernagon: shows [Jd 5h] (a pair of Sevens)
+Skurj_poker: shows [3h Ks] (a pair of Sevens - King kicker)
+Skurj_poker collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [7d 9d 8c 7s Qc]
+Seat 1: AndyGux folded before Flop (didn't bet)
+Seat 2: Renge Miyauchi folded before Flop (didn't bet)
+Seat 3: Skurj_poker (button) showed [3h Ks] and won ($0.24) with a pair of Sevens
+Seat 5: Marot_br (small blind) folded before Flop
+Seat 6: Hernagon (big blind) showed [Jd 5h] and lost with a pair of Sevens
+
+
+*********** # 63 **************
+PokerStars Hand #260334172672:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:53:03 ET
+Table 'Caecilia IV' 6-max Seat #2 is the button
+Seat 1: AndyGux ($14.42 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($6.75 in chips)
+Seat 5: Marot_br ($10 in chips)
+Seat 6: Hernagon ($13.56 in chips)
+Skurj_poker: posts small blind $0.05
+Marot_br: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3h 9h]
+Hernagon: folds
+AndyGux: calls $0.10
+Renge Miyauchi: folds
+Skurj_poker: calls $0.05
+Marot_br: checks
+*** FLOP *** [9s 3s 5d]
+Skurj_poker: checks
+Marot_br: checks
+AndyGux: checks
+*** TURN *** [9s 3s 5d] [8h]
+Skurj_poker: checks
+Marot_br: checks
+AndyGux: bets $0.28
+Skurj_poker: calls $0.28
+Marot_br: calls $0.28
+*** RIVER *** [9s 3s 5d 8h] [Td]
+Skurj_poker: bets $0.54
+Marot_br: calls $0.54
+AndyGux: folds
+*** SHOW DOWN ***
+Skurj_poker: shows [3h 9h] (two pair, Nines and Threes)
+Marot_br: mucks hand
+Skurj_poker collected $2.11 from pot
+*** SUMMARY ***
+Total pot $2.22 | Rake $0.11
+Board [9s 3s 5d 8h Td]
+Seat 1: AndyGux folded on the River
+Seat 2: Renge Miyauchi (button) folded before Flop (didn't bet)
+Seat 3: Skurj_poker (small blind) showed [3h 9h] and won ($2.11) with two pair, Nines and Threes
+Seat 5: Marot_br (big blind) mucked [4s 9c]
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 64 **************
+PokerStars Hand #260334160871:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:52:16 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: AndyGux ($13.23 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.38 in chips)
+Seat 6: Hernagon ($14.19 in chips)
+Renge Miyauchi: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Jh Tc]
+Hernagon: raises $0.15 to $0.25
+AndyGux: calls $0.25
+Renge Miyauchi: folds
+Skurj_poker: calls $0.15
+*** FLOP *** [7d Td 3s]
+Skurj_poker: bets $0.38
+Hernagon: calls $0.38
+AndyGux: calls $0.38
+*** TURN *** [7d Td 3s] [Qs]
+Skurj_poker: checks
+Hernagon: checks
+AndyGux: checks
+*** RIVER *** [7d Td 3s Qs] [9s]
+Skurj_poker: checks
+Hernagon: checks
+AndyGux: checks
+*** SHOW DOWN ***
+Skurj_poker: shows [Jh Tc] (a pair of Tens)
+Hernagon: mucks hand
+AndyGux: shows [Ts Kd] (a pair of Tens - King kicker)
+AndyGux collected $1.82 from pot
+*** SUMMARY ***
+Total pot $1.94 | Rake $0.12
+Board [7d Td 3s Qs 9s]
+Seat 1: AndyGux (button) showed [Ts Kd] and won ($1.82) with a pair of Tens
+Seat 2: Renge Miyauchi (small blind) folded before Flop
+Seat 3: Skurj_poker (big blind) showed [Jh Tc] and lost with a pair of Tens
+Seat 6: Hernagon mucked [3c Ad]
+
+
+*********** # 65 **************
+PokerStars Hand #260334148132:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:51:24 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: AndyGux ($13.28 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.88 in chips)
+Seat 6: Hernagon ($13.60 in chips)
+AndyGux: posts small blind $0.05
+Renge Miyauchi: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [9h 7d]
+Skurj_poker: calls $0.10
+Hernagon: raises $0.40 to $0.50
+AndyGux: folds
+Renge Miyauchi: folds
+Skurj_poker: calls $0.40
+*** FLOP *** [5d Qs Ad]
+Skurj_poker: checks
+Hernagon: bets $0.82
+Skurj_poker: folds
+Uncalled bet ($0.82) returned to Hernagon
+Hernagon collected $1.09 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $1.15 | Rake $0.06
+Board [5d Qs Ad]
+Seat 1: AndyGux (small blind) folded before Flop
+Seat 2: Renge Miyauchi (big blind) folded before Flop
+Seat 3: Skurj_poker folded on the Flop
+Seat 6: Hernagon (button) collected ($1.09)
+
+
+*********** # 66 **************
+PokerStars Hand #260334140618:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:50:54 ET
+Table 'Caecilia IV' 6-max Seat #3 is the button
+Seat 1: AndyGux ($13.38 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.74 in chips)
+Seat 6: Hernagon ($13.65 in chips)
+Marot_br will be allowed to play after the button
+Hernagon: posts small blind $0.05
+AndyGux: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ks 4s]
+Renge Miyauchi: folds
+Skurj_poker: calls $0.10
+Hernagon: folds
+AndyGux: checks
+*** FLOP *** [3s Jh 7d]
+AndyGux: checks
+Skurj_poker: checks
+*** TURN *** [3s Jh 7d] [Qs]
+AndyGux: checks
+Skurj_poker: checks
+*** RIVER *** [3s Jh 7d Qs] [2h]
+weuber 157 is disconnected
+AndyGux: checks
+Skurj_poker: checks
+*** SHOW DOWN ***
+AndyGux: shows [Tc 6h] (high card Queen)
+Skurj_poker: shows [Ks 4s] (high card King)
+Skurj_poker collected $0.24 from pot
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [3s Jh 7d Qs 2h]
+Seat 1: AndyGux (big blind) showed [Tc 6h] and lost with high card Queen
+Seat 2: Renge Miyauchi folded before Flop (didn't bet)
+Seat 3: Skurj_poker (button) showed [Ks 4s] and won ($0.24) with high card King
+Seat 6: Hernagon (small blind) folded before Flop
+
+
+*********** # 67 **************
+PokerStars Hand #260334121786:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:49:39 ET
+Table 'Caecilia IV' 6-max Seat #2 is the button
+Seat 1: AndyGux ($13.38 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.99 in chips)
+Seat 4: weuber 157 ($7.85 in chips)
+Seat 6: Hernagon ($13.33 in chips)
+Skurj_poker: posts small blind $0.05
+weuber 157: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Tc 8d]
+Hernagon: raises $0.15 to $0.25
+AndyGux: folds
+Renge Miyauchi: folds
+Skurj_poker: calls $0.20
+weuber 157 has timed out
+weuber 157: folds
+*** FLOP *** [Ad Jd 4c]
+Skurj_poker: checks
+Hernagon: bets $0.57
+Skurj_poker: folds
+Uncalled bet ($0.57) returned to Hernagon
+Hernagon collected $0.57 from pot
+Hernagon: doesn't show hand
+*** SUMMARY ***
+Total pot $0.60 | Rake $0.03
+Board [Ad Jd 4c]
+Seat 1: AndyGux folded before Flop (didn't bet)
+Seat 2: Renge Miyauchi (button) folded before Flop (didn't bet)
+Seat 3: Skurj_poker (small blind) folded on the Flop
+Seat 4: weuber 157 (big blind) folded before Flop
+Seat 6: Hernagon collected ($0.57)
+
+
+*********** # 68 **************
+PokerStars Hand #260334110847:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:48:55 ET
+Table 'Caecilia IV' 6-max Seat #1 is the button
+Seat 1: AndyGux ($12.55 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($8.09 in chips)
+Seat 4: weuber 157 ($7.85 in chips)
+Seat 6: Hernagon ($13.33 in chips)
+Renge Miyauchi: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [3h 3d]
+weuber 157: folds
+Hernagon: folds
+AndyGux: calls $0.10
+Renge Miyauchi: raises $0.40 to $0.50
+Skurj_poker: folds
+AndyGux: calls $0.40
+*** FLOP *** [5d 4c Kc]
+Renge Miyauchi: bets $0.34
+AndyGux: raises $11.71 to $12.05 and is all-in
+Renge Miyauchi: folds
+Uncalled bet ($11.71) returned to AndyGux
+AndyGux collected $1.67 from pot
+AndyGux: doesn't show hand
+*** SUMMARY ***
+Total pot $1.78 | Rake $0.11
+Board [5d 4c Kc]
+Seat 1: AndyGux (button) collected ($1.67)
+Seat 2: Renge Miyauchi (small blind) folded on the Flop
+Seat 3: Skurj_poker (big blind) folded before Flop
+Seat 4: weuber 157 folded before Flop (didn't bet)
+Seat 6: Hernagon folded before Flop (didn't bet)
+
+
+*********** # 69 **************
+PokerStars Hand #260334092908:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:47:44 ET
+Table 'Caecilia IV' 6-max Seat #6 is the button
+Seat 1: AndyGux ($12.65 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($7.78 in chips)
+Seat 4: weuber 157 ($7.85 in chips)
+Seat 6: Hernagon ($13.33 in chips)
+AndyGux: posts small blind $0.05
+Renge Miyauchi: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ac 6c]
+Skurj_poker: calls $0.10
+weuber 157: folds
+Hernagon: folds
+AndyGux: calls $0.05
+Renge Miyauchi: checks
+*** FLOP *** [Ks 3c 9d]
+AndyGux: checks
+Renge Miyauchi: checks
+Skurj_poker: checks
+*** TURN *** [Ks 3c 9d] [5h]
+AndyGux: checks
+Renge Miyauchi: checks
+Skurj_poker: bets $0.14
+AndyGux: folds
+Renge Miyauchi: calls $0.14
+*** RIVER *** [Ks 3c 9d 5h] [4c]
+Renge Miyauchi: checks
+Skurj_poker: bets $0.28
+Renge Miyauchi: folds
+Uncalled bet ($0.28) returned to Skurj_poker
+Skurj_poker collected $0.55 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.58 | Rake $0.03
+Board [Ks 3c 9d 5h 4c]
+Seat 1: AndyGux (small blind) folded on the Turn
+Seat 2: Renge Miyauchi (big blind) folded on the River
+Seat 3: Skurj_poker collected ($0.55)
+Seat 4: weuber 157 folded before Flop (didn't bet)
+Seat 6: Hernagon (button) folded before Flop (didn't bet)
+
+
+*********** # 70 **************
+PokerStars Hand #260334080379:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 16:46:54 ET
+Table 'Caecilia IV' 6-max Seat #4 is the button
+Seat 1: AndyGux ($12.40 in chips)
+Seat 2: Renge Miyauchi ($10 in chips)
+Seat 3: Skurj_poker ($8 in chips)
+Seat 4: weuber 157 ($7.85 in chips)
+Seat 6: Hernagon ($13.38 in chips)
+Hernagon: posts small blind $0.05
+AndyGux: posts big blind $0.10
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [As 6h]
+Renge Miyauchi: folds
+Skurj_poker: checks
+weuber 157: folds
+Hernagon: folds
+AndyGux: checks
+*** FLOP *** [Kd 9d Th]
+AndyGux: checks
+Skurj_poker: bets $0.12
+AndyGux: calls $0.12
+*** TURN *** [Kd 9d Th] [2s]
+Marot_br joins the table at seat #5
+AndyGux: checks
+Skurj_poker: checks
+*** RIVER *** [Kd 9d Th 2s] [Qc]
+AndyGux: checks
+Skurj_poker: checks
+*** SHOW DOWN ***
+AndyGux: shows [8d Jh] (a straight, Nine to King)
+Skurj_poker: mucks hand
+AndyGux collected $0.47 from pot
+*** SUMMARY ***
+Total pot $0.49 | Rake $0.02
+Board [Kd 9d Th 2s Qc]
+Seat 1: AndyGux (big blind) showed [8d Jh] and won ($0.47) with a straight, Nine to King
+Seat 2: Renge Miyauchi folded before Flop (didn't bet)
+Seat 3: Skurj_poker mucked [As 6h]
+Seat 4: weuber 157 (button) folded before Flop (didn't bet)
+Seat 6: Hernagon (small blind) folded before Flop
+
+
+*********** # 71 **************
+PokerStars Hand #260332748066:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:12:38 ET
+Table 'Alsatia IV' 6-max Seat #4 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($10.04 in chips)
+Seat 4: Skurj_poker ($6.04 in chips)
+Seat 5: S.Artsiom.O. ($12.20 in chips)
+Seat 6: Alex147Eddie ($10.10 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Alex147Eddie: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ks 5c]
+Piwoki: folds
+Komaroff: folds
+whyyouontilt: folds
+Skurj_poker has timed out
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Uncalled bet ($0.05) returned to Alex147Eddie
+Alex147Eddie collected $0.10 from pot
+Alex147Eddie: doesn't show hand
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 1: Piwoki folded before Flop (didn't bet)
+Seat 2: Komaroff folded before Flop (didn't bet)
+Seat 3: whyyouontilt folded before Flop (didn't bet)
+Seat 4: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: S.Artsiom.O. (small blind) folded before Flop
+Seat 6: Alex147Eddie (big blind) collected ($0.10)
+
+
+*********** # 72 **************
+PokerStars Hand #260332735552:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:11:45 ET
+Table 'Alsatia IV' 6-max Seat #3 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($11.54 in chips)
+Seat 4: Skurj_poker ($6.09 in chips)
+Seat 5: S.Artsiom.O. ($10.56 in chips)
+Seat 6: Alex147Eddie ($10.10 in chips)
+Skurj_poker: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ts 9c]
+Alex147Eddie: folds
+Piwoki: raises $0.15 to $0.25
+Komaroff: folds
+whyyouontilt: calls $0.25
+Skurj_poker: folds
+S.Artsiom.O.: raises $1.25 to $1.50
+Piwoki: folds
+whyyouontilt: calls $1.25
+*** FLOP *** [2s Ks 5h]
+S.Artsiom.O.: bets $1.30
+whyyouontilt: folds
+Uncalled bet ($1.30) returned to S.Artsiom.O.
+S.Artsiom.O. collected $3.14 from pot
+S.Artsiom.O.: doesn't show hand
+*** SUMMARY ***
+Total pot $3.30 | Rake $0.16
+Board [2s Ks 5h]
+Seat 1: Piwoki folded before Flop
+Seat 2: Komaroff folded before Flop (didn't bet)
+Seat 3: whyyouontilt (button) folded on the Flop
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 5: S.Artsiom.O. (big blind) collected ($3.14)
+Seat 6: Alex147Eddie folded before Flop (didn't bet)
+
+
+*********** # 73 **************
+PokerStars Hand #260332725218:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:11:01 ET
+Table 'Alsatia IV' 6-max Seat #2 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($11.59 in chips)
+Seat 4: Skurj_poker ($6.66 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.10 in chips)
+whyyouontilt: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4s 4h]
+S.Artsiom.O.: raises $0.18 to $0.28
+Alex147Eddie: folds
+Piwoki: folds
+Komaroff: folds
+whyyouontilt: folds
+Skurj_poker: calls $0.18
+*** FLOP *** [3c Jd Ts]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+*** TURN *** [3c Jd Ts] [7d]
+Skurj_poker: bets $0.29
+S.Artsiom.O.: calls $0.29
+*** RIVER *** [3c Jd Ts 7d] [Td]
+Skurj_poker: checks
+S.Artsiom.O.: checks
+*** SHOW DOWN ***
+Skurj_poker: shows [4s 4h] (two pair, Tens and Fours)
+S.Artsiom.O.: shows [7s As] (two pair, Tens and Sevens)
+S.Artsiom.O. collected $1.13 from pot
+*** SUMMARY ***
+Total pot $1.19 | Rake $0.06
+Board [3c Jd Ts 7d Td]
+Seat 1: Piwoki folded before Flop (didn't bet)
+Seat 2: Komaroff (button) folded before Flop (didn't bet)
+Seat 3: whyyouontilt (small blind) folded before Flop
+Seat 4: Skurj_poker (big blind) showed [4s 4h] and lost with two pair, Tens and Fours
+Seat 5: S.Artsiom.O. showed [7s As] and won ($1.13) with two pair, Tens and Sevens
+Seat 6: Alex147Eddie folded before Flop (didn't bet)
+
+
+*********** # 74 **************
+PokerStars Hand #260332715117:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:10:19 ET
+Table 'Alsatia IV' 6-max Seat #1 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.74 in chips)
+Seat 3: whyyouontilt ($11.69 in chips)
+Seat 4: Skurj_poker ($6.52 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.10 in chips)
+Komaroff: posts small blind $0.05
+whyyouontilt: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Tc Th]
+Skurj_poker: calls $0.10
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+Piwoki: folds
+Komaroff: folds
+whyyouontilt: checks
+*** FLOP *** [Ah Ac 9c]
+whyyouontilt: checks
+Skurj_poker: bets $0.40
+whyyouontilt: folds
+Uncalled bet ($0.40) returned to Skurj_poker
+Skurj_poker collected $0.24 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0.01
+Board [Ah Ac 9c]
+Seat 1: Piwoki (button) folded before Flop (didn't bet)
+Seat 2: Komaroff (small blind) folded before Flop
+Seat 3: whyyouontilt (big blind) folded on the Flop
+Seat 4: Skurj_poker collected ($0.24)
+Seat 5: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 6: Alex147Eddie folded before Flop (didn't bet)
+
+
+*********** # 75 **************
+PokerStars Hand #260332695992:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:08:58 ET
+Table 'Alsatia IV' 6-max Seat #6 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.84 in chips)
+Seat 3: whyyouontilt ($9.90 in chips)
+Seat 4: Skurj_poker ($8.35 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.10 in chips)
+Piwoki: posts small blind $0.05
+Komaroff: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Qh Ks]
+whyyouontilt: raises $0.15 to $0.25
+Skurj_poker: raises $0.15 to $0.40
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+Piwoki: folds
+Komaroff: folds
+whyyouontilt: calls $0.15
+*** FLOP *** [Ts 2s 3c]
+whyyouontilt: checks
+Skurj_poker: bets $0.50
+whyyouontilt: calls $0.50
+*** TURN *** [Ts 2s 3c] [Tc]
+whyyouontilt: checks
+Skurj_poker: bets $0.93
+whyyouontilt: calls $0.93
+*** RIVER *** [Ts 2s 3c Tc] [5c]
+whyyouontilt: checks
+Skurj_poker: checks
+*** SHOW DOWN ***
+whyyouontilt: shows [7h 7c] (two pair, Tens and Sevens)
+Skurj_poker: mucks hand
+whyyouontilt collected $3.62 from pot
+*** SUMMARY ***
+Total pot $3.81 | Rake $0.19
+Board [Ts 2s 3c Tc 5c]
+Seat 1: Piwoki (small blind) folded before Flop
+Seat 2: Komaroff (big blind) folded before Flop
+Seat 3: whyyouontilt showed [7h 7c] and won ($3.62) with two pair, Tens and Sevens
+Seat 4: Skurj_poker mucked [Qh Ks]
+Seat 5: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 6: Alex147Eddie (button) folded before Flop (didn't bet)
+
+
+*********** # 76 **************
+PokerStars Hand #260332690982:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:08:37 ET
+Table 'Alsatia IV' 6-max Seat #5 is the button
+Seat 1: Piwoki ($10 in chips)
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($9.90 in chips)
+Seat 4: Skurj_poker ($8.35 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.15 in chips)
+Alex147Eddie: posts small blind $0.05
+Piwoki: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [4s 8h]
+Komaroff: raises $0.10 to $0.20
+whyyouontilt: folds
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+Piwoki: folds
+Uncalled bet ($0.10) returned to Komaroff
+Komaroff collected $0.25 from pot
+Komaroff: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 1: Piwoki (big blind) folded before Flop
+Seat 2: Komaroff collected ($0.25)
+Seat 3: whyyouontilt folded before Flop (didn't bet)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: S.Artsiom.O. (button) folded before Flop (didn't bet)
+Seat 6: Alex147Eddie (small blind) folded before Flop
+
+
+*********** # 77 **************
+PokerStars Hand #260332680450:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:07:53 ET
+Table 'Alsatia IV' 6-max Seat #4 is the button
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($10.30 in chips)
+Seat 4: Skurj_poker ($7.85 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.25 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Alex147Eddie: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Ac Kh]
+Komaroff: folds
+whyyouontilt: raises $0.15 to $0.25
+Skurj_poker: raises $0.15 to $0.40
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+whyyouontilt: calls $0.15
+*** FLOP *** [3d 3c Jh]
+whyyouontilt: checks
+Skurj_poker: bets $0.50
+whyyouontilt: folds
+Uncalled bet ($0.50) returned to Skurj_poker
+Skurj_poker collected $0.90 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.95 | Rake $0.05
+Board [3d 3c Jh]
+Seat 2: Komaroff folded before Flop (didn't bet)
+Seat 3: whyyouontilt folded on the Flop
+Seat 4: Skurj_poker (button) collected ($0.90)
+Seat 5: S.Artsiom.O. (small blind) folded before Flop
+Seat 6: Alex147Eddie (big blind) folded before Flop
+
+
+*********** # 78 **************
+PokerStars Hand #260332677340:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:07:40 ET
+Table 'Alsatia IV' 6-max Seat #3 is the button
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($10.15 in chips)
+Seat 4: Skurj_poker ($7.90 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.25 in chips)
+Skurj_poker: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [2d Td]
+Alex147Eddie: folds
+Komaroff: folds
+whyyouontilt: raises $0.15 to $0.25
+Piwoki joins the table at seat #1
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Uncalled bet ($0.15) returned to whyyouontilt
+whyyouontilt collected $0.25 from pot
+whyyouontilt: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 2: Komaroff folded before Flop (didn't bet)
+Seat 3: whyyouontilt (button) collected ($0.25)
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 5: S.Artsiom.O. (big blind) folded before Flop
+Seat 6: Alex147Eddie folded before Flop (didn't bet)
+
+
+*********** # 79 **************
+PokerStars Hand #260332672777:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:07:20 ET
+Table 'Alsatia IV' 6-max Seat #2 is the button
+Seat 2: Komaroff ($10.69 in chips)
+Seat 3: whyyouontilt ($10.05 in chips)
+Seat 4: Skurj_poker ($8 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.25 in chips)
+whyyouontilt: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8c 5h]
+Fille1981 leaves the table
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+Komaroff: folds
+whyyouontilt: raises $0.20 to $0.30
+Skurj_poker: folds
+Uncalled bet ($0.20) returned to whyyouontilt
+whyyouontilt collected $0.20 from pot
+whyyouontilt: doesn't show hand
+*** SUMMARY ***
+Total pot $0.20 | Rake $0
+Seat 2: Komaroff (button) folded before Flop (didn't bet)
+Seat 3: whyyouontilt (small blind) collected ($0.20)
+Seat 4: Skurj_poker (big blind) folded before Flop
+Seat 5: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 6: Alex147Eddie folded before Flop (didn't bet)
+
+
+*********** # 80 **************
+PokerStars Hand #260332668205:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:07:00 ET
+Table 'Alsatia IV' 6-max Seat #6 is the button
+Seat 2: Komaroff ($10.74 in chips)
+Seat 3: whyyouontilt ($10 in chips)
+Seat 4: Skurj_poker ($8 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.25 in chips)
+Komaroff: posts small blind $0.05
+whyyouontilt: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [8h 4s]
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Alex147Eddie: folds
+Komaroff: folds
+Uncalled bet ($0.05) returned to whyyouontilt
+whyyouontilt collected $0.10 from pot
+whyyouontilt: doesn't show hand
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 2: Komaroff (small blind) folded before Flop
+Seat 3: whyyouontilt (big blind) collected ($0.10)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: S.Artsiom.O. folded before Flop (didn't bet)
+Seat 6: Alex147Eddie (button) folded before Flop (didn't bet)
+
+
+*********** # 81 **************
+PokerStars Hand #260332664836:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:06:46 ET
+Table 'Alsatia IV' 6-max Seat #5 is the button
+Seat 2: Komaroff ($10.69 in chips)
+Seat 4: Skurj_poker ($8 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10.30 in chips)
+Alex147Eddie: posts small blind $0.05
+Komaroff: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6s Kc]
+Skurj_poker: folds
+S.Artsiom.O.: folds
+whyyouontilt joins the table at seat #3
+Alex147Eddie: folds
+Uncalled bet ($0.05) returned to Komaroff
+Komaroff collected $0.10 from pot
+Komaroff: doesn't show hand
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 2: Komaroff (big blind) collected ($0.10)
+Seat 4: Skurj_poker folded before Flop (didn't bet)
+Seat 5: S.Artsiom.O. (button) folded before Flop (didn't bet)
+Seat 6: Alex147Eddie (small blind) folded before Flop
+
+
+*********** # 82 **************
+PokerStars Hand #260332656716:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:06:11 ET
+Table 'Alsatia IV' 6-max Seat #4 is the button
+Seat 2: Komaroff ($10.69 in chips)
+Seat 4: Skurj_poker ($8 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Seat 6: Alex147Eddie ($10 in chips)
+S.Artsiom.O.: posts small blind $0.05
+Alex147Eddie: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6c 2d]
+Komaroff: folds
+Skurj_poker: folds
+S.Artsiom.O.: raises $0.20 to $0.30
+Alex147Eddie: raises $0.60 to $0.90
+S.Artsiom.O.: folds
+Uncalled bet ($0.60) returned to Alex147Eddie
+ikilledqueen leaves the table
+Alex147Eddie collected $0.60 from pot
+Alex147Eddie: doesn't show hand
+*** SUMMARY ***
+Total pot $0.60 | Rake $0
+Seat 2: Komaroff folded before Flop (didn't bet)
+Seat 4: Skurj_poker (button) folded before Flop (didn't bet)
+Seat 5: S.Artsiom.O. (small blind) folded before Flop
+Seat 6: Alex147Eddie (big blind) collected ($0.60)
+
+
+*********** # 83 **************
+PokerStars Hand #260332652996:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:05:56 ET
+Table 'Alsatia IV' 6-max Seat #2 is the button
+Seat 2: Komaroff ($10.54 in chips)
+Seat 4: Skurj_poker ($8.05 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Skurj_poker: posts small blind $0.05
+S.Artsiom.O.: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [6s 8s]
+Komaroff: raises $0.10 to $0.20
+Skurj_poker: folds
+S.Artsiom.O.: folds
+Uncalled bet ($0.10) returned to Komaroff
+Komaroff collected $0.25 from pot
+Komaroff: doesn't show hand
+*** SUMMARY ***
+Total pot $0.25 | Rake $0
+Seat 2: Komaroff (button) collected ($0.25)
+Seat 4: Skurj_poker (small blind) folded before Flop
+Seat 5: S.Artsiom.O. (big blind) folded before Flop
+
+
+*********** # 84 **************
+PokerStars Hand #260332650567:  Hold'em No Limit ($0.05/$0.10 USD) - 2026/04/03 15:05:45 ET
+Table 'Alsatia IV' 6-max Seat #5 is the button
+Seat 2: Komaroff ($10.59 in chips)
+Seat 4: Skurj_poker ($8 in chips)
+Seat 5: S.Artsiom.O. ($10 in chips)
+Alex147Eddie will be allowed to play after the button
+Komaroff: posts small blind $0.05
+Skurj_poker: posts big blind $0.10
+*** HOLE CARDS ***
+Dealt to Skurj_poker [Jh 4h]
+S.Artsiom.O.: folds
+Komaroff: folds
+Uncalled bet ($0.05) returned to Skurj_poker
+Skurj_poker collected $0.10 from pot
+Skurj_poker: doesn't show hand
+*** SUMMARY ***
+Total pot $0.10 | Rake $0
+Seat 2: Komaroff (small blind) folded before Flop
+Seat 4: Skurj_poker (big blind) collected ($0.10)
+Seat 5: S.Artsiom.O. (button) folded before Flop (didn't bet)
