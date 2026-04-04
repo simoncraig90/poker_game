@@ -1321,47 +1321,74 @@ class Advisor:
                 except Exception:
                     pass
             else:
-                # Full cards: match against lab sprite templates
-                # Only use templates with similar aspect ratio to avoid
-                # mismatches between full-card and narrow templates
-                crop_aspect = crop_w / max(1, crop_h)
-                top_matches = []  # (score, label)
+                # Match the top-left corner (rank + suit) against PS templates
+                # Corner matching is more reliable than full-card matching
+                corner_h = int(crop_h * 0.55)
+                corner_w = int(crop_w * 0.55)
+                crop_corner = crop[0:corner_h, 0:corner_w]
+                top_matches = []
 
-                # Try PS templates first (native resolution), then lab templates
-                all_templates = {}
-                if hasattr(self, '_ps_templates'):
-                    all_templates.update(self._ps_templates)
-                if hasattr(self, '_lab_templates'):
-                    for label, tmpl in self._lab_templates.items():
-                        if '_narrow' in label:
-                            continue
-                        if hasattr(self, '_bad_templates') and label in self._bad_templates:
-                            continue
-                        if label not in all_templates:  # PS templates take priority
-                            all_templates[label] = tmpl
+                # Detect card color from rank text only (top 30%, left 40%)
+                # Tighter crop to avoid background bleed
+                rank_region = crop[0:int(crop_h * 0.30), 0:int(crop_w * 0.40)]
+                hsv_rank = cv2.cvtColor(rank_region, cv2.COLOR_BGR2HSV)
+                r1 = cv2.inRange(hsv_rank, np.array([0, 80, 80]), np.array([15, 255, 255]))
+                r2 = cv2.inRange(hsv_rank, np.array([155, 80, 80]), np.array([180, 255, 255]))
+                red_px = cv2.countNonZero(r1) + cv2.countNonZero(r2)
+                # Also count dark pixels (black rank text)
+                gray_rank = cv2.cvtColor(rank_region, cv2.COLOR_BGR2GRAY)
+                _, dark_mask = cv2.threshold(gray_rank, 80, 255, cv2.THRESH_BINARY_INV)
+                dark_px = cv2.countNonZero(dark_mask)
+                # Card is red only if red pixels significantly outnumber dark pixels
+                card_is_red = red_px > 100 and red_px > dark_px * 0.5
+                red_suits = {'h', 'd'}
+                black_suits = {'s', 'c'}
 
-                if all_templates:
-                    for label, tmpl in all_templates.items():
-                        # Check aspect ratio similarity
-                        tmpl_h, tmpl_w = tmpl.shape[:2]
-                        tmpl_aspect = tmpl_w / max(1, tmpl_h)
-                        if abs(crop_aspect - tmpl_aspect) > 0.3:
-                            continue  # aspect ratio too different
-                        tmpl_resized = cv2.resize(tmpl, (crop_w, crop_h))
-                        score = cv2.matchTemplate(crop, tmpl_resized, cv2.TM_CCOEFF_NORMED)[0][0]
+                # Build corner templates from PS templates (cache at fixed size)
+                NORM_W, NORM_H = 60, 80  # normalized corner size
+                if not hasattr(self, '_ps_corner_cache'):
+                    self._ps_corner_cache = {}
+                    if hasattr(self, '_ps_templates'):
+                        for label, tmpl in self._ps_templates.items():
+                            th, tw = tmpl.shape[:2]
+                            corner = tmpl[0:int(th * 0.55), 0:int(tw * 0.55)]
+                            self._ps_corner_cache[label] = cv2.resize(corner, (NORM_W, NORM_H))
+
+                if self._ps_corner_cache:
+                    # Normalize crop corner to same size
+                    norm_corner = cv2.resize(crop_corner, (NORM_W, NORM_H))
+                    # Only match against same-color templates
+                    valid_suits = red_suits if card_is_red else black_suits
+                    for label, tmpl_corner in self._ps_corner_cache.items():
+                        if len(label) == 2 and label[1] not in valid_suits:
+                            continue  # wrong color
+                        score = cv2.matchTemplate(norm_corner, tmpl_corner, cv2.TM_CCOEFF_NORMED)[0][0]
                         top_matches.append((score, label))
 
                     top_matches.sort(reverse=True)
                     if top_matches:
                         best_score = top_matches[0][0]
                         best_label = top_matches[0][1]
-
-                        # Confidence gap check: if top 2 are close, the match is ambiguous
-                        if len(top_matches) >= 2:
-                            gap = top_matches[0][0] - top_matches[1][0]
-                            if gap < 0.05 and best_score < 0.8:
-                                # Ambiguous — fall through to card_id
-                                best_score = 0.3  # force fallback
+                        # If template confidence is low, try OCR for the rank
+                        if best_score < 0.6:
+                            try:
+                                from card_ocr import _detect_rank, _get_reader
+                                _get_reader()
+                                rank_corner = crop[0:int(crop_h * 0.35), 0:int(crop_w * 0.50)]
+                                rank, rconf = _detect_rank(rank_corner)
+                                if rank and rconf > 0.3:
+                                    # Use OCR rank + color for suit
+                                    suit = 'h' if card_is_red else 's'
+                                    # Pick closest same-rank template
+                                    same_rank = [(s, l) for s, l in top_matches if l[0] == rank]
+                                    if same_rank:
+                                        best_score = same_rank[0][0]
+                                        best_label = same_rank[0][1]
+                                    else:
+                                        best_label = f"{rank}{suit}"
+                                        best_score = rconf
+                            except Exception:
+                                pass
 
                 # Low score fallback: corner-based detection
                 if best_score < 0.5:
@@ -1385,6 +1412,55 @@ class Advisor:
 
             if best_label != "??":
                 results.append(best_label)
+
+        return results
+
+    def _identify_cards_hybrid(self, table_img, card_boxes):
+        """Hybrid card ID: OCR for rank (reliable), color for suit."""
+        if not card_boxes:
+            return []
+        try:
+            from card_ocr import _detect_rank, _get_reader
+            import numpy as np
+            _get_reader()  # warm up
+        except Exception:
+            return self._identify_cards(table_img, card_boxes)
+
+        results = []
+        h, w = table_img.shape[:2]
+        for card in card_boxes:
+            x1 = max(0, card["x"] - 2)
+            y1 = max(0, card["y"] - 2)
+            x2 = min(w, card["x"] + card["w"] + 2)
+            y2 = min(h, card["y"] + card["h"] + 2)
+            crop = table_img[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+
+            ch, cw = crop.shape[:2]
+
+            # OCR the rank from top-left corner
+            corner = crop[0:int(ch * 0.35), 0:int(cw * 0.50)]
+            rank, conf = _detect_rank(corner)
+
+            if rank is None:
+                # Fall back to template matching
+                tmpl_results = self._identify_cards(table_img, [card])
+                results.extend(tmpl_results)
+                continue
+
+            # Detect suit by color of rank text (red = h/d, black = s/c)
+            hsv = cv2.cvtColor(corner, cv2.COLOR_BGR2HSV)
+            red1 = cv2.inRange(hsv, np.array([0, 60, 60]), np.array([15, 255, 255]))
+            red2 = cv2.inRange(hsv, np.array([155, 60, 60]), np.array([180, 255, 255]))
+            red_px = cv2.countNonZero(red1) + cv2.countNonZero(red2)
+
+            if red_px > 50:
+                suit = "h"  # red — default to hearts (h/d distinction is minor)
+            else:
+                suit = "s"  # black — default to spades (s/c distinction is minor)
+
+            results.append(f"{rank}{suit}")
 
         return results
 
@@ -1416,14 +1492,9 @@ class Advisor:
 
         if elements is not None:
             # YOLO path (fast) — with fallback for missed detections
-            # Card identification: try OCR first (theme-independent), fall back to templates
-            try:
-                from card_ocr import identify_cards_ocr
-                hero_cards = identify_cards_ocr(table_img, elements.get("hero_card", [])[:2])
-                board_cards = identify_cards_ocr(table_img, elements.get("board_card", [])[:5])
-            except Exception:
-                hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]
-                board_cards = self._identify_cards(table_img, elements.get("board_card", []))[:5]
+            # Card identification: OCR rank (reliable) + template suit (best effort)
+            hero_cards = self._identify_cards_hybrid(table_img, elements.get("hero_card", []))[:2]
+            board_cards = self._identify_cards_hybrid(table_img, elements.get("board_card", []))[:5]
             hero_turn = len(elements.get("action_button", [])) > 0
 
             # Fallback: if YOLO missed hero cards, try color-based detection
