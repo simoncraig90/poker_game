@@ -138,7 +138,7 @@ def main():
             from collections import Counter
             counts = Counter(dets)
             det_str = ", ".join(f"{d}({c})" for d, c in counts.most_common(3))
-            print(f"    {exp} → {det_str}")
+            print(f"    {exp} -> {det_str}")
 
     print("=" * 60)
 
