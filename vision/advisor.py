@@ -1674,11 +1674,20 @@ class Advisor:
         }
 
         if phase == "PREFLOP" and len(hero) >= 2:
-            # Preflop chart lookup
+            # Detect if actually facing a raise or just limpers
+            # Call amount = BB ($0.10) means no raise — just limpers or BB option
+            call_amount = state.get("call_amount")
+            facing_raise = facing_bet
+            if call_amount is not None and call_amount <= 0.10:
+                facing_raise = False  # just the BB, no raise
+            # BB with no raise = check option
+            if pos_6max == "BB" and not facing_raise:
+                facing_raise = False
+
             from preflop_chart import preflop_advice
-            pf = preflop_advice(hero[0], hero[1], pos_6max, facing_raise=facing_bet)
+            pf = preflop_advice(hero[0], hero[1], pos_6max, facing_raise=facing_raise)
             info["preflop"] = pf
-            info["facing_bet"] = facing_bet
+            info["facing_bet"] = facing_raise
 
             if self.debug:
                 print(f"[preflop] {pf['hand_key']} {pos_6max} facing={facing_bet} -> {pf['action']} {pf['note']}")
