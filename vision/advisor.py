@@ -515,7 +515,9 @@ def equity_model_predict(hero_cards_str, board_cards_str):
     high_card = max(board_ranks) / 14.0 if board_ranks else 0.0
     board_len = len(board_dicts) / 5.0
 
-    # Build tensors
+    # Build tensors — clamp to exactly 2 hero cards, 5 board cards
+    hero_ints = hero_ints[:2]
+    board_ints = board_ints[:5]
     hero_t = torch.tensor([hero_ints], dtype=torch.long, device=device)
     board_padded = board_ints + [52] * (5 - len(board_ints))
     board_t = torch.tensor([board_padded], dtype=torch.long, device=device)
@@ -1396,22 +1398,46 @@ class Advisor:
             num_opp = max(1, len(elements.get("card_back", [])))
 
             # Detect position from dealer button location
-            # If dealer button is in bottom half of table → hero is BTN or close to it → IP
+            # Hero is at the bottom of the table. Button location tells us hero's position.
+            # Bottom = hero is BTN, moving clockwise away = SB, BB, UTG, MP, CO
             position = "IP"  # default
+            position_6max = "BTN"  # default
             dealer_buttons = elements.get("dealer_button", [])
             if dealer_buttons:
                 btn = dealer_buttons[0]
                 btn_y_pct = btn["y"] / h if h > 0 else 0
-                # Bottom 35% = near hero → IP (BTN/CO)
-                # Top 65% = away from hero → OOP (UTG/MP/blinds)
-                if btn_y_pct < 0.65:
-                    position = "OOP"
+                btn_x_pct = btn["x"] / w if w > 0 else 0.5
+                # Button near hero (bottom) = hero is BTN
+                # Button at bottom-right = hero is SB or BB
+                # Button at top = hero is UTG/MP/EP
+                # Button at top-right or right = hero is CO
+                if btn_y_pct > 0.65:
+                    # Button near bottom — hero is BTN or CO
+                    position = "IP"
+                    position_6max = "BTN"
+                elif btn_y_pct > 0.45:
+                    # Button in middle — hero is SB/BB or CO
+                    if btn_x_pct > 0.5:
+                        position = "IP"
+                        position_6max = "CO"
+                    else:
+                        position = "OOP"
+                        position_6max = "SB"
+                else:
+                    # Button near top — hero is EP/MP/BB
+                    if btn_x_pct > 0.5:
+                        position = "OOP"
+                        position_6max = "MP"
+                    else:
+                        position = "OOP"
+                        position_6max = "EP"
 
             return {
                 "hero_cards": hero_cards,
                 "board_cards": board_cards,
                 "hero_turn": hero_turn,
                 "facing_bet": facing_bet,
+                "position_6max": position_6max,
                 "pot": pot,
                 "num_opponents": num_opp,
                 "position": position,
@@ -1567,13 +1593,12 @@ class Advisor:
         phase = phase_from_board_count(len(board))
         position = state.get("position", "IP")
 
-        # Map IP/OOP to 6-max position estimate
-        # TODO: improve with actual dealer button position detection
-        pos_6max = "BTN" if position == "IP" else "MP"
+        # Use detected 6-max position, fall back to IP/OOP estimate
+        pos_6max = state.get("position_6max", "BTN" if position == "IP" else "MP")
 
-        # Preflop facing bet detection
-        if phase == "PREFLOP" and not facing_bet and state.get("hero_turn", False):
-            facing_bet = True
+        # Preflop facing bet detection — ONLY trust the red Fold button
+        # Don't assume facing bet just because it's hero's turn
+        # facing_bet is already set correctly from the red button detection in _extract_state
 
         # Get equity from the trained model (or heuristic fallback)
         eq = equity_model_predict(hero, board)
