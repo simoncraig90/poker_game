@@ -26,24 +26,25 @@ def detect_lab_cards(table_img):
     """
     th, tw = table_img.shape[:2]
 
-    # Hero cards: positioned at ~23% x, ~71% y, each ~14% wide x 12% tall
-    # Second card starts at ~27.5% x (4.5% gap = 68% overlap)
-    hero_card_w = int(tw * 0.155)  # full card width (like PS YOLO boxes)
-    hero_card_h = int(th * 0.10)
+    # Hero cards: calibrated from 500x879 table image (CDP 500x900 capture)
+    # Card 1 at ~33% x, ~66% y; Card 2 offset ~8% right, ~0.5% lower
+    # Size: ~11.2% w x 9.7% h
+    hero_card_w = int(tw * 0.112)
+    hero_card_h = int(th * 0.097)
 
     hero_cards = []
 
-    # Card 1 (left) — measured from Chrome DevTools capture
-    hx1 = int(tw * 0.28)
-    hy1 = int(th * 0.62)
+    # Card 1 (left)
+    hx1 = int(tw * 0.33)
+    hy1 = int(th * 0.663)
     hero_cards.append({
         "x": hx1, "y": hy1, "w": hero_card_w, "h": hero_card_h,
         "cx": hx1 + hero_card_w // 2, "cy": hy1 + hero_card_h // 2,
     })
 
-    # Card 2 (right, overlapping)
-    hx2 = hx1 + int(tw * 0.045)  # 4.5% gap
-    hy2 = hy1 + int(th * 0.01)   # slightly lower
+    # Card 2 (right, overlapping — offset ~8% of table width)
+    hx2 = hx1 + int(tw * 0.078)
+    hy2 = hy1 + int(th * 0.005)
     hero_cards.append({
         "x": hx2, "y": hy2, "w": hero_card_w, "h": hero_card_h,
         "cx": hx2 + hero_card_w // 2, "cy": hy2 + hero_card_h // 2,
@@ -63,12 +64,12 @@ def detect_lab_cards(table_img):
         if white_px / total_px > 0.15:  # at least 15% white = card present
             visible_heroes.append(card)
 
-    # Board cards: center of table, ~38% y, 5 cards side by side
-    board_card_w = int(tw * 0.10)
-    board_card_h = int(th * 0.08)
-    board_y = int(th * 0.34)
-    board_start_x = int(tw * 0.25)  # roughly centered for 5 cards
-    board_gap = int(tw * 0.10)
+    # Board cards: calibrated at ~32.2% y, start x ~24.6%, gap ~10.6%
+    board_card_w = int(tw * 0.094)
+    board_card_h = int(th * 0.076)
+    board_y = int(th * 0.322)
+    board_start_x = int(tw * 0.246)
+    board_gap = int(tw * 0.106)
 
     board_cards = []
     for i in range(5):

@@ -968,17 +968,18 @@ class OverlayWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Poker Advisor")
-        self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", 0.85)
-        # self.root.overrideredirect(True)  # disabled — need to find it in taskbar
         self.root.configure(bg="#1a1a2e")
 
-        # Size and position (bottom-right default, will reposition near table)
+        # Size and position
         self.width = 390
         self.height = 195
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-        self.root.geometry(f"{self.width}x{self.height}+{screen_w - self.width - 20}+{screen_h - self.height - 60}")
+        self.root.geometry(f"{self.width}x{self.height}+50+50")
+        self.root.resizable(False, False)
+
+        # Set topmost and transparency after geometry
+        self.root.update_idletasks()
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-alpha", 0.88)
 
         # Allow dragging
         self._drag_data = {"x": 0, "y": 0}
@@ -1533,9 +1534,11 @@ class Advisor:
             if red_px > 500 or green_px > 500:
                 if not hero_turn:
                     hero_turn = True
-                # Red button = Fold = facing a bet/raise
-                # Green only (no red) = Check available = not facing a bet
-                facing_bet = red_px > 500
+                # Buttons visible = hero's turn
+                # facing_bet: check if "Call" button text is visible (green button with amount)
+                # PS shows "Check" (no amount) when not facing bet, "Call $X" when facing bet
+                # Detect by looking for text on the green button area
+                facing_bet = False
 
             # OCR: pot, player names/stacks, bet amounts, action buttons
             pot = None
@@ -1562,39 +1565,90 @@ class Advisor:
             num_opp = max(1, len(elements.get("card_back", [])))
 
             # Detect position from dealer button location
-            # Hero is at the bottom of the table. Button location tells us hero's position.
-            # Bottom = hero is BTN, moving clockwise away = SB, BB, UTG, MP, CO
+            # Map button XY to nearest seat, then calculate hero's position
+            # PS portrait 6-max seat positions (as % of table image):
+            #   Seat 3 (top):         x=50%, y=10%
+            #   Seat 2 (upper-left):  x=15%, y=25%
+            #   Seat 4 (upper-right): x=85%, y=25%
+            #   Seat 1 (lower-left):  x=15%, y=65%
+            #   Seat 5 (lower-right): x=85%, y=65%
+            #   Seat 0 (hero/bottom): x=50%, y=85%
             position = "IP"  # default
             position_6max = "BTN"  # default
             dealer_buttons = elements.get("dealer_button", [])
             if dealer_buttons:
                 btn = dealer_buttons[0]
-                btn_y_pct = btn["y"] / h if h > 0 else 0
-                btn_x_pct = btn["x"] / w if w > 0 else 0.5
-                # Button near hero (bottom) = hero is BTN
-                # Button at bottom-right = hero is SB or BB
-                # Button at top = hero is UTG/MP/EP
-                # Button at top-right or right = hero is CO
-                if btn_y_pct > 0.65:
-                    # Button near bottom — hero is BTN or CO
-                    position = "IP"
-                    position_6max = "BTN"
-                elif btn_y_pct > 0.45:
-                    # Button in middle — hero is SB/BB or CO
-                    if btn_x_pct > 0.5:
-                        position = "IP"
-                        position_6max = "CO"
-                    else:
-                        position = "OOP"
-                        position_6max = "SB"
-                else:
-                    # Button near top — hero is EP/MP/BB
-                    if btn_x_pct > 0.5:
-                        position = "OOP"
-                        position_6max = "MP"
-                    else:
-                        position = "OOP"
-                        position_6max = "EP"
+                bx = btn["cx"] / w if w > 0 else 0.5
+                by = btn["cy"] / h if h > 0 else 0.5
+
+                # Seat center positions (x%, y%)
+                seat_positions = [
+                    (0.50, 0.85),  # seat 0 = hero (bottom)
+                    (0.15, 0.65),  # seat 1 (lower-left)
+                    (0.15, 0.25),  # seat 2 (upper-left)
+                    (0.50, 0.10),  # seat 3 (top)
+                    (0.85, 0.25),  # seat 4 (upper-right)
+                    (0.85, 0.65),  # seat 5 (lower-right)
+                ]
+
+                # Find closest seat to button
+                best_seat = 0
+                best_dist = 999
+                for si, (sx, sy) in enumerate(seat_positions):
+                    dist = ((bx - sx) ** 2 + (by - sy) ** 2) ** 0.5
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_seat = si
+
+                # Hero is seat 0. Calculate position relative to button.
+                # Seats go clockwise: 0,1,2,3,4,5
+                # If button is at seat N, positions clockwise from button:
+                #   BTN=N, SB=N+1, BB=N+2, UTG=N+3, MP=N+4, CO=N+5
+                # Hero (seat 0) offset from button:
+                offset = (0 - best_seat) % 6
+                pos_map = {0: "BTN", 1: "SB", 2: "BB", 3: "EP", 4: "MP", 5: "CO"}
+                position_6max = pos_map.get(offset, "BTN")
+                position = "IP" if position_6max in ("BTN", "CO") else "OOP"
+
+                if self.debug:
+                    print(f"[pos] btn at ({bx:.2f},{by:.2f}) -> seat {best_seat} -> hero is {position_6max}")
+
+            # Determine facing_bet from multiple signals:
+            # 1. call_amount from OCR (most reliable if available)
+            # 2. Bet chips visible from opponents
+            # 3. Green button text contains a $ amount (Call $X vs Check)
+            if call_amount and call_amount > 0:
+                facing_bet = True
+            elif bets:
+                # Other players have bets on the table
+                facing_bet = True
+            elif elements.get("chip", []):
+                # Chips visible near opponent seats (above the blind level = raise)
+                chips = elements.get("chip", [])
+                # If there are chips in the upper part of the table (opponent bets)
+                if any(c["cy"] < h * 0.60 for c in chips):
+                    facing_bet = True
+            # Also check: green button area for "$" text (Call $X vs Check)
+            if not facing_bet and green_px > 500:
+                # Crop the green button region and look for "$" or digits
+                btn_h, btn_w = btn_area.shape[:2]
+                green_mask = cv2.bitwise_or(
+                    cv2.inRange(hsv_btn, np.array([30, 50, 50]), np.array([90, 255, 255])),
+                    np.zeros_like(green)
+                )
+                # Find green button bounds
+                gcontours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                for gc in gcontours:
+                    gx, gy, gw, gh = cv2.boundingRect(gc)
+                    if gw > 30 and gh > 15:
+                        green_btn_crop = btn_area[gy:gy+gh, gx:gx+gw]
+                        # Check for white text pixels (Call amount text)
+                        gray_btn = cv2.cvtColor(green_btn_crop, cv2.COLOR_BGR2GRAY)
+                        white_text = cv2.countNonZero(cv2.threshold(gray_btn, 200, 255, cv2.THRESH_BINARY)[1])
+                        # "Call $0.20" has more white text than "Check"
+                        if white_text > gw * gh * 0.15:
+                            facing_bet = True
+                        break
 
             return {
                 "hero_cards": hero_cards,
@@ -1917,7 +1971,7 @@ class Advisor:
 
         frame_count = 0
         last_capture = 0
-        capture_interval = 0.5  # seconds
+        capture_interval = 0.3  # seconds
 
         while True:
             try:

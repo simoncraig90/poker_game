@@ -9,6 +9,7 @@ Usage:
 
 import cv2
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 from pathlib import Path
@@ -186,158 +187,115 @@ class CardCNNDetector:
             return label, cnn_conf
 
     def identify_hero_from_table(self, table_img, card_boxes):
-        """Identify hero cards using fixed crop positions to avoid overlap.
-        YOLO tells us WHERE the cards are, but we crop each card individually
-        using only the left portion of each YOLO box (where rank+suit are)."""
-        if not card_boxes or len(card_boxes) < 2:
-            return self.identify_cards(table_img, card_boxes)
+        """Identify hero cards using template matching against PS board card captures.
+        Normalizes both hero corners and template corners to a standard size before matching."""
+        if not card_boxes:
+            return []
+
+        MATCH_W, MATCH_H = 48, 64  # standard size for comparison
+
+        # Lazy-load templates — normalize all to standard size
+        if not hasattr(self, '_card_templates') or self._card_templates is None:
+            self._card_templates = {}
+            tmpl_dir = os.path.join(os.path.dirname(__file__), '..', 'client', 'ps_assets', 'cards')
+            if not os.path.isdir(tmpl_dir):
+                tmpl_dir = os.path.join(os.path.dirname(__file__), 'templates', 'ps_board_cards')
+            for f in os.listdir(tmpl_dir):
+                if f.endswith('.png') and len(f) >= 5:
+                    name = f[:-4]
+                    img = cv2.imread(os.path.join(tmpl_dir, f))
+                    if img is not None:
+                        h, w = img.shape[:2]
+                        # Upper-left corner: rank index + suit pip
+                        corner = img[0:int(h * 0.40), 0:int(w * 0.45)]
+                        normalized = cv2.resize(corner, (MATCH_W, MATCH_H))
+                        self._card_templates[name] = normalized
+            print(f"[tmpl] Loaded {len(self._card_templates)} card templates for matching")
 
         sorted_boxes = sorted(card_boxes, key=lambda c: c["x"])
         h, w = table_img.shape[:2]
 
         results = []
-        colors = []
 
         for i, card in enumerate(sorted_boxes[:2]):
-            x1 = max(0, card["x"] - 2)
-            y1 = max(0, card["y"] - 2)
-            # CRITICAL: only crop up to 40% of box width to avoid overlap
+            x1 = max(0, card["x"])
+            y1 = max(0, card["y"])
             card_w = card["w"]
+            card_h = card["h"]
+            # Crop left 40% to avoid overlap
             x2 = min(w, x1 + int(card_w * 0.40))
-            y2 = min(h, card["y"] + card["h"] + 2)
+            y2 = min(h, y1 + card_h)
             narrow_crop = table_img[y1:y2, x1:x2]
 
             if narrow_crop.size == 0 or narrow_crop.shape[1] < 10:
                 continue
 
-            # CNN on the narrow crop for rank
             ch, cw = narrow_crop.shape[:2]
-            corner = narrow_crop[0:int(ch * 0.50), :]
-            corner_resized = cv2.resize(corner, (CORNER_W, CORNER_H))
-            tensor = torch.from_numpy(corner_resized).permute(2, 0, 1).float().unsqueeze(0) / 255.0
 
-            with torch.no_grad():
-                logits = self.model(tensor)
-                probs = torch.softmax(logits, dim=1)
-                conf, idx = probs.max(1)
-                rank = self.idx_to_card[idx.item()][0]
+            # Upper-left corner: same proportions as template (40% height, full narrow width)
+            corner = narrow_crop[0:int(ch * 0.40), :]
+            if corner.size == 0:
+                continue
 
-            # Suit detection: use wider pip, cross-check with tighter pip
-            pip_wide = narrow_crop[int(ch * 0.28):int(ch * 0.45), :]
-            pip_tight = narrow_crop[int(ch * 0.32):int(ch * 0.40), int(cw*0.05):int(cw*0.70)]
+            # Normalize to standard size
+            normalized = cv2.resize(corner, (MATCH_W, MATCH_H))
 
-            def _pip_shape(pip_img):
-                pr = cv2.resize(pip_img, (40, 25))
-                g = cv2.cvtColor(pr, cv2.COLOR_BGR2GRAY)
-                _, m = cv2.threshold(g, 120, 255, cv2.THRESH_BINARY_INV)
-                cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                if not cs: return 0.9, 0.6
-                c = max(cs, key=cv2.contourArea)
-                a = cv2.contourArea(c)
-                if a < 10: return 0.9, 0.6
-                ha = cv2.contourArea(cv2.convexHull(c))
-                p = cv2.arcLength(c, True)
-                return a/max(1,ha), 4*3.14159*a/max(1,p*p)
+            # Match against all 52 templates
+            best_card = None
+            best_score = -1
+            for name, tmpl in self._card_templates.items():
+                score = cv2.matchTemplate(normalized, tmpl, cv2.TM_CCOEFF_NORMED)[0][0]
+                if score > best_score:
+                    best_score = score
+                    best_card = name
 
-            sol_w, circ_w = _pip_shape(pip_wide)
-            sol_t, circ_t = _pip_shape(pip_tight) if pip_tight.size > 0 else (sol_w, circ_w)
-
-            # If the two crops disagree on suit category, use tighter (less contamination)
-            def _suit_from_shape(sol, circ, is_r):
-                if is_r:
-                    return 'h' if sol < 0.96 else 'd'
-                else:
-                    return 'c' if sol < 0.82 and circ < 0.42 else 's'
-
-            pip_resized = cv2.resize(pip_wide, (40, 25))
-
-            # Color detection
-            hsv = cv2.cvtColor(pip_resized, cv2.COLOR_BGR2HSV)
-            r1 = cv2.inRange(hsv, np.array([0, 50, 50]), np.array([20, 255, 255]))
-            r2 = cv2.inRange(hsv, np.array([150, 50, 50]), np.array([180, 255, 255]))
-            red_px = cv2.countNonZero(r1) + cv2.countNonZero(r2)
-            is_red = red_px > 20
-
-            # Shape analysis
-            gray = cv2.cvtColor(pip_resized, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            sol, circ = 0.9, 0.6  # defaults
-            if contours:
-                c = max(contours, key=cv2.contourArea)
-                area = cv2.contourArea(c)
-                if area > 10:
-                    hull_area = cv2.contourArea(cv2.convexHull(c))
-                    peri = cv2.arcLength(c, True)
-                    sol = area / max(1, hull_area)
-                    circ = 4 * 3.14159 * area / max(1, peri * peri)
-
-            # Classify suit from wide pip (more reliable shape)
-            suit = _suit_from_shape(sol_w, circ_w, is_red)
-
-            colors.append(is_red)
-            results.append(f"{rank}{suit}")
-
-        # Fix suited: if both same color, ensure same suit character
-        if len(results) == 2 and len(colors) == 2:
-            if colors[0] == colors[1]:
-                s = 'h' if colors[0] else 's'
-                results = [results[0][0] + s, results[1][0] + s]
+            if best_card and best_score > 0.3:
+                results.append(best_card)
 
         return results
 
     def identify_cards(self, table_img, card_boxes):
-        """Identify multiple cards from YOLO detections."""
+        """Identify board cards using template matching (same as hero cards)."""
+        if not card_boxes:
+            return []
+
+        MATCH_W, MATCH_H = 48, 64
+
+        # Ensure templates are loaded
+        if not hasattr(self, '_card_templates') or self._card_templates is None:
+            self.identify_hero_from_table(table_img, [])  # triggers template load
+
         sorted_boxes = sorted(card_boxes, key=lambda c: c["x"])
-        colors = []  # track red/black for each card
-        results = []
         h, w = table_img.shape[:2]
-        for i, card in enumerate(sorted_boxes):
-            x1 = max(0, card["x"] - 2)
-            y1 = max(0, card["y"] - 2)
-            x2 = min(w, card["x"] + card["w"] + 2)
-            y2 = min(h, card["y"] + card["h"] + 2)
+        results = []
+
+        for card in sorted_boxes:
+            x1 = max(0, card["x"])
+            y1 = max(0, card["y"])
+            x2 = min(w, card["x"] + card["w"])
+            y2 = min(h, card["y"] + card["h"])
             crop = table_img[y1:y2, x1:x2]
-            label, conf = self.identify(crop)
 
-            # Detect color from ORIGINAL table position (not the crop)
-            # For right cards in overlap, use a region that's definitely this card
+            if crop.size == 0 or crop.shape[1] < 10:
+                continue
+
             ch, cw = crop.shape[:2]
-            if i > 0 and len(sorted_boxes) > 1:
-                # Right card: overlap means left portion shows adjacent card
-                # Use full top of crop for color — the red/black rank text is visible
-                rank_region = crop[0:int(ch * 0.35), :]
-            else:
-                # Left card: use suit pip area (below rank, left side)
-                # More reliable than rank text for color detection
-                rank_region = crop[int(ch * 0.25):int(ch * 0.45), 0:int(cw * 0.25)]
+            # Board cards don't overlap — use full left 45% width, top 40% height
+            corner = crop[0:int(ch * 0.40), 0:int(cw * 0.45)]
+            if corner.size == 0:
+                continue
 
-            if rank_region.size > 0:
-                hsv_r = cv2.cvtColor(rank_region, cv2.COLOR_BGR2HSV)
-                r1 = cv2.inRange(hsv_r, np.array([0, 80, 80]), np.array([15, 255, 255]))
-                r2 = cv2.inRange(hsv_r, np.array([155, 80, 80]), np.array([180, 255, 255]))
-                red_px = cv2.countNonZero(r1) + cv2.countNonZero(r2)
-                gray_r = cv2.cvtColor(rank_region, cv2.COLOR_BGR2GRAY)
-                _, dark = cv2.threshold(gray_r, 80, 255, cv2.THRESH_BINARY_INV)
-                dark_px = cv2.countNonZero(dark)
-                is_red = red_px > 50
-            else:
-                is_red = label[1] in ('h', 'd') if len(label) == 2 else False
+            normalized = cv2.resize(corner, (MATCH_W, MATCH_H))
 
-            colors.append(is_red)
+            best_card = None
+            best_score = -1
+            for name, tmpl in self._card_templates.items():
+                score = cv2.matchTemplate(normalized, tmpl, cv2.TM_CCOEFF_NORMED)[0][0]
+                if score > best_score:
+                    best_score = score
+                    best_card = name
 
-            if label != "??" and conf > 0.3:
-                results.append(label)
-            else:
-                results.append("??")
+            if best_card and best_score > 0.3:
+                results.append(best_card)
 
-        # Fix suited detection using actual detected colors
-        if len(results) == 2 and len(colors) == 2:
-            r1, r2 = results[0][0], results[1][0]  # ranks
-            c1, c2 = colors[0], colors[1]  # True=red, False=black
-            # Assign suit based on detected color
-            s1 = 'h' if c1 else 's'
-            s2 = 'h' if c2 else 's'
-            results = [f"{r1}{s1}", f"{r2}{s2}"]
-
-        return [r for r in results if r != "??"]
+        return results

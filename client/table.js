@@ -372,8 +372,8 @@ function onSliderChange() {
   updateSliderDisplay(val);
   const betBtn = document.getElementById("bet-btn");
   const raiseBtn = document.getElementById("raise-btn");
-  if (!betBtn.disabled) betBtn.innerHTML = `Bet ${c$(val)}`;
-  if (!raiseBtn.disabled) raiseBtn.innerHTML = `Raise to ${c$(val)}`;
+  if (!betBtn.disabled) betBtn.innerHTML = `Bet<br>${c$(val)}`;
+  if (!raiseBtn.disabled) raiseBtn.innerHTML = `Raise to<br>${c$(val)}`;
 }
 
 function updateSliderDisplay(val) {
@@ -396,6 +396,19 @@ function setSizingAllIn() {
   document.getElementById("bet-input").value = sliderMax;
   updateSliderDisplay(sliderMax);
   onSliderChange();
+}
+
+function adjustBetByStep(dir) {
+  const input = document.getElementById("bet-input");
+  const bb = state ? state.bb : 10;
+  const cur = parseInt(input.value) || 0;
+  const step = bb; // 1 BB step
+  const newVal = Math.max(parseInt(input.min) || 0, Math.min(parseInt(input.max) || 99999, cur + dir * step));
+  input.value = newVal;
+  // Sync slider
+  const slider = document.getElementById("bet-slider");
+  slider.value = newVal;
+  updateSliderDisplay(newVal);
 }
 
 // ── Turn Timer ────────────────────────────────────────────────────────────
@@ -466,43 +479,20 @@ function c$(v) {
 
 const SUIT_SYMBOLS = { s: "\u2660", h: "\u2665", d: "\u2666", c: "\u2663" };
 
-// ── Card sprite sheet mapping ──
-// cards.png: 1898x204, 26 columns x 2 rows, each card 73x102
-// Row 0: 2c,2h,3c,3h,4c,4h,5c,5h,6c,6h,7c,7h,8c,8h,9c,9h,Ac,Ah,Jc,Jh,Kc,Kh,Qc,Qh,10c,10h
-// Row 1: 2s,2d,3s,3d,4s,4d,5s,5d,6s,6d,7s,7d,8s,8d,9s,9d,As,Ad,Js,Jd,Ks,Kd,Qs,Qd,10s,10d
-const CARD_W = 73, CARD_H = 102, SPRITE_COLS = 26;
-const ROW0_SUITS = ['c','h'], ROW1_SUITS = ['s','d'];
-const RANK_ORDER = ['2','3','4','5','6','7','8','9','A','J','K','Q','T'];
+// ── Card rendering — individual card images (73x102 source) ──
+// Individual PNGs in ps_assets/cards/{rank}{suit}.png
+// Ranks: 2,3,4,5,6,7,8,9,A,J,K,Q,T  Suits: c,h,s,d
 
-function cardSpritePos(card) {
+function cardImgSrc(card) {
+  // card = "Ah", "Ts", "2c" etc
   const rank = card.slice(0, -1);
   const suit = card.slice(-1);
-  const rankIdx = RANK_ORDER.indexOf(rank);
-  if (rankIdx < 0) return { x: 0, y: 0 };
-  let row, suitOffset;
-  if (suit === 'c' || suit === 'h') {
-    row = 0;
-    suitOffset = suit === 'h' ? 0 : 1;  // hearts first, then clubs
-  } else {
-    row = 1;
-    suitOffset = suit === 'd' ? 0 : 1;  // diamonds first, then spades
-  }
-  const col = rankIdx * 2 + suitOffset;
-  return { x: col * CARD_W, y: row * CARD_H };
+  return `ps_assets/cards/${rank}${suit}.png`;
 }
 
 function cardHtml(card) {
   if (!card) return '<span class="card empty-slot"></span>';
-  const pos = cardSpritePos(card);
-  // Board card display
-  const displayW = 44, displayH = 62;
-  const scaleX = displayW / CARD_W;
-  const scaleY = displayH / CARD_H;
-  const bgW = SPRITE_COLS * CARD_W * scaleX;
-  const bgH = 2 * CARD_H * scaleY;
-  const bgX = -(pos.x * scaleX);
-  const bgY = -(pos.y * scaleY);
-  return `<span class="card" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card" style="width:54px;height:78px;background:none"><img src="${cardImgSrc(card)}" style="width:54px;height:78px;display:block;border-radius:4px"></span>`;
 }
 
 function facedownCardHtml() {
@@ -511,28 +501,12 @@ function facedownCardHtml() {
 
 function seatCardHtml(card) {
   if (!card) return '';
-  const pos = cardSpritePos(card);
-  const displayW = 28, displayH = 39;
-  const scaleX = displayW / CARD_W;
-  const scaleY = displayH / CARD_H;
-  const bgW = SPRITE_COLS * CARD_W * scaleX;
-  const bgH = 2 * CARD_H * scaleY;
-  const bgX = -(pos.x * scaleX);
-  const bgY = -(pos.y * scaleY);
-  return `<span class="card sm" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card sm" style="width:28px;height:39px;background:none"><img src="${cardImgSrc(card)}" style="width:28px;height:39px;display:block"></span>`;
 }
 
 function heroCardHtml(card) {
   if (!card) return '';
-  const pos = cardSpritePos(card);
-  const displayW = 58, displayH = 82; // PS-proportional hero card
-  const scaleX = displayW / CARD_W;
-  const scaleY = displayH / CARD_H;
-  const bgW = SPRITE_COLS * CARD_W * scaleX;
-  const bgH = 2 * CARD_H * scaleY;
-  const bgX = -(pos.x * scaleX);
-  const bgY = -(pos.y * scaleY);
-  return `<span class="card hero-card" style="width:${displayW}px;height:${displayH}px;background-size:${bgW}px ${bgH}px;background-position:${bgX}px ${bgY}px"></span>`;
+  return `<span class="card hero-card" style="width:62px;height:98px;background:none"><img src="${cardImgSrc(card)}" style="width:62px;height:98px;display:block;border-radius:5px"></span>`;
 }
 
 function render() {
@@ -704,8 +678,8 @@ function updateActionButtons() {
 
   const callBtn = document.getElementById("call-btn");
   callBtn.innerHTML = actions.includes("CALL") && legal
-    ? `Call ${c$(legal.callAmount)} <span class="key-hint">[C]</span>`
-    : 'Call <span class="key-hint">[C]</span>';
+    ? `Call<br>${c$(legal.callAmount)}`
+    : 'Call';
 
   const betBtn = document.getElementById("bet-btn");
   const raiseBtn = document.getElementById("raise-btn");
@@ -714,13 +688,13 @@ function updateActionButtons() {
   betInput.classList.toggle("visible", showBetInput);
   if (actions.includes("BET") && legal) {
     betInput.value = legal.minBet; betInput.min = legal.minBet;
-    betBtn.innerHTML = `Bet ${c$(legal.minBet)}`;
+    betBtn.innerHTML = `Bet<br>${c$(legal.minBet)}`;
   } else {
     betBtn.innerHTML = 'Bet';
   }
   if (actions.includes("RAISE") && legal) {
     betInput.value = legal.minRaise; betInput.min = legal.minRaise; betInput.max = legal.maxRaise;
-    raiseBtn.innerHTML = `Raise to ${c$(legal.minRaise)}`;
+    raiseBtn.innerHTML = `Raise to<br>${c$(legal.minRaise)}`;
   } else {
     raiseBtn.innerHTML = 'Raise';
   }
