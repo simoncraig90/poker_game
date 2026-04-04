@@ -1280,16 +1280,43 @@ class Advisor:
                     pass
             else:
                 # Full cards: match against lab sprite templates
+                # Only use templates with similar aspect ratio to avoid
+                # mismatches between full-card and narrow templates
+                crop_aspect = crop_w / max(1, crop_h)
+                top_matches = []  # (score, label)
+
                 if hasattr(self, '_lab_templates'):
                     for label, tmpl in self._lab_templates.items():
                         # Skip narrow-specific templates for full cards
                         if '_narrow' in label:
                             continue
+                        # Check aspect ratio similarity
+                        tmpl_h, tmpl_w = tmpl.shape[:2]
+                        tmpl_aspect = tmpl_w / max(1, tmpl_h)
+                        if abs(crop_aspect - tmpl_aspect) > 0.3:
+                            continue  # aspect ratio too different
                         tmpl_resized = cv2.resize(tmpl, (crop_w, crop_h))
                         score = cv2.matchTemplate(crop, tmpl_resized, cv2.TM_CCOEFF_NORMED)[0][0]
-                        if score > best_score:
-                            best_score = score
-                            best_label = label
+                        top_matches.append((score, label))
+
+                    top_matches.sort(reverse=True)
+                    if top_matches:
+                        best_score = top_matches[0][0]
+                        best_label = top_matches[0][1]
+
+                        # Confidence gap check: if top 2 are close, the match is ambiguous
+                        if len(top_matches) >= 2:
+                            gap = top_matches[0][0] - top_matches[1][0]
+                            if gap < 0.05 and best_score < 0.8:
+                                # Ambiguous — fall through to card_id
+                                if hasattr(self, 'incidents'):
+                                    self.incidents.log(
+                                        "CARD_MISREAD",
+                                        f"Ambiguous: {top_matches[0][1]}({top_matches[0][0]:.2f}) vs {top_matches[1][1]}({top_matches[1][0]:.2f})",
+                                        component="card_id", severity="P2",
+                                        context={"top2": [(s, l) for s, l in top_matches[:3]]}
+                                    )
+                                best_score = 0.3  # force fallback
 
                 # Low score fallback: corner-based detection
                 if best_score < 0.5:
