@@ -136,6 +136,11 @@ def preflop_advice(card1_str, card2_str, position="BTN", facing_raise=False):
 
     open_range = ranges.get(position, BTN_RAISE)
 
+    # BB with no raise = free check, never fold
+    if position == "BB" and not facing_raise:
+        return {"action": "CHECK", "hand_key": hand_key, "in_range": True,
+                "note": "free look"}
+
     if position == "BB" and facing_raise:
         # BB facing a raise
         if hand_key in BB_3BET:

@@ -78,8 +78,11 @@ class IncidentTracker:
         self.incidents.append(incident)
 
         # Append to file
-        with open(self.path, "a") as f:
-            f.write(json.dumps(incident) + "\n")
+        try:
+            with open(self.path, "a") as f:
+                f.write(json.dumps(incident, default=lambda x: float(x) if hasattr(x, 'item') else str(x)) + "\n")
+        except Exception:
+            pass
 
         # Print to console
         sev_icon = {"P0": "!!!", "P1": "!!", "P2": "!", "P3": "."}

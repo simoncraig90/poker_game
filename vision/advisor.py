@@ -950,9 +950,9 @@ def find_table_region(frame):
 def crop_table(frame, region):
     """Crop table region with padding. Extra side padding for hero cards at table edges."""
     x, y, w, h = region
-    pad_top = 50
-    pad_side = 120  # hero cards can extend well beyond the felt oval
-    pad_bottom = 180  # action buttons below the felt
+    pad_top = 80
+    pad_side = 150  # hero cards can extend well beyond the felt oval
+    pad_bottom = 350  # hero cards + action buttons below the felt (PS portrait)
     x1 = max(0, x - pad_side)
     y1 = max(0, y - pad_top)
     x2 = min(frame.shape[1], x + w + pad_side)
@@ -970,12 +970,12 @@ class OverlayWindow:
         self.root.title("Poker Advisor")
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.85)
-        self.root.overrideredirect(True)  # no title bar
+        # self.root.overrideredirect(True)  # disabled — need to find it in taskbar
         self.root.configure(bg="#1a1a2e")
 
         # Size and position (bottom-right default, will reposition near table)
-        self.width = 260
-        self.height = 130
+        self.width = 390
+        self.height = 195
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
         self.root.geometry(f"{self.width}x{self.height}+{screen_w - self.width - 20}+{screen_h - self.height - 60}")
@@ -994,35 +994,35 @@ class OverlayWindow:
 
         # Title
         self.title_label = tk.Label(
-            self.frame, text="POKER ADVISOR", font=("Consolas", 9, "bold"),
+            self.frame, text="POKER ADVISOR", font=("Consolas", 13, "bold"),
             fg="#888888", bg="#1a1a2e", anchor="w"
         )
         self.title_label.pack(fill=tk.X)
 
         # Cards display
         self.cards_label = tk.Label(
-            self.frame, text="Waiting for table...", font=("Consolas", 11),
+            self.frame, text="Waiting for table...", font=("Consolas", 16),
             fg="#cccccc", bg="#1a1a2e", anchor="w"
         )
-        self.cards_label.pack(fill=tk.X, pady=(2, 0))
+        self.cards_label.pack(fill=tk.X, pady=(3, 0))
 
         # Equity display
         self.equity_label = tk.Label(
-            self.frame, text="", font=("Consolas", 10),
+            self.frame, text="", font=("Consolas", 14),
             fg="#aaaaaa", bg="#1a1a2e", anchor="w"
         )
         self.equity_label.pack(fill=tk.X)
 
         # Recommendation display
         self.rec_label = tk.Label(
-            self.frame, text="", font=("Consolas", 13, "bold"),
+            self.frame, text="", font=("Consolas", 20, "bold"),
             fg="#ffffff", bg="#1a1a2e", anchor="w"
         )
-        self.rec_label.pack(fill=tk.X, pady=(2, 0))
+        self.rec_label.pack(fill=tk.X, pady=(3, 0))
 
         # Probabilities display
         self.probs_label = tk.Label(
-            self.frame, text="", font=("Consolas", 9),
+            self.frame, text="", font=("Consolas", 13),
             fg="#999999", bg="#1a1a2e", anchor="w"
         )
         self.probs_label.pack(fill=tk.X)
@@ -1100,7 +1100,9 @@ class OverlayWindow:
                 color = "#ef5350"  # red
                 bg = "#3a1a1e"
 
-            self.rec_label.config(text=f"{hand_key}  {action} {note}", fg=color, bg=bg)
+            pos = info.get("position", "?")
+            facing_tag = " vs raise" if info.get("facing_bet") else ""
+            self.rec_label.config(text=f"{action}  {hand_key}  [{pos}]{facing_tag}", fg=color, bg=bg)
             self.equity_label.config(text=f"Equity: {eq:.0%}")
             self.probs_label.config(text="")
         else:
@@ -1334,13 +1336,6 @@ class Advisor:
                             gap = top_matches[0][0] - top_matches[1][0]
                             if gap < 0.05 and best_score < 0.8:
                                 # Ambiguous — fall through to card_id
-                                if hasattr(self, 'incidents'):
-                                    self.incidents.log(
-                                        "CARD_MISREAD",
-                                        f"Ambiguous: {top_matches[0][1]}({top_matches[0][0]:.2f}) vs {top_matches[1][1]}({top_matches[1][0]:.2f})",
-                                        component="card_id", severity="P2",
-                                        context={"top2": [(s, l) for s, l in top_matches[:3]]}
-                                    )
                                 best_score = 0.3  # force fallback
 
                 # Low score fallback: corner-based detection
@@ -1396,8 +1391,8 @@ class Advisor:
 
         if elements is not None:
             # YOLO path (fast) — with fallback for missed detections
-            hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))
-            board_cards = self._identify_cards(table_img, elements.get("board_card", []))
+            hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]
+            board_cards = self._identify_cards(table_img, elements.get("board_card", []))[:5]
             hero_turn = len(elements.get("action_button", [])) > 0
 
             # Fallback: if YOLO missed hero cards, try color-based detection
@@ -1414,23 +1409,24 @@ class Advisor:
                     pass
 
             # Detect action buttons by looking for red/green button colors
+            # Scan bottom 50% of table image — PS portrait layout puts buttons higher
             facing_bet = False
             h, w = table_img.shape[:2]
-            bottom = table_img[int(h * 0.85):, :]
-            hsv_bottom = cv2.cvtColor(bottom, cv2.COLOR_BGR2HSV)
-            # Red button (Fold) — present when facing a bet/raise
-            red1 = cv2.inRange(hsv_bottom, np.array([0, 80, 80]), np.array([10, 255, 255]))
-            red2 = cv2.inRange(hsv_bottom, np.array([160, 80, 80]), np.array([180, 255, 255]))
+            btn_area = table_img[int(h * 0.50):, :]
+            hsv_btn = cv2.cvtColor(btn_area, cv2.COLOR_BGR2HSV)
+            # Red button (Fold) — wider thresholds for PS browser theme
+            red1 = cv2.inRange(hsv_btn, np.array([0, 50, 50]), np.array([15, 255, 255]))
+            red2 = cv2.inRange(hsv_btn, np.array([155, 50, 50]), np.array([180, 255, 255]))
             # Green button (Check/Call)
-            green = cv2.inRange(hsv_bottom, np.array([35, 80, 80]), np.array([85, 255, 255]))
+            green = cv2.inRange(hsv_btn, np.array([30, 50, 50]), np.array([90, 255, 255]))
             red_px = cv2.countNonZero(red1) + cv2.countNonZero(red2)
             green_px = cv2.countNonZero(green)
-            if red_px > 200 or green_px > 200:
+            if red_px > 500 or green_px > 500:
                 if not hero_turn:
                     hero_turn = True
                 # Red button = Fold = facing a bet/raise
                 # Green only (no red) = Check available = not facing a bet
-                facing_bet = red_px > 200
+                facing_bet = red_px > 500
 
             # OCR: pot, player names/stacks, bet amounts, action buttons
             pot = None
@@ -1682,6 +1678,7 @@ class Advisor:
             from preflop_chart import preflop_advice
             pf = preflop_advice(hero[0], hero[1], pos_6max, facing_raise=facing_bet)
             info["preflop"] = pf
+            info["facing_bet"] = facing_bet
 
             if self.debug:
                 print(f"[preflop] {pf['hand_key']} {pos_6max} facing={facing_bet} -> {pf['action']} {pf['note']}")
@@ -1745,22 +1742,27 @@ class Advisor:
 
     def _log_recommendation(self, hero, board, state, rec):
         """Log recommendation to file for post-session review."""
-        import time
-        log_path = os.path.join(os.path.dirname(__file__), "data", "advisor_log.jsonl")
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        entry = {
-            "timestamp": time.time(),
-            "time": time.strftime("%H:%M:%S"),
-            "hero": hero,
-            "board": board,
-            "phase": "PREFLOP" if not board else ("FLOP" if len(board) == 3 else ("TURN" if len(board) == 4 else "RIVER")),
-            "recommended_action": rec.get("action", ""),
-            "action_probs": {k: round(v, 3) for k, v in rec.get("probs", {}).items() if v > 0.01},
-            "equity": rec.get("equity", 0),
-            "bucket": rec.get("bucket", 0),
-        }
-        with open(log_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        try:
+            import time
+            log_path = os.path.join(os.path.dirname(__file__), "data", "advisor_log.jsonl")
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            phase = "PREFLOP" if not board else ("FLOP" if len(board) == 3 else ("TURN" if len(board) == 4 else "RIVER"))
+            pf = rec.get("preflop", {})
+            entry = {
+                "timestamp": time.time(),
+                "time": time.strftime("%H:%M:%S"),
+                "hero": hero,
+                "board": board,
+                "phase": phase,
+                "action": pf.get("action", "") if phase == "PREFLOP" else "",
+                "hand_key": pf.get("hand_key", ""),
+                "equity": round(float(rec.get("equity", 0)), 4),
+                "position": rec.get("position", ""),
+            }
+            with open(log_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass  # never crash the main loop for logging
 
     def _print_recommendation(self, state, info):
         """Print hand info to terminal."""
