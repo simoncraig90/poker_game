@@ -1492,12 +1492,12 @@ class Advisor:
 
         if elements is not None:
             # YOLO path (fast) — with fallback for missed detections
-            # Card identification: CNN (trained on PS templates)
+            # Card identification: CNN with overlap-safe hero detection
             try:
                 if not hasattr(self, '_card_cnn'):
                     from card_cnn_detect import CardCNNDetector
                     self._card_cnn = CardCNNDetector()
-                hero_cards = self._card_cnn.identify_cards(table_img, elements.get("hero_card", [])[:2])
+                hero_cards = self._card_cnn.identify_hero_from_table(table_img, elements.get("hero_card", [])[:2])
                 board_cards = self._card_cnn.identify_cards(table_img, elements.get("board_card", [])[:5])
             except Exception:
                 hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]

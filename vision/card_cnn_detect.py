@@ -185,9 +185,65 @@ class CardCNNDetector:
 
             return label, cnn_conf
 
+    def identify_hero_from_table(self, table_img, card_boxes):
+        """Identify hero cards using fixed crop positions to avoid overlap.
+        YOLO tells us WHERE the cards are, but we crop each card individually
+        using only the left portion of each YOLO box (where rank+suit are)."""
+        if not card_boxes or len(card_boxes) < 2:
+            return self.identify_cards(table_img, card_boxes)
+
+        sorted_boxes = sorted(card_boxes, key=lambda c: c["x"])
+        h, w = table_img.shape[:2]
+
+        results = []
+        colors = []
+
+        for i, card in enumerate(sorted_boxes[:2]):
+            x1 = max(0, card["x"] - 2)
+            y1 = max(0, card["y"] - 2)
+            # CRITICAL: only crop up to 40% of box width to avoid overlap
+            card_w = card["w"]
+            x2 = min(w, x1 + int(card_w * 0.40))
+            y2 = min(h, card["y"] + card["h"] + 2)
+            narrow_crop = table_img[y1:y2, x1:x2]
+
+            if narrow_crop.size == 0 or narrow_crop.shape[1] < 10:
+                continue
+
+            # CNN on the narrow crop for rank
+            ch, cw = narrow_crop.shape[:2]
+            corner = narrow_crop[0:int(ch * 0.50), :]
+            corner_resized = cv2.resize(corner, (CORNER_W, CORNER_H))
+            tensor = torch.from_numpy(corner_resized).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+
+            with torch.no_grad():
+                logits = self.model(tensor)
+                probs = torch.softmax(logits, dim=1)
+                conf, idx = probs.max(1)
+                rank = self.idx_to_card[idx.item()][0]
+
+            # Color from this narrow crop's suit pip area (no overlap possible)
+            pip_area = narrow_crop[int(ch * 0.28):int(ch * 0.50), :]
+            hsv = cv2.cvtColor(pip_area, cv2.COLOR_BGR2HSV)
+            r1 = cv2.inRange(hsv, np.array([0, 50, 50]), np.array([20, 255, 255]))
+            r2 = cv2.inRange(hsv, np.array([150, 50, 50]), np.array([180, 255, 255]))
+            red_px = cv2.countNonZero(r1) + cv2.countNonZero(r2)
+            is_red = red_px > 20
+            colors.append(is_red)
+
+            suit = 'h' if is_red else 's'
+            results.append(f"{rank}{suit}")
+
+        # Fix suited: if both same color, ensure same suit character
+        if len(results) == 2 and len(colors) == 2:
+            if colors[0] == colors[1]:
+                s = 'h' if colors[0] else 's'
+                results = [results[0][0] + s, results[1][0] + s]
+
+        return results
+
     def identify_cards(self, table_img, card_boxes):
         """Identify multiple cards from YOLO detections."""
-        # Sort by x to handle overlap correctly
         sorted_boxes = sorted(card_boxes, key=lambda c: c["x"])
         colors = []  # track red/black for each card
         results = []
