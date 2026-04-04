@@ -225,16 +225,16 @@
   }
   #action-bar button:disabled { display: none; }
   /* PS colors: Fold=red, Check/Call=dark green, Bet/Raise=red */
-  #fold-btn { background: linear-gradient(180deg, #c0392b, #962d22); color: #fff; }
-  #fold-btn:hover:not(:disabled) { background: linear-gradient(180deg, #d44637, #c0392b); }
-  #check-btn { background: linear-gradient(180deg, #1e6b3a, #145228); color: #fff; }
-  #check-btn:hover:not(:disabled) { background: linear-gradient(180deg, #27ae60, #1e6b3a); }
-  #call-btn { background: linear-gradient(180deg, #1e6b3a, #145228); color: #fff; }
-  #call-btn:hover:not(:disabled) { background: linear-gradient(180deg, #27ae60, #1e6b3a); }
-  #bet-btn { background: linear-gradient(180deg, #c0392b, #962d22); color: #fff; }
-  #bet-btn:hover:not(:disabled) { background: linear-gradient(180deg, #d44637, #c0392b); }
-  #raise-btn { background: linear-gradient(180deg, #c0392b, #962d22); color: #fff; }
-  #raise-btn:hover:not(:disabled) { background: linear-gradient(180deg, #d44637, #c0392b); }
+  #fold-btn { background: linear-gradient(180deg, #c42020, #a51818); color: #fff; }
+  #fold-btn:hover:not(:disabled) { background: #cc2222; }
+  #check-btn { background: linear-gradient(180deg, #305f3e, #224d30); color: #fff; }
+  #check-btn:hover:not(:disabled) { background: #356e46; }
+  #call-btn { background: linear-gradient(180deg, #305f3e, #224d30); color: #fff; }
+  #call-btn:hover:not(:disabled) { background: #356e46; }
+  #bet-btn { background: linear-gradient(180deg, #c42020, #a51818); color: #fff; }
+  #bet-btn:hover:not(:disabled) { background: #cc2222; }
+  #raise-btn { background: linear-gradient(180deg, #c42020, #a51818); color: #fff; }
+  #raise-btn:hover:not(:disabled) { background: #cc2222; }
   #start-btn { display: none !important; }
   #bet-input { width: 50px; padding: 6px 4px; border: 1px solid #555; border-radius: 4px; background: #222; color: #ffd700; font-family: 'Roboto Condensed'; font-size: 13px; text-align: center; flex: 0 0 auto; display: none; }
   #bet-input.visible { display: none; /* hidden — PS shows amount on buttons */ }
@@ -243,7 +243,7 @@
   /* ── Auto-Action Checkboxes (PS-style) ── */
   #auto-actions {
     position: absolute; bottom: 8px; right: 8px; z-index: 22;
-    display: flex; gap: 8px; align-items: center;
+    display: none; /* hidden to match PS portrait layout */
   }
   #auto-actions label {
     font-size: 11px; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 3px;
@@ -253,14 +253,12 @@
   #auto-actions input[type="checkbox"] { accent-color: #4ecca3; }
 
   /* ── Chat & Status (PS-style bottom area) ── */
-  #bottom-area { position: absolute; bottom: 4px; left: 0; right: 0; z-index: 19; pointer-events: none; }
-  #game-status { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; color: #ccc; pointer-events: none; }
+  #bottom-area { display: none; }
+  #game-status { display: none; }
   #game-status .status-icon { font-size: 14px; }
-  #lobby-chevron { position: absolute; bottom: 8px; left: 8px; font-size: 24px; color: #aaa; cursor: pointer; z-index: 22; pointer-events: auto; }
-  #lobby-chevron:hover { color: #fff; }
-  #chat-area { position: absolute; bottom: 34px; left: 0; right: 0; z-index: 18; padding: 0 8px 4px; pointer-events: none; }
-  #chat-input { width: 100%; padding: 6px 10px; border: 1px solid #444; border-radius: 4px; background: rgba(30,30,30,0.9); color: #ccc; font-family: 'Roboto Condensed'; font-size: 12px; pointer-events: auto; }
-  #chat-input::placeholder { color: #666; }
+  #lobby-chevron { display: none; }
+  #chat-area { display: none; /* hidden to match PS portrait */ }
+  #chat-input { display: none; }
 
   /* ── Bet Sizing Panel — PS-style right-side vertical ── */
   #sizing-bar {
@@ -350,7 +348,7 @@
 </div>
 <div id="main">
   <div id="table-area">
-    <div id="bb-hud" style="position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:'Roboto Condensed',sans-serif;font-size:12px;color:#4caf50;z-index:20;opacity:0.85;letter-spacing:0.5px">+0.0 bb  (+0.0 bb/hr)  0 hands</div>
+    <div id="bb-hud" style="display:none">+0.0 bb  (+0.0 bb/hr)  0 hands</div>
     <div id="error-toast"></div>
     <div id="recovery-banner"></div>
     <div id="table-felt">
