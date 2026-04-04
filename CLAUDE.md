@@ -7,20 +7,26 @@ Poker research platform with two goals: (1) real-time play assistance via CFR st
 ## Current State
 
 - Engine phases 1-8 complete (692 tests passing)
-- Vision pipeline working: YOLO 98.8% mAP50, card identification via screen-card template matching
+- Vision pipeline working: YOLO 98.8% mAP50, **CNN card detection 100% accurate on PS**
+- **Card detection pipeline**: CNN rank (trained on 52 PS templates) + contour shape suit analysis + color detection. 100% exact on all 4 test screenshots.
+- **Lab client uses PS-identical card sprites** — one detection pipeline for both
 - **6-max CFR strategies trained**:
   - 10-bucket: 3M info sets, position-aware (BTN/SB/BB/UTG/MP/CO), 258MB
   - **50-bucket: 1.3M entries, 10M iterations, 138MB** (trained on Proxmox, 8 threads)
-- **Real-time subgame solver**: Pluribus-style, 650-1000 CFR iterations per decision in 2s
+- **Equity neural net**: 500k Monte Carlo samples, ±3.4% MAE, board-texture aware
+- **Real-time advisor overlay**: preflop chart + equity display + pot odds + board danger warnings. No solver — simple rules based on equity thresholds.
+- **Preflop chart**: Standard 6-max TAG ranges by position (EP/MP/CO/BTN/SB/BB), facing-raise ranges, BB check detection
+- **Board danger assessment**: detects straights, paired boards, flush draws. Suppresses raise with weak hands on dangerous boards.
 - **Player profiling**: population-based clustering (FISH/NIT/TAG/LAG/WHALE) with strategy adjustments
 - Heads-up CFR also available: 860k info sets, 50 buckets, position-aware (IP/OOP)
 - **Bot evaluation framework**: round-robin with ELO, 95% CI, 20k hands (scripts/eval-bots.js)
-- **Anti-bot detection system**: feature extraction for bet sizing precision, session stability, tilt resistance, bot scoring (scripts/bot-detector.js)
-- **PS-like browser client**: 91.8% visual match to PokerStars, bet sizing slider, turn timer, auto-actions
+- **Anti-bot detection system**: feature extraction + humanized bot variants (TAG-H, FISH-H, LAG-H, CFR50-H)
+- **PS-like browser client**: PS-identical card rendering, bet sizing slider, turn timer, auto-actions
 - **Multi-table support**: server routes by `?table=N`, TableManager with per-table sessions/auto-deal
 - **Screen-reading bot**: pure pixel detection + click automation, plays multiple tables simultaneously
 - **Humanness scoring**: 4-dimension framework (timing/motor/behavioral/strategic), 0-100 scale
-- **Advisor overlay**: supports `--table N` for multi-table, runs independently per table with YOLO + solver
+- **Internet engine**: Per-user API key auth (admin/bot/spectator), WSS support, deploy script for VPS
+- **Incident tracking**: Automated RCA logging for crashes, misdetections, bad advice
 - Self-play at 42k hands/sec (TAG strategy, 6-max)
 - BB/hour tracking in bot-players, browser client, and advisor overlay
 
@@ -52,7 +58,30 @@ Poker research platform with two goals: (1) real-time play assistance via CFR st
 | `vision/data/` | Training data (rl_training_data.jsonl, hand_strength_data.jsonl) |
 | `vision/data/eval_results.json` | Latest bot evaluation results (rankings, ELO, CI) |
 | `vision/data/detection_profiles.json` | Bot detection feature profiles |
-| `vision/templates/screen_cards/` | 52 card templates captured from lab browser (hearts/clubs fixed) |
+| `vision/templates/ps_cards/` | **52 card templates captured from live PokerStars** (ground truth) |
+| `vision/templates/screen_cards/` | Legacy lab card templates (superseded by ps_cards) |
+| `vision/models/equity_model.pt` | Board-texture-aware equity NN (500k samples, ±3.4% MAE) |
+| `vision/models/card_cnn.pt` | CNN card identifier (52 classes, 97% accuracy) |
+| `vision/card_cnn_detect.py` | CNN rank + contour suit detection pipeline |
+| `vision/card_ocr.py` | OCR-based card reader (fallback) |
+| `vision/table_ocr.py` | OCR for pot, player names, bet amounts, action buttons |
+| `vision/preflop_chart.py` | 6-max preflop ranges by position |
+| `vision/incidents.py` | Automated incident + RCA tracking |
+| `vision/human_collector.py` | Records human play baseline during live PS sessions |
+| `vision/train_equity.py` | Train equity NN on Monte Carlo data |
+| `vision/train_card_cnn.py` | Train card CNN on PS templates |
+| `vision/capture_ps_templates.py` | Capture card templates from live PS |
+| `vision/test_overlay.py` | 24-test stress test suite for advisor |
+| `vision/test_equity.py` | Safety test against hands that cost money |
+| `scripts/generate-equity-data.js` | Monte Carlo equity data generator |
+| `scripts/review-session.js` | Flag bad advisor recommendations post-session |
+| `scripts/backtest-advisor.js` | Replay PS hands through preflop chart + equity model |
+| `scripts/parse-ps-session.js` | Parse PS hand history, extract stats |
+| `scripts/manage-keys.js` | CLI for API key management (add/list/revoke) |
+| `scripts/deploy.sh` | Deploy to VPS via rsync |
+| `scripts/test-card-detection.js` | 52-card detection accuracy test |
+| `src/server/auth.js` | Per-user API key auth (admin/bot/spectator roles) |
+| `hands/ps_session_20260404.txt` | PS hand history baseline (84 hands, -$10.80) |
 | `vision/captures/training/` | 621 labeled frames from live PokerStars sessions |
 | `vision/dataset/` | YOLO dataset (527 train, 94 val) |
 | `vision/runs/poker_lab/weights/best.pt` | Trained YOLO model |
@@ -102,9 +131,34 @@ node src/server/ws-server.js
 # Self-play (TAG strategy, 42k hands/sec)
 node scripts/self-play.js
 
-# Real-time advisor with subgame solver
+# Real-time advisor (preflop chart + equity + board danger)
 C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/advisor.py
 C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/advisor.py --debug
+
+# Stress test advisor (24 tests, must all pass before live play)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/test_overlay.py --headless
+
+# Test card detection accuracy
+node scripts/test-card-detection.js
+
+# Train equity model (run data gen first)
+node scripts/generate-equity-data.js --samples=500000
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/train_equity.py --epochs 50
+
+# Train card CNN
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/train_card_cnn.py --epochs 50
+
+# Capture PS card templates (run during live play)
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe vision/capture_ps_templates.py
+
+# Review session (parse advisor log for bad recommendations)
+node scripts/review-session.js
+
+# Backtest advisor against PS hand history
+node scripts/backtest-advisor.js hands/ps_session_20260404.txt
+
+# Parse PS hand history
+node scripts/parse-ps-session.js hands/ps_session_20260404.txt
 
 # Train 6-max CFR — 10 buckets on desktop (~6 min)
 node --max-old-space-size=10240 scripts/cfr/train-cfr.js --game sixmax --iterations 100000 --threads 1
