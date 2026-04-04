@@ -494,8 +494,8 @@ function cardSpritePos(card) {
 function cardHtml(card) {
   if (!card) return '<span class="card empty-slot"></span>';
   const pos = cardSpritePos(card);
-  // Board card display: match PS proportions
-  const displayW = 66, displayH = 93;
+  // Board card display
+  const displayW = 44, displayH = 62;
   const scaleX = displayW / CARD_W;
   const scaleY = displayH / CARD_H;
   const bgW = SPRITE_COLS * CARD_W * scaleX;
@@ -525,7 +525,7 @@ function seatCardHtml(card) {
 function heroCardHtml(card) {
   if (!card) return '';
   const pos = cardSpritePos(card);
-  const displayW = 139, displayH = 197; // Exact PS hero card pixel size
+  const displayW = 58, displayH = 82; // PS-proportional hero card
   const scaleX = displayW / CARD_W;
   const scaleY = displayH / CARD_H;
   const bgW = SPRITE_COLS * CARD_W * scaleX;

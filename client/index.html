@@ -34,11 +34,12 @@
   #recovery-banner { display: none !important; }
 
   /* ── TABLE — PS real asset ── */
+  /* Force portrait aspect ratio matching PS browser layout */
   #table-felt {
     position: relative;
-    /* Portrait table: sized to fill screen like PS */
-    height: 84vh;
-    width: calc(84vh * 0.60);
+    /* PS table aspect: ~0.55 width/height ratio in portrait */
+    height: min(88vh, 800px);
+    width: min(calc(88vh * 0.55), 440px);
     max-width: 94vw;
     overflow: visible;
     filter: drop-shadow(0 6px 24px rgba(0,0,0,0.7));
@@ -135,7 +136,7 @@
   .seat[data-seat="4"] { top: 20%; right: -6%; left: auto; transform: translate(0, -50%); }
   .seat[data-seat="1"] { top: 62%; left: -6%; transform: translate(0, -50%); }
   .seat[data-seat="5"] { top: 62%; right: -6%; left: auto; transform: translate(0, -50%); }
-  .seat[data-seat="0"] { top: 78%; bottom: auto; left: 50%; transform: translate(-50%, 0); }
+  .seat[data-seat="0"] { bottom: 4%; top: auto; left: 50%; transform: translate(-50%, 0); }
 
   /* ── CARDS (sprite-based) ── */
   .card {
@@ -166,17 +167,17 @@
   /* PS measurements: hero at x=23% y=71%, cards 13.9%w x 11.7%h of table */
   /* Card start gap: 4.5% of table width (27.5% - 23%) = 68% overlap */
   .hero-cards {
-    position: absolute; top: 71%; left: 23%; transform: translate(0, 0);
+    position: absolute; bottom: 16%; left: 25%; transform: translate(0, 0);
     display: flex; gap: 0px; z-index: 5;
   }
   .hero-cards .card.hero-card {
-    width: 139px; height: 197px;
-    background-size: calc(73px * 26 * 139 / 73) calc(102px * 2 * 197 / 102);
+    width: 58px; height: 82px;
+    background-size: calc(73px * 26 * 58 / 73) calc(102px * 2 * 82 / 102);
     border-radius: 5px;
     box-shadow: 2px 3px 10px rgba(0,0,0,0.7);
   }
   .hero-cards .card + .card {
-    margin-left: -95px; /* 68% overlap: 139 - (139 * 0.32) = -95 */
+    margin-left: -20px; /* PS-style overlap */
     position: relative;
     top: 3px;
   }
@@ -204,10 +205,9 @@
   }
 
   /* ── BOARD — positioned from PS screenshot measurements ── */
-  /* Board cards: PS board at center, ~12.5% wide x 10.4% tall per card */
   #board-area { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
-  #board { display: flex; gap: 3px; justify-content: center; min-height: 75px; position: relative; }
-  #board .card { width: 66px; height: 93px; background-size: calc(73px * 26 * 66 / 73) calc(102px * 2 * 93 / 102); border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  #board { display: flex; gap: 3px; justify-content: center; min-height: 60px; position: relative; }
+  #board .card { width: 44px; height: 62px; background-size: calc(73px * 26 * 44 / 73) calc(102px * 2 * 62 / 102); border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   /* Dark card slots on the felt — visible before cards are dealt */
   .card-slot { width: 48px; height: 67px; background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
   /* ── POT ── */
