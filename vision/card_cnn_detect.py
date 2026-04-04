@@ -222,16 +222,67 @@ class CardCNNDetector:
                 conf, idx = probs.max(1)
                 rank = self.idx_to_card[idx.item()][0]
 
-            # Color from this narrow crop's suit pip area (no overlap possible)
-            pip_area = narrow_crop[int(ch * 0.28):int(ch * 0.50), :]
-            hsv = cv2.cvtColor(pip_area, cv2.COLOR_BGR2HSV)
+            # Suit detection: use wider pip, cross-check with tighter pip
+            pip_wide = narrow_crop[int(ch * 0.28):int(ch * 0.45), :]
+            pip_tight = narrow_crop[int(ch * 0.32):int(ch * 0.40), int(cw*0.05):int(cw*0.70)]
+
+            def _pip_shape(pip_img):
+                pr = cv2.resize(pip_img, (40, 25))
+                g = cv2.cvtColor(pr, cv2.COLOR_BGR2GRAY)
+                _, m = cv2.threshold(g, 120, 255, cv2.THRESH_BINARY_INV)
+                cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if not cs: return 0.9, 0.6
+                c = max(cs, key=cv2.contourArea)
+                a = cv2.contourArea(c)
+                if a < 10: return 0.9, 0.6
+                ha = cv2.contourArea(cv2.convexHull(c))
+                p = cv2.arcLength(c, True)
+                return a/max(1,ha), 4*3.14159*a/max(1,p*p)
+
+            sol_w, circ_w = _pip_shape(pip_wide)
+            sol_t, circ_t = _pip_shape(pip_tight) if pip_tight.size > 0 else (sol_w, circ_w)
+
+            # If the two crops disagree on suit category, use tighter (less contamination)
+            def _suit_from_shape(sol, circ, is_r):
+                if is_r:
+                    return 'h' if sol < 0.96 else 'd'
+                else:
+                    return 'c' if sol < 0.82 and circ < 0.42 else 's'
+
+            pip_resized = cv2.resize(pip_wide, (40, 25))
+
+            # Color detection
+            hsv = cv2.cvtColor(pip_resized, cv2.COLOR_BGR2HSV)
             r1 = cv2.inRange(hsv, np.array([0, 50, 50]), np.array([20, 255, 255]))
             r2 = cv2.inRange(hsv, np.array([150, 50, 50]), np.array([180, 255, 255]))
             red_px = cv2.countNonZero(r1) + cv2.countNonZero(r2)
             is_red = red_px > 20
-            colors.append(is_red)
 
-            suit = 'h' if is_red else 's'
+            # Shape analysis
+            gray = cv2.cvtColor(pip_resized, cv2.COLOR_BGR2GRAY)
+            _, mask = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            sol, circ = 0.9, 0.6  # defaults
+            if contours:
+                c = max(contours, key=cv2.contourArea)
+                area = cv2.contourArea(c)
+                if area > 10:
+                    hull_area = cv2.contourArea(cv2.convexHull(c))
+                    peri = cv2.arcLength(c, True)
+                    sol = area / max(1, hull_area)
+                    circ = 4 * 3.14159 * area / max(1, peri * peri)
+
+            # Classify suit: use wide crop, but cross-check with tight when
+            # wide says "club" (which could be overlap contamination)
+            suit_w = _suit_from_shape(sol_w, circ_w, is_red)
+            suit_t = _suit_from_shape(sol_t, circ_t, is_red)
+            if not is_red and suit_w == 'c' and suit_t == 's':
+                # Wide says club but tight says spade — overlap contamination
+                suit = 's'
+            else:
+                suit = suit_w
+
+            colors.append(is_red)
             results.append(f"{rank}{suit}")
 
         # Fix suited: if both same color, ensure same suit character
