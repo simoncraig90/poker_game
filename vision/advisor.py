@@ -1104,40 +1104,54 @@ class OverlayWindow:
             self.equity_label.config(text=f"Equity: {eq:.0%}")
             self.probs_label.config(text="")
         else:
-            # Postflop: show equity + board danger + pot odds
+            # Postflop: clear action recommendation based on equity + danger + pot odds
             eq = info.get("equity", 0)
             danger = info.get("danger", {})
-            pot_odds = info.get("pot_odds", "")
-
-            # Equity color: green if strong, yellow if medium, red if weak
-            if eq >= 0.60:
-                eq_color = "#00e676"  # strong
-                bg = "#1a3a1e"
-                verdict = "STRONG"
-            elif eq >= 0.40:
-                eq_color = "#ffd740"  # medium
-                bg = "#3a3a1e"
-                verdict = "MEDIUM"
-            else:
-                eq_color = "#ef5350"  # weak
-                bg = "#3a1a1e"
-                verdict = "WEAK"
-
-            self.rec_label.config(text=f"Equity {eq:.0%}  {verdict}", fg=eq_color, bg=bg)
-
-            # Danger warnings
+            pot_odds_str = info.get("pot_odds", "")
+            facing = info.get("facing_bet", False)
+            suppress = danger.get("suppress_raise", False)
             warnings = danger.get("warnings", [])
-            if warnings:
-                warn_text = " ".join(warnings)
-                self.equity_label.config(text=f"Board: {warn_text}", fg="#ff9800")
-            else:
-                self.equity_label.config(text="Board: clean", fg="#888888")
 
-            # Pot odds line
-            if pot_odds:
-                self.probs_label.config(text=pot_odds)
+            # Decide action
+            if facing:
+                # Facing a bet — use pot odds if available
+                call_eq_needed = info.get("pot_odds_pct", 0.37)  # default ~37%
+                if eq >= 0.65 and not suppress:
+                    action = "RAISE"
+                    color = "#00e676"; bg = "#1a3a1e"
+                elif eq >= call_eq_needed:
+                    action = "CALL"
+                    color = "#42a5f5"; bg = "#1a2a3e"
+                else:
+                    action = "FOLD"
+                    color = "#ef5350"; bg = "#3a1a1e"
             else:
-                self.probs_label.config(text="")
+                # Not facing a bet — check or bet
+                if eq >= 0.60 and not suppress:
+                    action = "BET"
+                    color = "#00e676"; bg = "#1a3a1e"
+                elif eq >= 0.40:
+                    action = "CHECK"
+                    color = "#42a5f5"; bg = "#1a2a3e"
+                else:
+                    action = "CHECK"
+                    color = "#ffd740"; bg = "#3a3a1e"
+
+            warn_tag = ""
+            if warnings:
+                warn_tag = f"  {''.join(w[0] for w in warnings)}"  # first letter of each warning
+
+            self.rec_label.config(text=f"{action}  eq:{eq:.0%}{warn_tag}", fg=color, bg=bg)
+
+            # Second line: pot odds or board info
+            if pot_odds_str:
+                self.equity_label.config(text=pot_odds_str, fg="#aaaaaa")
+            elif warnings:
+                self.equity_label.config(text=" ".join(warnings), fg="#ff9800")
+            else:
+                self.equity_label.config(text=f"Equity: {eq:.0%}", fg="#888888")
+
+            self.probs_label.config(text="")
 
     def update(self):
         """Process pending Tk events (call from main loop)."""
@@ -1677,21 +1691,23 @@ class Advisor:
             info["danger"] = danger
 
             # Pot odds calculation — use OCR call amount if available
+            info["facing_bet"] = facing_bet
             call_amount = state.get("call_amount")
             if facing_bet and pot and pot > 0:
                 if call_amount and call_amount > 0:
-                    # Exact pot odds from OCR
                     pot_odds = call_amount / (pot + call_amount)
-                    ev_tag = "+EV call" if eq >= pot_odds else "-EV call"
-                    info["pot_odds"] = f"Call ${call_amount:.2f} | Odds {pot_odds:.0%} | Eq {eq:.0%} | {ev_tag}"
+                    info["pot_odds_pct"] = pot_odds
+                    ev_tag = "+EV" if eq >= pot_odds else "-EV"
+                    info["pot_odds"] = f"Call ${call_amount:.2f} | Need {pot_odds:.0%} | {ev_tag}"
                 else:
-                    # Estimate
                     est_call = pot * 0.6
                     pot_odds = est_call / (pot + est_call)
-                    ev_tag = "+EV call" if eq >= pot_odds else "-EV call"
-                    info["pot_odds"] = f"Odds ~{pot_odds:.0%} | Eq {eq:.0%} | {ev_tag}"
+                    info["pot_odds_pct"] = pot_odds
+                    ev_tag = "+EV" if eq >= pot_odds else "-EV"
+                    info["pot_odds"] = f"Need ~{pot_odds:.0%} | {ev_tag}"
             else:
                 info["pot_odds"] = ""
+                info["pot_odds_pct"] = 0.37
 
             # Player info for overlay
             players = state.get("players", [])
