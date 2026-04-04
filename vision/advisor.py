@@ -1416,8 +1416,14 @@ class Advisor:
 
         if elements is not None:
             # YOLO path (fast) — with fallback for missed detections
-            hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]
-            board_cards = self._identify_cards(table_img, elements.get("board_card", []))[:5]
+            # Card identification: try OCR first (theme-independent), fall back to templates
+            try:
+                from card_ocr import identify_cards_ocr
+                hero_cards = identify_cards_ocr(table_img, elements.get("hero_card", [])[:2])
+                board_cards = identify_cards_ocr(table_img, elements.get("board_card", [])[:5])
+            except Exception:
+                hero_cards = self._identify_cards(table_img, elements.get("hero_card", []))[:2]
+                board_cards = self._identify_cards(table_img, elements.get("board_card", []))[:5]
             hero_turn = len(elements.get("action_button", [])) > 0
 
             # Fallback: if YOLO missed hero cards, try color-based detection
