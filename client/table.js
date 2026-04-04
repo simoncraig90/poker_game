@@ -525,7 +525,7 @@ function seatCardHtml(card) {
 function heroCardHtml(card) {
   if (!card) return '';
   const pos = cardSpritePos(card);
-  const displayW = 76, displayH = 106; // Match PS hero card proportions
+  const displayW = 139, displayH = 197; // Exact PS hero card pixel size
   const scaleX = displayW / CARD_W;
   const scaleY = displayH / CARD_H;
   const bgW = SPRITE_COLS * CARD_W * scaleX;

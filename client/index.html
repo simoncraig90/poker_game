@@ -135,7 +135,7 @@
   .seat[data-seat="4"] { top: 20%; right: -6%; left: auto; transform: translate(0, -50%); }
   .seat[data-seat="1"] { top: 62%; left: -6%; transform: translate(0, -50%); }
   .seat[data-seat="5"] { top: 62%; right: -6%; left: auto; transform: translate(0, -50%); }
-  .seat[data-seat="0"] { bottom: 8%; top: auto; left: 50%; transform: translate(-50%, 0); }
+  .seat[data-seat="0"] { top: 78%; bottom: auto; left: 50%; transform: translate(-50%, 0); }
 
   /* ── CARDS (sprite-based) ── */
   .card {
@@ -166,17 +166,17 @@
   /* PS measurements: hero at x=23% y=71%, cards 13.9%w x 11.7%h of table */
   /* Card start gap: 4.5% of table width (27.5% - 23%) = 68% overlap */
   .hero-cards {
-    position: absolute; bottom: 17%; left: 20%; transform: translate(0, 0);
+    position: absolute; top: 71%; left: 23%; transform: translate(0, 0);
     display: flex; gap: 0px; z-index: 5;
   }
   .hero-cards .card.hero-card {
-    width: 76px; height: 106px;
-    background-size: calc(73px * 26 * 76 / 73) calc(102px * 2 * 106 / 102);
+    width: 139px; height: 197px;
+    background-size: calc(73px * 26 * 139 / 73) calc(102px * 2 * 197 / 102);
     border-radius: 5px;
     box-shadow: 2px 3px 10px rgba(0,0,0,0.7);
   }
   .hero-cards .card + .card {
-    margin-left: -52px; /* 68% overlap: 76 - (76 * 0.32) = -52 */
+    margin-left: -95px; /* 68% overlap: 139 - (139 * 0.32) = -95 */
     position: relative;
     top: 3px;
   }
