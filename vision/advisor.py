@@ -1418,23 +1418,26 @@ class Advisor:
                 # Green only (no red) = Check available = not facing a bet
                 facing_bet = red_px > 200
 
-            # Try to read pot from pot_text region
+            # OCR: pot, player names/stacks, bet amounts, action buttons
             pot = None
-            if elements.get("pot_text"):
-                try:
-                    from detect import read_text_regions, find_pot
-                    pt = elements["pot_text"][0]
-                    h, w = table_img.shape[:2]
-                    crop = table_img[
-                        max(0, pt["y"] - 2):min(h, pt["y"] + pt["h"] + 2),
-                        max(0, pt["x"] - 2):min(w, pt["x"] + pt["w"] + 2),
-                    ]
-                    texts = read_text_regions(crop)
-                    pot_info = find_pot(texts, pt["h"])
-                    if pot_info and "amount" in pot_info:
-                        pot = pot_info["amount"]
-                except Exception:
-                    pass
+            players = []
+            bets = []
+            call_amount = None
+            try:
+                if not hasattr(self, '_table_ocr'):
+                    from table_ocr import TableOCR
+                    self._table_ocr = TableOCR()
+                ocr_info = self._table_ocr.read_table(table_img, elements)
+                pot = ocr_info.get("pot")
+                players = ocr_info.get("players", [])
+                bets = ocr_info.get("bets", [])
+                # Extract call amount from action buttons
+                for btn in ocr_info.get("action_buttons", []):
+                    if btn.get("action") == "CALL" and btn.get("amount"):
+                        call_amount = btn["amount"]
+            except Exception as e:
+                if self.debug:
+                    print(f"[OCR] error: {e}")
 
             # Count active players (player panels + card backs = opponents)
             num_opp = max(1, len(elements.get("card_back", [])))
@@ -1483,6 +1486,9 @@ class Advisor:
                 "pot": pot,
                 "num_opponents": num_opp,
                 "position": position,
+                "players": players,
+                "bets": bets,
+                "call_amount": call_amount,
             }
         else:
             # OCR fallback
@@ -1670,21 +1676,34 @@ class Advisor:
             danger = assess_board_danger(hero, board)
             info["danger"] = danger
 
-            # Pot odds calculation
+            # Pot odds calculation — use OCR call amount if available
+            call_amount = state.get("call_amount")
             if facing_bet and pot and pot > 0:
-                # Estimate call amount as ~50-75% of pot (can't read exact bet from screen)
-                est_call = pot * 0.6
-                pot_odds = est_call / (pot + est_call)
-                if eq >= pot_odds:
-                    info["pot_odds"] = f"Pot odds ~{pot_odds:.0%} | Equity {eq:.0%} | +EV call"
+                if call_amount and call_amount > 0:
+                    # Exact pot odds from OCR
+                    pot_odds = call_amount / (pot + call_amount)
+                    ev_tag = "+EV call" if eq >= pot_odds else "-EV call"
+                    info["pot_odds"] = f"Call ${call_amount:.2f} | Odds {pot_odds:.0%} | Eq {eq:.0%} | {ev_tag}"
                 else:
-                    info["pot_odds"] = f"Pot odds ~{pot_odds:.0%} | Equity {eq:.0%} | -EV call"
+                    # Estimate
+                    est_call = pot * 0.6
+                    pot_odds = est_call / (pot + est_call)
+                    ev_tag = "+EV call" if eq >= pot_odds else "-EV call"
+                    info["pot_odds"] = f"Odds ~{pot_odds:.0%} | Eq {eq:.0%} | {ev_tag}"
             else:
                 info["pot_odds"] = ""
 
+            # Player info for overlay
+            players = state.get("players", [])
+            if players:
+                info["players"] = players
+
             if self.debug:
                 warn_str = " ".join(danger.get("warnings", [])) or "clean"
-                print(f"[postflop] eq={eq:.0%} board={warn_str} cat={danger.get('category', '?')}")
+                call_str = f" call=${call_amount:.2f}" if call_amount else ""
+                pot_str = f" pot=${pot:.2f}" if pot else ""
+                players_str = f" players={[p.get('name','?') for p in players]}" if players else ""
+                print(f"[postflop] eq={eq:.0%} board={warn_str} cat={danger.get('category', '?')}{pot_str}{call_str}{players_str}")
 
         # For backward compatibility with _log_recommendation
         info["action_probs"] = {}
