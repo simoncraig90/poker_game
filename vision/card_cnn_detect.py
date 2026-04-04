@@ -272,15 +272,8 @@ class CardCNNDetector:
                     sol = area / max(1, hull_area)
                     circ = 4 * 3.14159 * area / max(1, peri * peri)
 
-            # Classify suit: use wide crop, but cross-check with tight when
-            # wide says "club" (which could be overlap contamination)
-            suit_w = _suit_from_shape(sol_w, circ_w, is_red)
-            suit_t = _suit_from_shape(sol_t, circ_t, is_red)
-            if not is_red and suit_w == 'c' and suit_t == 's':
-                # Wide says club but tight says spade — overlap contamination
-                suit = 's'
-            else:
-                suit = suit_w
+            # Classify suit from wide pip (more reliable shape)
+            suit = _suit_from_shape(sol_w, circ_w, is_red)
 
             colors.append(is_red)
             results.append(f"{rank}{suit}")
