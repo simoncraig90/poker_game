@@ -1227,6 +1227,10 @@ class Advisor:
         self.hands_seen = 0
         self.hand_results = []  # list of (timestamp, hero_cards, action, result)
 
+        # Incident tracking
+        from incidents import IncidentTracker
+        self.incidents = IncidentTracker()
+
     def _detect_with_yolo(self, table_img):
         """Run YOLO detection on a table image."""
         if self.yolo_detect is None:
@@ -1819,6 +1823,7 @@ class Advisor:
                 print("\n\nAdvisor stopped.")
                 break
             except Exception as e:
+                self.incidents.log_crash(e, component="advisor_loop")
                 if self.debug:
                     import traceback
                     traceback.print_exc()
