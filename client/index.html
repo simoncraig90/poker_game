@@ -351,6 +351,7 @@
     <div id="bb-hud" style="display:none">+0.0 bb  (+0.0 bb/hr)  0 hands</div>
     <div id="error-toast"></div>
     <div id="recovery-banner"></div>
+    <canvas id="table-canvas" style="position:absolute;z-index:5;border-radius:0;display:none"></canvas>
     <div id="table-felt">
       <div id="felt-info"></div>
       <div id="board-area">
@@ -402,6 +403,7 @@
 </div>
 <div id="game-status"><span class="status-icon">&#x2764;</span><span id="status-text">Wait for Big Blind</span></div>
 <div id="chat-area"><input id="chat-input" type="text" placeholder="Type here to chat..." onkeydown="if(event.key==='Enter'){event.preventDefault();}"></div>
-<script src="table.js?v=2"></script>
+<script src="canvas-renderer.js"></script>
+<script src="table.js?v=3"></script>
 </body>
 </html>

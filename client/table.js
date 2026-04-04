@@ -509,8 +509,27 @@ function heroCardHtml(card) {
   return `<span class="card hero-card" style="width:67px;height:95px;background:none"><img src="${cardImgSrc(card)}" style="width:67px;height:95px;display:block;border-radius:5px"></span>`;
 }
 
+// Canvas mode: use ?canvas=1 in URL to enable
+const useCanvas = new URLSearchParams(window.location.search).has('canvas');
+let canvasInitialized = false;
+
 function render() {
   if (!state) return;
+
+  // Canvas rendering mode
+  if (useCanvas && typeof CanvasRenderer !== 'undefined') {
+    if (!canvasInitialized) {
+      const cvs = document.getElementById('table-canvas');
+      cvs.style.display = 'block';
+      document.getElementById('table-felt').style.display = 'none';
+      document.getElementById('action-bar').style.display = 'none';
+      CanvasRenderer.init(cvs);
+      canvasInitialized = true;
+    }
+    CanvasRenderer.render(state);
+    updateActionButtons(); // still need keyboard shortcuts etc
+    return;
+  }
 
   const hand = state.hand;
   const handActive = hand && hand.phase !== "COMPLETE";

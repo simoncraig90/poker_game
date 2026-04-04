@@ -118,7 +118,7 @@ const fs = require('fs');
     await Network.setCacheDisabled({ cacheDisabled: true });
     await Emulation.setDeviceMetricsOverride({ width: 500, height: 900, deviceScaleFactor: 1, mobile: false });
     await Page.enable();
-    await Page.navigate({ url: 'http://localhost:9100' });
+    await Page.navigate({ url: 'http://localhost:9100?canvas=1' });
     await Page.loadEventFired();
     await new Promise(r => setTimeout(r, 5000));
     // Inject board + action state
