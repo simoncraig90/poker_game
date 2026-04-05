@@ -250,7 +250,8 @@ function updateTiltState(strategyState, profitBB) {
   strategyState.tiltLevel = Math.min(1, Math.max(0, -recentSum / 30 + lossStreak * 0.1));
 }
 
-// Screen-reading bot strategy — mimics universal_bot.py decision logic
+// Screen-reading bot strategy v2 — humanized decision logic
+// Fixes: varied bet sizing, higher VPIP, tilt simulation, bet rounding
 function screenbotStrategy(seat, legal, state, rng) {
   const { actions, callAmount, minBet, minRaise, maxRaise } = legal;
   const hand = state.hand;
@@ -260,38 +261,91 @@ function screenbotStrategy(seat, legal, state, rng) {
   const cards = seatState.holeCards || [];
   const phase = hand.phase;
   const potSize = hand.pot || 0;
+  const stack = seatState.stack || 1000;
   const facingBet = actions.includes(ACTION.CALL);
 
-  // Preflop: simple rank-based (mimics preflop chart with limited card reading)
+  // Tilt state (tracked externally via humanized wrapper, but add baseline here)
+  const tiltBonus = (rng() < 0.08) ? 0.15 : 0; // 8% chance of "tilty" play
+
+  // --- BET SIZING: pick from weighted pool ---
+  function pickBetSize() {
+    const r = rng();
+    let amount;
+    if (r < 0.30)      amount = Math.floor(potSize * 0.50);  // half pot (30%)
+    else if (r < 0.60) amount = Math.floor(potSize * 0.66);  // 2/3 pot (30%)
+    else if (r < 0.85) amount = Math.floor(potSize * 1.0);   // pot (25%)
+    else                amount = Math.floor(potSize * 1.5);   // overbet (15%)
+
+    // Add noise ±10%
+    const noise = 1.0 + (rng() - 0.5) * 0.20;
+    amount = Math.floor(amount * noise);
+
+    // Round to nearest 5 cents (like humans)
+    amount = Math.round(amount / 5) * 5;
+
+    // Clamp to legal range
+    return Math.max(minRaise || minBet || amount, Math.min(amount, maxRaise || stack));
+  }
+
+  // Preflop
   if (phase === PHASE.PREFLOP) {
     const strength = evaluateHandStrength(cards, [], phase);
-    // Bot can only see 1 of 2 cards sometimes — be more conservative
-    const threshold = 0.40; // fold more than TAG
-    if (strength > 0.7 && actions.includes(ACTION.RAISE))
-      return { action: ACTION.RAISE, amount: minRaise }; // always min-raise (no sizing control)
+    // Higher VPIP: lower threshold from 0.40 to 0.28 + tilt
+    const threshold = 0.28 - tiltBonus;
+
+    if (strength > 0.65 && actions.includes(ACTION.RAISE)) {
+      // Varied preflop raise sizing: 2.5-3.5x BB
+      const bbSize = 10; // cents
+      const multiplier = 2.5 + rng() * 1.0;
+      let raiseAmt = Math.floor(bbSize * multiplier);
+      raiseAmt = Math.round(raiseAmt / 5) * 5;
+      raiseAmt = Math.max(minRaise, Math.min(raiseAmt, maxRaise));
+      return { action: ACTION.RAISE, amount: raiseAmt };
+    }
     if (strength > threshold && facingBet && actions.includes(ACTION.CALL))
       return { action: ACTION.CALL };
     if (strength > threshold && actions.includes(ACTION.CHECK))
       return { action: ACTION.CHECK };
+    // Occasional speculative call with very weak hands (2% — curiosity)
+    if (rng() < 0.02 && facingBet && actions.includes(ACTION.CALL))
+      return { action: ACTION.CALL };
     return { action: ACTION.FOLD };
   }
 
-  // Postflop: equity-based check/call/fold (no bet sizing)
+  // Postflop: equity-based with varied sizing
   const strength = evaluateHandStrength(cards, hand.board || [], phase);
   const potOdds = potSize > 0 && callAmount > 0 ? callAmount / (potSize + callAmount) : 0;
 
-  if (strength > 0.7) {
-    if (actions.includes(ACTION.BET)) return { action: ACTION.BET, amount: minBet };
-    if (actions.includes(ACTION.RAISE)) return { action: ACTION.RAISE, amount: minRaise };
+  if (strength > 0.70 + tiltBonus * 0.5) {
+    // Strong: bet/raise with varied sizing
+    if (actions.includes(ACTION.BET)) return { action: ACTION.BET, amount: pickBetSize() };
+    if (actions.includes(ACTION.RAISE)) return { action: ACTION.RAISE, amount: pickBetSize() };
     if (actions.includes(ACTION.CALL)) return { action: ACTION.CALL };
     return { action: ACTION.CHECK };
   }
-  if (strength > 0.5) {
-    if (!facingBet && actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
-    if (facingBet && strength > potOdds && actions.includes(ACTION.CALL)) return { action: ACTION.CALL };
+  if (strength > 0.45 - tiltBonus) {
+    // Medium: bet sometimes, check/call facing bets
+    if (!facingBet) {
+      // Bet for value ~40% of the time with medium hands
+      if (rng() < 0.40 && actions.includes(ACTION.BET))
+        return { action: ACTION.BET, amount: pickBetSize() };
+      return { action: ACTION.CHECK };
+    }
+    if (facingBet && strength > potOdds && actions.includes(ACTION.CALL))
+      return { action: ACTION.CALL };
     if (actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
     return { action: ACTION.FOLD };
   }
+  if (strength > 0.25) {
+    // Drawing: check, call with odds
+    if (actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
+    if (facingBet && strength > potOdds * 0.9 && actions.includes(ACTION.CALL))
+      return { action: ACTION.CALL };
+    return { action: ACTION.FOLD };
+  }
+  // Weak: occasional bluff (5%)
+  if (rng() < 0.05 && actions.includes(ACTION.BET))
+    return { action: ACTION.BET, amount: pickBetSize() };
   if (actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
   return { action: ACTION.FOLD };
 }
