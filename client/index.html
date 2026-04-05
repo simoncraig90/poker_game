@@ -42,8 +42,8 @@
   /* Landscape (default — width > height) */
   @media (min-aspect-ratio: 1/1) {
     #table-felt {
-      width: min(88vw, 780px);
-      height: min(calc(88vw * 0.52), 420px);
+      width: min(90.07221648058481vw, 780px);
+      height: min(calc(90.07221648058481vw * 0.5308500249762375), 420px);
       max-height: 78vh;
     }
   }
@@ -58,12 +58,12 @@
   /* Portrait table image — oversized to crop gray metallic edges */
   #table-felt::before {
     content: ''; position: absolute;
-    width: 108%; height: 92%;
+    width: 107.44213659283261%; height: 88.3007152607698%;
     left: -4%; top: -2%;
     background: url('ps_assets/table_portrait.png?v=7') center/100% 100% no-repeat;
     z-index: 0;
     pointer-events: none;
-    border-radius: 48% / 42%;
+    border-radius: 40.88942077093361% / 45.87156406216499%;
   }
   /* Darken felt edges to match PS gradient */
   #table-felt::after {
@@ -186,7 +186,7 @@
     display: flex; gap: 0px; z-index: 5;
   }
   @media (max-aspect-ratio: 1/1) {
-    .hero-cards { bottom: -5%; left: 28%; }
+    .hero-cards { bottom: -3.7996499755247806%; left: 29.220115425621433%; }
   }
   .hero-cards .card.hero-card {
     border-radius: 5px;
@@ -221,7 +221,7 @@
   }
 
   /* ── BOARD — positioned from PS screenshot measurements ── */
-  #board-area { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
+  #board-area { position: absolute; left: 50%; top: 46.60312191056321%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
   @media (max-aspect-ratio: 1/1) {
     #board-area { top: 35%; }
   }
@@ -236,7 +236,7 @@
 
   /* ── ACTION BAR — PS-style overlay on table ── */
   #action-bar {
-    position: absolute; left: 50%; top: 43%;
+    position: absolute; left: 50%; top: 42.261724425656496%;
     transform: translate(-50%, 0);
     display: flex; gap: 3px; z-index: 20;
     background: none; border: none; padding: 0;
