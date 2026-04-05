@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from yolo_detect import load_model, detect_elements
 from card_cnn_detect import CardCNNDetector
+from table_ocr import TableOCR
 
 
 class UniversalReader:
@@ -24,7 +25,8 @@ class UniversalReader:
     def __init__(self):
         self.yolo_model = load_model()
         self.card_detector = CardCNNDetector()
-        print("[UniversalReader] Loaded YOLO + card templates")
+        self.table_ocr = TableOCR()
+        print("[UniversalReader] Loaded YOLO + card templates + OCR")
 
     def find_tables(self, screen_img):
         """Find all poker table regions on screen. Color-agnostic — detects any large
@@ -121,6 +123,21 @@ class UniversalReader:
             db = dealer_buttons[0]
             dealer_pos = {"x": db["cx"], "y": db["cy"]}
 
+        # OCR: pot, stacks, bets, button amounts
+        ocr_info = self.table_ocr.read_table(table_img, elements)
+        pot = ocr_info.get("pot")
+        players = ocr_info.get("players", [])
+        bets = ocr_info.get("bets", [])
+        call_amount = None
+        for btn in ocr_info.get("action_buttons", []):
+            if btn.get("action") == "CALL" and btn.get("amount"):
+                call_amount = btn["amount"]
+
+        # Facing bet detection
+        facing_bet = call_amount is not None and call_amount > 0
+        if not facing_bet and bets:
+            facing_bet = True
+
         # Position detection from dealer button
         position = self._detect_position(elements, th, tw)
 
@@ -142,6 +159,11 @@ class UniversalReader:
             "dealer_pos": dealer_pos,
             "position": position,
             "phase": phase,
+            "pot": pot,
+            "players": players,
+            "bets": bets,
+            "call_amount": call_amount,
+            "facing_bet": facing_bet,
             "table_size": (tw, th),
         }
 
