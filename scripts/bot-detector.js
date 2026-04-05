@@ -250,16 +250,64 @@ function updateTiltState(strategyState, profitBB) {
   strategyState.tiltLevel = Math.min(1, Math.max(0, -recentSum / 30 + lossStreak * 0.1));
 }
 
+// Screen-reading bot strategy — mimics universal_bot.py decision logic
+function screenbotStrategy(seat, legal, state, rng) {
+  const { actions, callAmount, minBet, minRaise, maxRaise } = legal;
+  const hand = state.hand;
+  const seatState = state.table.seats[seat];
+  if (!actions.length) return null;
+  if (actions.length === 1) return { action: actions[0] };
+  const cards = seatState.holeCards || [];
+  const phase = hand.phase;
+  const potSize = hand.pot || 0;
+  const facingBet = actions.includes(ACTION.CALL);
+
+  // Preflop: simple rank-based (mimics preflop chart with limited card reading)
+  if (phase === PHASE.PREFLOP) {
+    const strength = evaluateHandStrength(cards, [], phase);
+    // Bot can only see 1 of 2 cards sometimes — be more conservative
+    const threshold = 0.40; // fold more than TAG
+    if (strength > 0.7 && actions.includes(ACTION.RAISE))
+      return { action: ACTION.RAISE, amount: minRaise }; // always min-raise (no sizing control)
+    if (strength > threshold && facingBet && actions.includes(ACTION.CALL))
+      return { action: ACTION.CALL };
+    if (strength > threshold && actions.includes(ACTION.CHECK))
+      return { action: ACTION.CHECK };
+    return { action: ACTION.FOLD };
+  }
+
+  // Postflop: equity-based check/call/fold (no bet sizing)
+  const strength = evaluateHandStrength(cards, hand.board || [], phase);
+  const potOdds = potSize > 0 && callAmount > 0 ? callAmount / (potSize + callAmount) : 0;
+
+  if (strength > 0.7) {
+    if (actions.includes(ACTION.BET)) return { action: ACTION.BET, amount: minBet };
+    if (actions.includes(ACTION.RAISE)) return { action: ACTION.RAISE, amount: minRaise };
+    if (actions.includes(ACTION.CALL)) return { action: ACTION.CALL };
+    return { action: ACTION.CHECK };
+  }
+  if (strength > 0.5) {
+    if (!facingBet && actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
+    if (facingBet && strength > potOdds && actions.includes(ACTION.CALL)) return { action: ACTION.CALL };
+    if (actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
+    return { action: ACTION.FOLD };
+  }
+  if (actions.includes(ACTION.CHECK)) return { action: ACTION.CHECK };
+  return { action: ACTION.FOLD };
+}
+
 const STRATEGIES = {
   tag:   { name: "TAG",    fn: tagStrategy },
   fish:  { name: "FISH",   fn: fishStrategy },
   lag:   { name: "LAG",    fn: lagStrategy },
   cfr50: { name: "CFR-50", fn: cfr50Strategy },
+  screenbot: { name: "SCREENBOT", fn: screenbotStrategy },
   // Humanized versions
   "tag-h":   { name: "TAG-H",    fn: createHumanizedStrategy(tagStrategy) },
   "fish-h":  { name: "FISH-H",   fn: createHumanizedStrategy(fishStrategy) },
   "lag-h":   { name: "LAG-H",    fn: createHumanizedStrategy(lagStrategy) },
   "cfr50-h": { name: "CFR50-H",  fn: createHumanizedStrategy(cfr50Strategy) },
+  "screenbot-h": { name: "SCREENBOT-H", fn: createHumanizedStrategy(screenbotStrategy) },
 };
 
 // ── Decision Recorder ──────────────────────────────────────────────────
