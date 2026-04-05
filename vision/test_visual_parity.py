@@ -116,7 +116,7 @@ const fs = require('fs');
     const { Page, Emulation, Runtime, Network } = client;
     await Network.enable();
     await Network.setCacheDisabled({ cacheDisabled: true });
-    await Emulation.setDeviceMetricsOverride({ width: 500, height: 900, deviceScaleFactor: 1, mobile: false });
+    await Emulation.setDeviceMetricsOverride({ width: 900, height: 600, deviceScaleFactor: 1, mobile: false });
     await Page.enable();
     await Page.navigate({ url: 'http://localhost:9100' });
     await Page.loadEventFired();

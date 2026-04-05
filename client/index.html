@@ -33,22 +33,34 @@
   #recovery-banner { display: none !important; }
 
   /* ── TABLE — PS real asset ── */
-  /* Force portrait aspect ratio matching PS browser layout */
+  /* Auto-detect portrait/landscape like PS */
   #table-felt {
     position: relative;
-    /* PS table: fills most of the viewport in portrait */
-    height: min(94vh, 860px);
-    width: min(calc(94vh * 0.52), 440px);
-    max-width: 96vw;
     overflow: visible;
     filter: drop-shadow(0 4px 20px rgba(0,0,0,0.8));
+  }
+  /* Landscape (default — width > height) */
+  @media (min-aspect-ratio: 1/1) {
+    #table-felt {
+      width: min(88vw, 780px);
+      height: min(calc(88vw * 0.52), 420px);
+      max-height: 78vh;
+    }
+  }
+  /* Portrait (height > width) */
+  @media (max-aspect-ratio: 1/1) {
+    #table-felt {
+      height: min(94vh, 860px);
+      width: min(calc(94vh * 0.52), 440px);
+      max-width: 96vw;
+    }
   }
   /* Portrait table image — oversized to crop gray metallic edges */
   #table-felt::before {
     content: ''; position: absolute;
     width: 108%; height: 92%;
     left: -4%; top: -2%;
-    background: url('ps_assets/table_portrait.png?v=6') center/100% 100% no-repeat;
+    background: url('ps_assets/table_portrait.png?v=7') center/100% 100% no-repeat;
     z-index: 0;
     pointer-events: none;
     border-radius: 48% / 42%;
@@ -129,12 +141,22 @@
      Panels straddle the felt edge (partially on green, partially on dark bg).
      Seat panel is 120px wide. Side seats need ~40% overlap with felt.
   */
-  .seat[data-seat="3"] { top: 1%; left: 50%; transform: translate(-50%, 0); }
-  .seat[data-seat="2"] { top: 20%; left: -6%; transform: translate(0, -50%); }
-  .seat[data-seat="4"] { top: 20%; right: -6%; left: auto; transform: translate(0, -50%); }
-  .seat[data-seat="1"] { top: 66%; left: -6%; transform: translate(0, -50%); }
-  .seat[data-seat="5"] { top: 66%; right: -6%; left: auto; transform: translate(0, -50%); }
-  .seat[data-seat="0"] { bottom: -6%; top: auto; left: 50%; transform: translate(-50%, 0); }
+  /* Landscape seat positions (default) */
+  .seat[data-seat="3"] { top: -8%; left: 50%; transform: translate(-50%, 0); }
+  .seat[data-seat="2"] { top: 15%; left: -8%; transform: translate(0, -50%); }
+  .seat[data-seat="4"] { top: 15%; right: -8%; left: auto; transform: translate(0, -50%); }
+  .seat[data-seat="1"] { top: 70%; left: -8%; transform: translate(0, -50%); }
+  .seat[data-seat="5"] { top: 70%; right: -8%; left: auto; transform: translate(0, -50%); }
+  .seat[data-seat="0"] { bottom: -14%; top: auto; left: 50%; transform: translate(-50%, 0); }
+  /* Portrait seat overrides */
+  @media (max-aspect-ratio: 1/1) {
+    .seat[data-seat="3"] { top: 1%; }
+    .seat[data-seat="2"] { top: 20%; left: -6%; }
+    .seat[data-seat="4"] { top: 20%; right: -6%; }
+    .seat[data-seat="1"] { top: 66%; left: -6%; }
+    .seat[data-seat="5"] { top: 66%; right: -6%; }
+    .seat[data-seat="0"] { bottom: -6%; }
+  }
 
   /* ── CARDS (sprite-based) ── */
   .card {
@@ -160,8 +182,11 @@
   /* PS measurements: hero cards at ~35% x, ~70% y of table felt */
   /* Cards are ~14% of table width, ~11% of table height */
   .hero-cards {
-    position: absolute; bottom: -5%; left: 28%; transform: translate(0, 0);
+    position: absolute; bottom: -12%; left: 25%; transform: translate(0, 0);
     display: flex; gap: 0px; z-index: 5;
+  }
+  @media (max-aspect-ratio: 1/1) {
+    .hero-cards { bottom: -5%; left: 28%; }
   }
   .hero-cards .card.hero-card {
     border-radius: 5px;
