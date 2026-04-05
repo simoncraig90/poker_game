@@ -208,11 +208,11 @@
 
   /* ── ACTION BAR — PS-style overlay on table ── */
   #action-bar {
-    position: absolute; left: 50%; top: 46%;
+    position: absolute; left: 50%; top: 43%;
     transform: translate(-50%, 0);
-    display: flex; gap: 6px; z-index: 20;
+    display: flex; gap: 3px; z-index: 20;
     background: none; border: none; padding: 0;
-    width: 92%; max-width: 420px;
+    width: 90%; max-width: 400px;
   }
   #action-bar button {
     padding: 10px 4px; border: none; border-radius: 10px; cursor: pointer;
@@ -225,7 +225,7 @@
   }
   #action-bar button:disabled { display: none; }
   /* PS colors: Fold=red, Check/Call=dark green, Bet/Raise=red */
-  #fold-btn { background: linear-gradient(180deg, #c42020, #a51818); color: #fff; }
+  #fold-btn { background: linear-gradient(180deg, #c42020, #a51818); color: #fff; flex: 0.7; }
   #fold-btn:hover:not(:disabled) { background: #cc2222; }
   #check-btn { background: linear-gradient(180deg, #305f3e, #224d30); color: #fff; }
   #check-btn:hover:not(:disabled) { background: #356e46; }
