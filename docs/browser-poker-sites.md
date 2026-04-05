@@ -1,88 +1,75 @@
-# Browser-Based Poker Sites — Research
+# Browser-Based Poker Sites — Complete Research (April 2026)
 
-## Real Money Sites with Browser Play (No Download)
+## Real Money Sites with CONFIRMED Browser Play
 
-### Tier 1: Major Networks (Confirmed Browser Play)
+| Site | Browser | Multi-table | Region | Network | Detection Risk |
+|---|---|---|---|---|---|
+| **PokerStars** | ✅ Active, expanding | ❌ Single table | Global (excl US) | Own | LOW |
+| **Unibet** | ✅ Full client in browser | ✅ Up to 4 tables | EU/UK | Own | LOW |
+| **Ignition** | ✅ Instant play | ✅ Multi-table | US/AU | PaiWangLuo | LOW |
+| **Bovada** | ✅ Browser optimized | ✅ Multi-table | US | PaiWangLuo | LOW |
+| **BetOnline** | ✅ Browser compatible | ✅ Multi-table | US/Global | Chico | LOW |
+| **CoinPoker** | ✅ Mobile + browser | ✅ Multi-table | Global (crypto) | Own | LOW |
+| **Stake.us** | ✅ Browser-based | ✅ Polished | US (sweepstakes) | Own | LOW |
 
-| Site | Browser Play | Client Type | Detection Risk | Notes |
-|---|---|---|---|---|
-| **PokerStars** | ✅ Full | Cocos2d Canvas | LOW (browser sandbox) | All formats via instant play. UK licensed. We have full analysis. |
-| **888poker** | ✅ Full | HTML5 | LOW | Instant play at 888poker.com/desktop/no-download/. UK licensed. Soft games. |
-| **PartyPoker** | ✅ Partial | HTML5 + WebGL | LOW | Browser play available. Anonymous tables in some formats. |
-| **GGPoker** | ❌ Desktop only | Adobe AIR + native DLLs | HIGH (full spyware) | No browser version. Heavy anti-cheat (analyzed). |
-| **WPN/ACR** | ❌ Desktop only | Native | HIGH | No browser version. |
+## Real Money Sites — DESKTOP ONLY (No Browser)
 
-### Tier 2: Smaller Sites (Browser Play)
-
-| Site | Browser Play | Real Money | Notes |
+| Site | Desktop Client | Anti-Cheat Level | Notes |
 |---|---|---|---|
-| **CoinPoker** | ✅ | Yes (crypto) | Blockchain-based, browser play |
-| **ClubGG** | ✅ Partial | Club-based | Mobile-first with browser wrapper |
-| **PPPoker** | ❌ | Club-based | Mobile/desktop only |
-| **Natural8** | ❌ | Yes | GGNetwork skin, same desktop client |
-| **iPoker Network** | ✅ Partial | Yes | Various skins (Betfair, Paddy Power, etc.) |
-| **Unibet** | ✅ | Yes | Own network, browser play available |
+| **GGPoker** | Adobe AIR + native DLLs | 🔴 EXTREME | Full process/window/registry scanning |
+| **888poker** | Desktop app | 🟡 MEDIUM | Browser play DISCONTINUED |
+| **PartyPoker** | Desktop app | 🟡 MEDIUM | Browser play DISCONTINUED |
+| **WPN/ACR** | Desktop app | 🟡 MEDIUM | Desktop only |
+| **Natural8** | GGNetwork skin | 🔴 EXTREME | Same anti-cheat as GGPoker |
+| **PPPoker** | Mobile/desktop app | 🟡 MEDIUM | Club-based |
 
-### Tier 3: Free/Social (Browser Only)
+## Free/Social Sites (Browser Only)
 
-| Site | URL | Notes |
-|---|---|---|
-| Replay Poker | replaypoker.com | Free, large community |
-| Poker Now | pokernow.com | Free, private games with friends |
-| WSOP Free Play | playwsop.com | Free, WSOP branded |
-| Unmasked Poker | unmasked.poker | Free, no registration |
-| Poker Patio | pokerpatio.com | Free, play vs bots |
-
----
+| Site | URL | Real Money | Notes |
+|---|---|---|---|
+| Replay Poker | replaypoker.com | No | Large community |
+| Poker Now | pokernow.com | No | Private games, no registration |
+| WSOP Free | playwsop.com | No | WSOP branded |
+| LiPoker | lipoker.io | No | Instant browser play |
+| Zynga Poker | zyngapoker.com | No | Massive player base |
 
 ## Priority Targets for Multi-Skin Client
 
-### 1. PokerStars (DONE — skin in progress)
-- Browser client: Cocos2d Canvas
-- SSIM: 0.596 portrait, 0.565 landscape
-- 52 card captures, YOLO trained
-- PS config extracted (base.json)
+### Priority 1: PokerStars ✅ (IN PROGRESS)
+- Cocos2d canvas rendering
+- SSIM: 0.596 (portrait), 0.565 (landscape)
+- Single table only in browser
+- UK/EU markets
 
-### 2. 888poker (NEXT)
-- Browser client: HTML5
-- URL: 888poker.com/desktop/no-download/
-- Likely uses DOM rendering (not canvas) — easier to match
-- UK licensed, soft games, good for testing
+### Priority 2: Unibet ⭐ (NEXT)
+- Browser client, up to 4 tables
+- Own network (independent)
+- Less sophisticated detection than PS
+- Good for multi-table bot testing
 
-### 3. PartyPoker
-- Browser play available
-- Anonymous tables — harder for opponents to profile the bot
-- Good for bot testing (less player tracking)
+### Priority 3: Ignition/Bovada
+- Browser instant play
+- US market (offshore)
+- Anonymous tables (no player tracking)
+- PaiWangLuo network — soft games
 
-### 4. CoinPoker
+### Priority 4: CoinPoker
 - Crypto-only, less regulated
-- Browser play
-- Lower detection investment likely
+- Browser + app
+- Provably fair RNG
+- Lowest detection risk
 
----
-
-## Detection Comparison: Browser vs Desktop
-
-| Capability | Desktop Client | Browser Client |
-|---|---|---|
-| Read running processes | ✅ Full access | ❌ Sandboxed |
-| Scan window titles | ✅ EnumWindows | ❌ Cannot |
-| Read registry | ✅ Full access | ❌ Cannot |
-| Hardware fingerprint | ✅ DeviceIoControl | ⚠️ Canvas/WebGL only |
-| Track mouse globally | ✅ GetCursorPos | ❌ Only within page |
-| Screenshot other windows | ✅ PrintWindow | ❌ Cannot |
-| Scan installed software | ✅ Registry + files | ❌ Cannot |
-| Detect VM | ✅ Hardware IDs | ⚠️ Limited (user-agent) |
-| Monitor network | ✅ WSA APIs | ❌ Cannot |
-| **Server-side behavioral** | ✅ Same | ✅ Same |
-
-**Bottom line:** Browser clients can ONLY detect bots through server-side behavioral analysis. Our humanization score of 46 (out of 100, lower = more human) should pass.
-
----
+## Key Constraint: PokerStars Browser = Single Table Only
+PS browser client only allows one table at a time. For multi-tabling:
+- Unibet browser supports 4 tables
+- Ignition/Bovada support multi-table in browser
+- Or use multiple browser windows/profiles on PS (untested)
 
 ## Sources
-- [888poker No Download](https://www.888poker.com/desktop/no-download/)
-- [PokerStars Browser Instant Play](https://rakerace.com/news/poker-rooms/2025/07/24/pokerstars-expands-browser-based-instant-play-across-nearly-all-game-formats)
-- [No Download Poker Sites](https://www.pokerlistings.com/no-download-poker-rooms)
-- [Best UK Poker Sites 2026](https://www.pokernews.com/sites/uk.htm)
-- [PokerScout UK Rankings](https://www.pokerscout.com/uk/)
+- [PokerStars Browser Play Expanding](https://rakerace.com/news/poker-rooms/2025/07/24/pokerstars-expands-browser-based-instant-play-across-nearly-all-game-formats)
+- [888poker Browser Discontinued](https://www.888poker.com/desktop/no-download/)
+- [Unibet Browser Play](https://www.pokernews.com/news/2020/03/play-on-unibet-poker-browser-no-download-36691.htm)
+- [Unibet Poker Review 2026](https://www.pokerlistings.com/poker-sites/unibet-poker)
+- [Offshore Poker Sites 2026](https://www.sportscasting.com/online-poker-sites/offshore/)
+- [CoinPoker 2026 Update](https://www.yogonet.com/international/news/2026/03/11/118007-coinpoker-launches-updated-poker-client-and-app-signs-new-ambassadors-and-introduces-rakefree-play)
+- [Best Poker Apps 2026](https://www.house-energy.com/rooms/)
