@@ -221,7 +221,10 @@
   }
 
   /* ── BOARD — positioned from PS screenshot measurements ── */
-  #board-area { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
+  #board-area { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; z-index: 3; }
+  @media (max-aspect-ratio: 1/1) {
+    #board-area { top: 35%; }
+  }
   #board { display: flex; gap: 4px; justify-content: center; min-height: 65px; position: relative; }
   #board .card { width: 54px; height: 78px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
   /* Dark card slots on the felt — visible before cards are dealt */

@@ -63,12 +63,12 @@ def extract_table_normalized(frame, target_w=400, target_h=700):
 
 # Regions as percentages of the normalized table image
 REGIONS = {
-    "table_felt": (0.05, 0.05, 0.90, 0.42),      # the green oval (felt only)
-    "board_cards": (0.10, 0.26, 0.80, 0.14),       # community cards only
-    "hero_cards": (0.10, 0.74, 0.55, 0.18),        # hero hole cards + panel
-    "action_buttons": (0.05, 0.48, 0.90, 0.14),    # fold/call/raise
-    "seat_panels": (0.0, 0.0, 1.0, 0.20),          # top opponents
-    "pot_text": (0.25, 0.22, 0.50, 0.08),          # pot display
+    "table_felt": (0.05, 0.05, 0.90, 0.50),      # the green oval
+    "board_cards": (0.15, 0.28, 0.70, 0.18),       # community cards
+    "hero_cards": (0.15, 0.72, 0.50, 0.22),        # hero hole cards + panel
+    "action_buttons": (0.05, 0.82, 0.90, 0.14),    # fold/call/raise (bottom bar)
+    "seat_panels": (0.0, 0.0, 1.0, 0.18),          # top opponents
+    "pot_text": (0.30, 0.20, 0.40, 0.12),          # pot display
 }
 
 
