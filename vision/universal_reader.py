@@ -27,19 +27,43 @@ class UniversalReader:
         print("[UniversalReader] Loaded YOLO + card templates")
 
     def find_tables(self, screen_img):
-        """Find all poker table regions on screen. Returns list of (x, y, w, h)."""
+        """Find all poker table regions on screen. Color-agnostic — detects any large
+        saturated oval region (green, blue, red, purple felt)."""
         hsv = cv2.cvtColor(screen_img, cv2.COLOR_BGR2HSV)
-        green_mask = cv2.inRange(hsv, np.array([25, 30, 20]), np.array([85, 255, 255]))
+        h, w = screen_img.shape[:2]
+        min_area = h * w * 0.02
 
-        contours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         tables = []
-        min_area = screen_img.shape[0] * screen_img.shape[1] * 0.02
 
+        # Try multiple color ranges to catch any felt color
+        color_ranges = [
+            ([25, 30, 20], [85, 255, 255]),    # green
+            ([90, 30, 20], [140, 255, 255]),   # blue/teal
+            ([0, 30, 20], [25, 255, 255]),     # red/orange
+            ([140, 30, 20], [180, 255, 255]),  # red (wrap)
+            ([0, 20, 15], [180, 255, 80]),     # dark saturated (any hue)
+        ]
+
+        combined_mask = np.zeros((h, w), dtype=np.uint8)
+        for lower, upper in color_ranges:
+            mask = cv2.inRange(hsv, np.array(lower), np.array(upper))
+            combined_mask = cv2.bitwise_or(combined_mask, mask)
+
+        # Clean up mask
+        kernel = np.ones((5, 5), np.uint8)
+        combined_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+
+        contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
             area = cv2.contourArea(c)
             if area > min_area:
-                x, y, w, h = cv2.boundingRect(c)
-                tables.append((x, y, w, h))
+                x, y, cw, ch = cv2.boundingRect(c)
+                # Table should be roughly oval — check solidity
+                hull = cv2.convexHull(c)
+                hull_area = cv2.contourArea(hull)
+                solidity = area / max(1, hull_area)
+                if solidity > 0.5:  # reasonably solid shape
+                    tables.append((x, y, cw, ch))
 
         # Sort by x position (left to right)
         tables.sort(key=lambda t: t[0])
