@@ -192,7 +192,7 @@ class CardCNNDetector:
         if not card_boxes:
             return []
 
-        MATCH_W, MATCH_H = 48, 64  # standard size for comparison
+        MATCH_W, MATCH_H = 56, 72  # balanced size for rank discrimination
 
         # Lazy-load templates — normalize all to standard size
         if not hasattr(self, '_card_templates') or self._card_templates is None:
@@ -206,7 +206,7 @@ class CardCNNDetector:
                     img = cv2.imread(os.path.join(tmpl_dir, f))
                     if img is not None:
                         h, w = img.shape[:2]
-                        # Upper-left corner: rank index + suit pip
+                        # Upper-left: rank + suit pip (40% height, 45% width)
                         corner = img[0:int(h * 0.40), 0:int(w * 0.45)]
                         normalized = cv2.resize(corner, (MATCH_W, MATCH_H))
                         self._card_templates[name] = normalized
@@ -232,7 +232,7 @@ class CardCNNDetector:
 
             ch, cw = narrow_crop.shape[:2]
 
-            # Upper-left corner: same proportions as template (40% height, full narrow width)
+            # Upper-left: 40% height (rank + suit pip, avoids overlap zone)
             corner = narrow_crop[0:int(ch * 0.40), :]
             if corner.size == 0:
                 continue
@@ -240,14 +240,27 @@ class CardCNNDetector:
             # Normalize to standard size
             normalized = cv2.resize(corner, (MATCH_W, MATCH_H))
 
-            # Match against all 52 templates
-            best_card = None
-            best_score = -1
+            # Match against all 52 templates — keep top 3 for tiebreaking
+            scores = []
             for name, tmpl in self._card_templates.items():
                 score = cv2.matchTemplate(normalized, tmpl, cv2.TM_CCOEFF_NORMED)[0][0]
-                if score > best_score:
-                    best_score = score
-                    best_card = name
+                scores.append((score, name))
+            scores.sort(reverse=True)
+
+            best_card = scores[0][1] if scores else None
+            best_score = scores[0][0] if scores else -1
+
+            # T/K tiebreaker: if top 2 are T and K within 5%, use dark pixel count
+            if len(scores) >= 2 and abs(scores[0][0] - scores[1][0]) < 0.05:
+                r0, r1 = scores[0][1][0], scores[1][1][0]
+                if set([r0, r1]) == set(['T', 'K']):
+                    # Count dark pixels in rank area of the hero crop
+                    rank_area = narrow_crop[0:int(ch * 0.25), 0:int(cw * 0.80)]
+                    gray_rank = cv2.cvtColor(rank_area, cv2.COLOR_BGR2GRAY)
+                    dark_pct = np.sum(gray_rank < 100) / max(1, gray_rank.size)
+                    # "10" has ~30% dark, "K" has ~20% dark
+                    is_ten = dark_pct > 0.25
+                    best_card = [s[1] for s in scores if s[1][0] == ('T' if is_ten else 'K')][0]
 
             if best_card and best_score > 0.3:
                 results.append(best_card)
