@@ -12,31 +12,33 @@ const CanvasRenderer = (function() {
   let dealerImg = null;
   let assetsLoaded = false;
 
-  // PS-matched dimensions (portrait)
-  const TABLE_W = 440;
-  const TABLE_H = 800;
+  // PS-matched dimensions (portrait, matching normalized 400x700 test space)
+  const TABLE_W = 400;
+  const TABLE_H = 700;
 
-  // PS-matched positions (as fractions of table dimensions)
+  // Exact PS positions measured from normalized screenshots
   const LAYOUT = {
-    // Board cards: y=35.3% of felt, each 17.5%w x 13.1%h (from PS YOLO)
-    board: { y: 0.34, cardW: 0.130, cardH: 0.105, gap: 0.006 },
-    // Hero cards: y=90% of felt, 20%w x 15%h (from PS YOLO)
-    hero: { x: 0.20, y: 0.78, cardW: 0.155, cardH: 0.130, overlap: 0.065 },
-    // Pot text: y=30.4% (from PS YOLO)
-    pot: { y: 0.28, fontSize: 13 },
-    // Action buttons: y=53% (from PS YOLO)
-    buttons: { y: 0.50, h: 0.068, gap: 0.012 },
+    // Felt oval: center=(0.556, 0.414), rx=0.441, ry=0.379
+    felt: { cx: 0.50, cy: 0.41, rx: 0.46, ry: 0.38 },
+    // Board cards: y=0.287, each 0.135w x 0.094h, first at x=0.135
+    board: { y: 0.287, cardW: 0.135, cardH: 0.094, gap: 0.005, firstX: 0.135 },
+    // Hero cards: below felt at ~y=0.79
+    hero: { x: 0.20, y: 0.79, cardW: 0.155, cardH: 0.130, overlap: 0.065 },
+    // Pot text: y=0.25
+    pot: { y: 0.265, fontSize: 13 },
+    // Action buttons: y=0.403, h=0.079
+    buttons: { y: 0.403, h: 0.079, gap: 0.008 },
     // Seat positions (6-max): [x, y] as fractions
     seats: [
       [0.50, 0.88],  // 0: hero (bottom center)
-      [0.08, 0.62],  // 1: lower-left
-      [0.08, 0.22],  // 2: upper-left
-      [0.50, 0.04],  // 3: top center
-      [0.92, 0.22],  // 4: upper-right
-      [0.92, 0.62],  // 5: lower-right
+      [0.10, 0.62],  // 1: lower-left
+      [0.10, 0.20],  // 2: upper-left
+      [0.50, 0.05],  // 3: top center
+      [0.90, 0.20],  // 4: upper-right
+      [0.90, 0.62],  // 5: lower-right
     ],
     // Felt text
-    feltText: { y: 0.56, fontSize: 10, opacity: 0.10 },
+    feltText: { y: 0.54, fontSize: 9, opacity: 0.10 },
   };
 
   function init(canvasEl) {
@@ -116,9 +118,11 @@ const CanvasRenderer = (function() {
       ctx.save();
       // Create oval clip path
       ctx.beginPath();
-      ctx.ellipse(TABLE_W / 2, TABLE_H * 0.40, TABLE_W * 0.50, TABLE_H * 0.38, 0, 0, Math.PI * 2);
+      const f = LAYOUT.felt;
+      ctx.ellipse(TABLE_W * f.cx, TABLE_H * f.cy, TABLE_W * f.rx, TABLE_H * f.ry, 0, 0, Math.PI * 2);
       ctx.clip();
-      ctx.drawImage(tableImg, 0, 0, TABLE_W, TABLE_H * 0.85);
+      // Draw table image to fill the oval area
+      ctx.drawImage(tableImg, 0, 0, TABLE_W, TABLE_H);
       ctx.restore();
     }
 
@@ -166,12 +170,13 @@ const CanvasRenderer = (function() {
     const cw = TABLE_W * LAYOUT.board.cardW;
     const ch = TABLE_H * LAYOUT.board.cardH;
     const gap = TABLE_W * LAYOUT.board.gap;
-    const totalW = board.length * cw + (board.length - 1) * gap;
-    const startX = (TABLE_W - totalW) / 2;
     const y = TABLE_H * LAYOUT.board.y;
+    // Use PS-measured first card position, then space evenly
+    const startX = TABLE_W * LAYOUT.board.firstX;
+    const spacing = cw + gap;
 
     for (let i = 0; i < board.length; i++) {
-      const x = startX + i * (cw + gap);
+      const x = startX + i * spacing;
       drawCard(board[i], x, y, cw, ch);
     }
   }
@@ -228,8 +233,8 @@ const CanvasRenderer = (function() {
     if (buttons.length === 0) return;
 
     const totalGap = (buttons.length - 1) * gap;
-    const btnW = (TABLE_W * 0.88 - totalGap) / buttons.length;
-    const startX = TABLE_W * 0.06;
+    const btnW = (TABLE_W * 0.92 - totalGap) / buttons.length;
+    const startX = TABLE_W * 0.04;
 
     for (let i = 0; i < buttons.length; i++) {
       const x = startX + i * (btnW + gap);
