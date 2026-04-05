@@ -148,9 +148,13 @@ def restore_originals():
 
 def capture_lab(viewport_w=900, viewport_h=600):
     """Capture lab client screenshot via CDP."""
+    if sys.platform == "win32":
+        chrome_cmd = f'start "" "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe" --remote-debugging-port=9222 --headless=new --disable-gpu --window-size={viewport_w},{viewport_h}'
+    else:
+        chrome_cmd = f'google-chrome-stable --headless=new --no-sandbox --disable-gpu --remote-debugging-port=9222 --window-size={viewport_w},{viewport_h} about:blank &'
     js_code = f"""
 const CDP=require('chrome-remote-interface');const {{execSync}}=require('child_process');const fs=require('fs');
-(async()=>{{try{{execSync('start "" "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe" --remote-debugging-port=9222 --headless=new --disable-gpu --window-size={viewport_w},{viewport_h}',{{stdio:"ignore",timeout:5000}})}}catch(e){{}}
+(async()=>{{try{{execSync('{chrome_cmd}',{{stdio:"ignore",timeout:5000}})}}catch(e){{}}
 await new Promise(r=>setTimeout(r,2000));const c=await CDP({{port:9222}});const{{Page,Emulation,Runtime,Network}}=c;
 await Network.enable();await Network.setCacheDisabled({{cacheDisabled:true}});
 await Emulation.setDeviceMetricsOverride({{width:{viewport_w},height:{viewport_h},deviceScaleFactor:1,mobile:false}});
@@ -163,11 +167,22 @@ await new Promise(r=>setTimeout(r,500));
 const{{data}}=await Page.captureScreenshot({{format:"png"}});fs.writeFileSync("_opt_lab.png",Buffer.from(data,"base64"));
 await c.close();try{{execSync("taskkill //f //im chrome.exe 2>nul",{{stdio:"ignore"}})}}catch(e){{}}process.exit(0)}})().catch(e=>{{console.error(e);process.exit(1)}});
 """
-    result = subprocess.run(
-        ["node", "-e", js_code],
-        capture_output=True, text=True, timeout=30,
-        cwd=PROJECT_DIR
-    )
+    try:
+        result = subprocess.run(
+            ["node", "-e", js_code],
+            capture_output=True, text=True, timeout=30,
+            cwd=PROJECT_DIR
+        )
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        # Always kill Chrome to prevent RAM leaks
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/f", "/im", "chrome.exe"],
+                           capture_output=True, timeout=5)
+        else:
+            subprocess.run(["pkill", "-9", "chrome"],
+                           capture_output=True, timeout=5)
     lab_path = os.path.join(PROJECT_DIR, "_opt_lab.png")
     if os.path.exists(lab_path):
         img = cv2.imread(lab_path)
