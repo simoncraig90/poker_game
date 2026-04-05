@@ -492,7 +492,29 @@ function cardImgSrc(card) {
 
 function cardHtml(card) {
   if (!card) return '<span class="card empty-slot"></span>';
-  return `<span class="card" style="width:54px;height:78px;background:none"><img src="${cardImgSrc(card)}" style="width:54px;height:78px;display:block;border-radius:4px"></span>`;
+  // Render card on a mini canvas for PS-matched compositing
+  const cw = 54, ch = 78;
+  const id = 'cc_' + card + '_' + Math.random().toString(36).substr(2, 5);
+  setTimeout(() => {
+    const cvs = document.getElementById(id);
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, cw, ch);
+      // Rounded rect clip
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(r, 0); ctx.lineTo(cw-r, 0); ctx.quadraticCurveTo(cw, 0, cw, r);
+      ctx.lineTo(cw, ch-r); ctx.quadraticCurveTo(cw, ch, cw-r, ch);
+      ctx.lineTo(r, ch); ctx.quadraticCurveTo(0, ch, 0, ch-r);
+      ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath(); ctx.clip();
+      ctx.drawImage(img, 0, 0, cw, ch);
+    };
+    img.src = cardImgSrc(card);
+  }, 0);
+  return `<canvas id="${id}" class="card" width="${cw}" height="${ch}" style="width:${cw}px;height:${ch}px;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></canvas>`;
 }
 
 function facedownCardHtml() {
@@ -501,12 +523,42 @@ function facedownCardHtml() {
 
 function seatCardHtml(card) {
   if (!card) return '';
-  return `<span class="card sm" style="width:28px;height:39px;background:none"><img src="${cardImgSrc(card)}" style="width:28px;height:39px;display:block"></span>`;
+  const cw = 28, ch = 39;
+  const id = 'sc_' + card + '_' + Math.random().toString(36).substr(2, 5);
+  setTimeout(() => {
+    const cvs = document.getElementById(id);
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, cw, ch); };
+    img.src = cardImgSrc(card);
+  }, 0);
+  return `<canvas id="${id}" class="card sm" width="${cw}" height="${ch}" style="width:${cw}px;height:${ch}px"></canvas>`;
 }
 
 function heroCardHtml(card) {
   if (!card) return '';
-  return `<span class="card hero-card" style="width:58px;height:82px;background:none"><img src="${cardImgSrc(card)}" style="width:58px;height:82px;display:block;border-radius:4px"></span>`;
+  const cw = 58, ch = 82;
+  const id = 'hc_' + card + '_' + Math.random().toString(36).substr(2, 5);
+  setTimeout(() => {
+    const cvs = document.getElementById(id);
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, cw, ch);
+      const r = 5;
+      ctx.beginPath();
+      ctx.moveTo(r, 0); ctx.lineTo(cw-r, 0); ctx.quadraticCurveTo(cw, 0, cw, r);
+      ctx.lineTo(cw, ch-r); ctx.quadraticCurveTo(cw, ch, cw-r, ch);
+      ctx.lineTo(r, ch); ctx.quadraticCurveTo(0, ch, 0, ch-r);
+      ctx.lineTo(0, r); ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath(); ctx.clip();
+      ctx.drawImage(img, 0, 0, cw, ch);
+    };
+    img.src = cardImgSrc(card);
+  }, 0);
+  return `<canvas id="${id}" class="card hero-card" width="${cw}" height="${ch}" style="width:${cw}px;height:${ch}px;border-radius:5px;box-shadow:2px 3px 10px rgba(0,0,0,0.7)"></canvas>`;
 }
 
 // Canvas mode: use ?canvas=1 in URL to enable
