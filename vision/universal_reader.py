@@ -103,6 +103,10 @@ class UniversalReader:
         hero_boxes = elements.get("hero_card", [])
         board_boxes = elements.get("board_card", [])
 
+        # Fallback: if YOLO missed hero cards, scan bottom-center for white rectangles
+        if not hero_boxes:
+            hero_boxes = self._find_hero_cards_by_position(table_img)
+
         hero_cards = self.card_detector.identify_hero_from_table(table_img, hero_boxes)
         board_cards = self.card_detector.identify_cards(table_img, board_boxes)
 
@@ -166,6 +170,36 @@ class UniversalReader:
             "facing_bet": facing_bet,
             "table_size": (tw, th),
         }
+
+    def _find_hero_cards_by_position(self, table_img):
+        """Fallback: find hero cards by scanning bottom-center for white card shapes."""
+        th, tw = table_img.shape[:2]
+        # Hero cards are in the bottom 40%, center 70% of the table
+        y1 = int(th * 0.55)
+        x1 = int(tw * 0.10)
+        x2 = int(tw * 0.90)
+        roi = table_img[y1:, x1:x2]
+
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        _, white = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+
+        contours, _ = cv2.findContours(white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cards = []
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            area = cv2.contourArea(c)
+            aspect = h / max(1, w)
+            # Card-shaped: aspect ratio filter, min size
+            # Allow wider shapes (overlapping cards merge into one blob)
+            if area > 300 and 0.8 < aspect < 2.5 and w > 15 and h > 20:
+                cards.append({
+                    "x": x + x1, "y": y + y1, "w": w, "h": h,
+                    "cx": x + x1 + w // 2, "cy": y + y1 + h // 2,
+                })
+
+        # Sort by x (left to right), take first 2
+        cards.sort(key=lambda c: c["x"])
+        return cards[:2]
 
     def _detect_position(self, elements, th, tw):
         """Detect hero's position from dealer button location.
