@@ -506,7 +506,7 @@ function seatCardHtml(card) {
 
 function heroCardHtml(card) {
   if (!card) return '';
-  return `<span class="card hero-card" style="width:67px;height:95px;background:none"><img src="${cardImgSrc(card)}" style="width:67px;height:95px;display:block;border-radius:5px"></span>`;
+  return `<span class="card hero-card" style="width:58px;height:82px;background:none"><img src="${cardImgSrc(card)}" style="width:58px;height:82px;display:block;border-radius:4px"></span>`;
 }
 
 // Canvas mode: use ?canvas=1 in URL to enable
