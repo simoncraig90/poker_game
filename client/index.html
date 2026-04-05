@@ -68,10 +68,10 @@
   /* PokerStars logo on the felt — handled in ::after below */
   /* Table info text on felt — below action buttons, like PS */
   #felt-info {
-    position: absolute; left: 50%; top: 56%;
+    position: absolute; left: 50%; top: 52%;
     transform: translate(-50%, 0);
     text-align: center; z-index: 2; pointer-events: none;
-    font-size: 8px; color: rgba(255,255,255,0.20); line-height: 1.4;
+    font-size: 7px; color: rgba(255,255,255,0.05); line-height: 1.4;
     letter-spacing: 0.3px;
   }
 
@@ -215,13 +215,13 @@
     width: 90%; max-width: 400px;
   }
   #action-bar button {
-    padding: 10px 4px; border: none; border-radius: 10px; cursor: pointer;
+    padding: 10px 4px; border: none; border-radius: 12px; cursor: pointer;
     font-family: 'Roboto Condensed', sans-serif; font-size: 17px; font-weight: 700;
     flex: 1; min-width: 0; white-space: normal; letter-spacing: 0.3px;
     transition: background 0.15s;
     box-shadow: 0 3px 10px rgba(0,0,0,0.5);
     line-height: 1.15; text-align: center;
-    min-height: 52px;
+    min-height: 55px;
   }
   #action-bar button:disabled { display: none; }
   /* PS colors: Fold=red, Check/Call=dark green, Bet/Raise=red */
