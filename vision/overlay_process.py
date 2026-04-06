@@ -34,7 +34,7 @@ def main():
     root.title("Poker Advisor")
     root.configure(bg="#1a1a2e")
     screen_w = root.winfo_screenwidth()
-    root.geometry(f"400x200+{screen_w - 430}+30")
+    root.geometry(f"450x240+{screen_w - 480}+30")
     root.attributes("-topmost", True)
     root.attributes("-alpha", 0.9)
     root.resizable(False, False)

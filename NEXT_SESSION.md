@@ -1,60 +1,62 @@
-# Next Session: Unibet Advisor
+# Next Session: Unibet WS Advisor
 
-## What Works
-- YOLO: hero_card + board_card detection at 99.5% mAP
-- OCR rank on YOLO crop (NOT tight crop): 100% — ranks always correct
-- Board card suits: 100% via template matching
-- Hero red/black: 100% via color detection
-- Facing bet: orange CALL button color detection (red>3000 + green>3000 = buttons visible, orange>2000 = CALL)
-- CHECK override: when facing_bet=False and chart says FOLD, show CHECK instead
-- Overlay: subprocess, stays on top
-- Hero card locking: prevents flickering
-- 301 tight crop training samples extracted
+## STATUS: Live and working via WebSocket. Cards 100% accurate.
 
-## What Doesn't Work
-- Hero suit detection: ~80-90%, confuses h/d and c/s
-- Position detection: always defaults to "MP"
-- Facing bet timing: sometimes detects hero_turn=True when buttons aren't fully visible
+## Kanban
 
-## Hero Suit Detection — Approaches Tried and Failed
-1. CNN on full YOLO crop — noisy background confuses it
-2. CNN on tight crop — tight box sometimes cuts off rank/suit
-3. Template matching — board templates don't match dark hero backgrounds
-4. Contour analysis — too much noise from surrounding content
-5. Edge matching — edges are noisy
-6. Pixel sampling at fixed offsets — YOLO boxes aren't consistent
-7. Grid sampling with confidence — high confidence wrong answers
-8. CNN on 16x16 suit center samples — inconsistent sample positions
+### Done
+- [x] WebSocket game state reader (100% card accuracy)
+- [x] Subprocess overlay (DPI-aware, stays on top)
+- [x] Preflop chart with position detection
+- [x] Equity neural net (board-texture aware)
+- [x] Facing bet detection (raise above BB)
+- [x] BB CHECK override (only BB can check preflop)
+- [x] Fold clears overlay
+- [x] Board danger adjustment (cautious on scary boards)
+- [x] Bet sizing with stack cap
+- [x] BB/hr tracking
+- [x] CHECK/CALL and CHECK/FOLD postflop advice
 
-## What SHOULD Work (Not Yet Tried)
-- **Color-based binarization**: extract ONLY the suit-colored pixels (red for h/d, dark-on-lighter for c/s), then template match the isolated shape
-- **OCR the suit symbol**: train EasyOCR or Tesseract to read suit Unicode characters
-- **Larger CNN with more data**: 301 crops may still not be enough — need 500+ with manual verification
-- **Per-card template matching**: capture ALL 52 cards as templates from board cards (23/52 done), for hero use rank+color to narrow to 2 candidates, then match
+### In Progress
+- [ ] Fix CHECK when need to CALL (preflop: base advisor returns CHECK)
+- [ ] Position detection stability (locks per hand but initial detection may be wrong)
 
-## Key Insight
-The tight_box extraction BREAKS rank detection (6→5, 8→3) because it crops too aggressively. Use YOLO crop for rank, tight crop only for suit.
+### Todo — Required for Profitable Bot
+- [ ] Pot odds calculation — compare call price vs pot to determine +EV calls
+- [ ] Opponent action weighting — discount equity 20-30% when opponent bets big (they don't bet big with random hands)
+- [ ] CFR strategy integration — use trained 6-max CFR (3M info sets) for action decisions instead of static thresholds
+- [ ] Dynamic preflop ranges — adjust open/call ranges based on table dynamics (tight table = wider, loose table = tighter)
 
-## Architecture (current)
+### Todo — Opponent Modeling
+- [ ] Opponent profiling — track VPIP/PFR/AF per player across sessions (scripts/opponent-profiles.json exists)
+- [ ] Opponent range estimation — weight opponent's likely holdings based on their actions this hand
+- [ ] Player type classification — FISH/NIT/TAG/LAG/WHALE (scripts/player-profiler.js exists)
+- [ ] Nit detection — fold more vs nit bets, bluff more vs nits
+
+### Todo — Infrastructure
+- [ ] Multi-table support — one WS reader + overlay per table
+- [ ] Hand history logging — save all hands for post-session review + leak analysis
+- [ ] Session review — flag bad advisor recommendations post-session
+- [ ] Bet sizing optimization — size bets based on opponent tendencies (bigger vs calling stations, smaller vs nits)
+
+## Launch
+```bash
+taskkill /F /IM python.exe
+C:\Users\Simon\AppData\Local\Programs\Python\Python312\python.exe -u vision/advisor_ws.py
 ```
-Screen → find_table → crop_table → YOLO → hero_card boxes
-  → YOLO crop → OCR rank (5x scale)
-  → tight crop → CNN suit (4-class)
-  → color sanity check (red/black override)
-  → facing bet (button color detection)
-  → preflop chart + equity
-  → subprocess overlay
+
+## Architecture
+```
+Chrome CDP → Node bridge (cdp-ws-bridge.js) → XMPP WebSocket messages
+  → UnibetWSReader (unibet_ws.py) → parses cards, bets, position
+  → advisor_ws.py → preflop chart + equity + board danger
+  → subprocess overlay (overlay_process.py)
 ```
 
-## Data Available
-- 301 tight crops in vision/card_crops_unibet/tight_labeled/
-- 120 live frames in vision/captures/unibet/live_*.png
-- 30 crosscheck frames in vision/captures/xcheck_*.png
-- 7 verified test images with known ground truth
-
-## Debt: $3 to Simon
-
-## IMPORTANT
-- DO NOT launch advisor live until suit detection is verified on NEW unseen images
-- Kill ALL python processes: taskkill /F /IM python.exe
-- Tight box BREAKS rank detection — only use for suit, not rank
+## Key Files
+- vision/advisor_ws.py — WS-based advisor (main)
+- vision/unibet_ws.py — WebSocket game state reader
+- vision/overlay_process.py — subprocess overlay
+- scripts/cdp-ws-bridge.js — Node CDP bridge
+- vision/preflop_chart.py — preflop ranges
+- vision/advisor.py — base advisor (equity, CFR, board danger)
