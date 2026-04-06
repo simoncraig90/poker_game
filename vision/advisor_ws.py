@@ -43,6 +43,12 @@ def main():
 
     # Load preflop chart
     from preflop_chart import preflop_advice
+    from opponent_tracker import OpponentTracker
+    from session_logger import SessionLogger
+
+    tracker = OpponentTracker()
+    logger = SessionLogger()
+    print("[Advisor] Opponent tracker + session logger active")
 
     # Load equity model
     equity_fn = None
@@ -107,6 +113,7 @@ def main():
     prev_hand_id = None
     prev_phase = None
     last_facing = None
+    pending_update = None  # (state, timestamp) — buffered postflop update
 
     # BB/hr tracking
     import time as _time
@@ -117,7 +124,7 @@ def main():
 
     def on_state(state):
         nonlocal prev_hero, prev_board, prev_hand_id, prev_phase, last_facing
-        nonlocal starting_stack, hands_played
+        nonlocal starting_stack, hands_played, pending_update
 
         hero = state["hero_cards"]
         board = state["board_cards"]
@@ -135,6 +142,10 @@ def main():
         if hand_id != prev_hand_id and hand_id is not None:
             hands_played += 1
 
+        # Update opponent tracker + session logger
+        tracker.update(state)
+        logger.update(state)
+
         if len(hero) < 2:
             if prev_hero:
                 send_overlay("Waiting for cards...")
@@ -150,22 +161,40 @@ def main():
             prev_phase = phase
             return
 
-        # Update when hand, board, street, or facing changes
+        # Update logic with buffering to prevent CHECK→CALL flash
         hand_changed = hand_id != prev_hand_id
         board_changed = board != prev_board
         phase_changed = phase != prev_phase
-        facing_changed = facing != last_facing
-
-        if not hand_changed and not board_changed and not phase_changed and not facing_changed:
-            return
+        facing_changed = facing and not last_facing
 
         # Track facing
         if hand_changed or phase_changed:
             last_facing = facing
         elif facing:
             last_facing = True
-        else:
-            last_facing = facing
+
+        # If board/phase changed but not facing a bet yet — buffer the update
+        # (bet data arrives in a later WS message)
+        if (board_changed or phase_changed) and not facing and not hand_changed and board:
+            pending_update = (state.copy(), _time.time())
+            prev_board = board[:]
+            prev_phase = phase
+            return
+
+        # If facing_bet just became True and we have a pending update — use it now
+        if facing_changed and pending_update:
+            pending_update = None
+            last_facing = True
+
+        # If nothing changed and no pending, skip
+        if not hand_changed and not facing_changed and not board_changed and not phase_changed:
+            # Check if pending update has expired (500ms — bet would have arrived by now)
+            if pending_update and _time.time() - pending_update[1] > 0.5:
+                # No bet came — hero can check. Show the update now.
+                pending_update = None
+                # Fall through to display
+            else:
+                return
 
         facing = facing or last_facing
 
@@ -184,7 +213,9 @@ def main():
             elapsed_hrs = max((_time.time() - session_start) / 3600, 0.01)
             profit_cents = hero_stack - starting_stack
             bb_hr = (profit_cents / bb_cents) / elapsed_hrs
-            bb_hr_str = f"  [{bb_hr:+.1f} bb/hr | {hands_played}h]"
+            table_info = tracker.get_table_summary(state.get("hero_seat", -1), state.get("players", []))
+            table_str = f" | {table_info}" if table_info else ""
+            bb_hr_str = f"  [{bb_hr:+.1f} bb/hr | {hands_played}h{table_str}]"
 
         # Build state dict for the base advisor's recommendation engine
         pos = state.get("position", "MP")
@@ -277,6 +308,7 @@ def main():
 
                 send_overlay(cards_text, info, action, rec_bg)
                 print(f"[{phase}] {hero_str} | {pf.get('hand_key','')} {pos} facing={facing} chart={pf.get('action','?')} -> {action}")
+                logger.update(state, {"action": action, "equity": eq, "cfr_probs": cfr_result.get("probs") if cfr_result else None})
 
             else:
                 danger = rec.get("danger", {})
@@ -394,6 +426,7 @@ def main():
                 send_overlay(cards_text, info, action, rec_bg)
                 adj_str = f" adj:{adjusted_eq:.0%}" if facing and adjusted_eq < eq else ""
                 print(f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%}{adj_str} | {action}")
+                logger.update(state, {"action": action, "equity": eq, "cfr_probs": cfr_result.get("probs") if cfr_result else None})
 
     reader.on_state_change(on_state)
     reader.start()
