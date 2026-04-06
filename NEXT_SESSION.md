@@ -45,11 +45,13 @@
 - [ ] Bet sizing optimization — size bets based on opponent tendencies (bigger vs calling stations, smaller vs nits)
 
 ### Todo — Multi-Site Expansion
-- [ ] Investigate PokerStars browser WebSocket protocol
-- [ ] Investigate Ignition/Bovada browser WebSocket protocol
-- [ ] Investigate BetOnline browser WebSocket protocol
-- [ ] Investigate CoinPoker browser WebSocket protocol
-- [ ] Universal WS reader — abstract the protocol parsing to support multiple sites
+- [ ] **Ignition/Bovada** — DOM scraping via Chrome extension (data-qa attributes), VPN + crypto, anonymous tables, EASIEST target
+- [ ] **CoinPoker** — UK-friendly, crypto-native, rebuilt March 2026, investigate protocol
+- [ ] **BetOnline** — UK-friendly, Chico/Connective Games platform, investigate protocol
+- [ ] **PokerStars browser** — binary/obfuscated protocol, heavy anti-bot, HARDEST target
+- [ ] Universal game state interface — abstract layer so strategy engine works across all sites
+- [ ] VPN management — auto-rotate for Ignition sessions
+- [ ] Crypto bankroll — wallet setup for cross-site deposits/withdrawals
 
 ### Todo — Hive Mind Controller
 - [ ] Central orchestrator that manages bot instances across multiple venues simultaneously
