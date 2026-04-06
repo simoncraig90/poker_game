@@ -51,6 +51,18 @@
 - [ ] Investigate CoinPoker browser WebSocket protocol
 - [ ] Universal WS reader — abstract the protocol parsing to support multiple sites
 
+### Todo — Hive Mind Controller
+- [ ] Central orchestrator that manages bot instances across multiple venues simultaneously
+- [ ] Spin up/down bot sessions based on: table availability, player pool quality, time-of-day EV
+- [ ] Bankroll management across sites — auto-distribute funds to highest-EV venue
+- [ ] Session scheduling — optimal hours per site (fish are on evenings/weekends)
+- [ ] Risk management — stop-loss per session, per site, per day
+- [ ] Multi-identity management — different accounts/profiles per venue
+- [ ] Telemetry dashboard — live P&L, bb/hr per table, per site, aggregate
+- [ ] Auto table selection — join tables with highest fish-to-reg ratio
+- [ ] Load balancing — spread across sites to avoid detection patterns
+- [ ] Proxmox deployment — run bot instances on the server, not desktop
+
 ## End Goal
 **£100/day combining poker + HL across multiple sites and tables.**
 At 10bb/100 win rate:
