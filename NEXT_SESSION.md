@@ -45,13 +45,42 @@
 - [ ] Bet sizing optimization — size bets based on opponent tendencies (bigger vs calling stations, smaller vs nits)
 
 ### Todo — Multi-Site Expansion
-- [ ] **Ignition/Bovada** — DOM scraping via Chrome extension (data-qa attributes), VPN + crypto, anonymous tables, EASIEST target
-- [ ] **CoinPoker** — UK-friendly, crypto-native, rebuilt March 2026, investigate protocol
-- [ ] **BetOnline** — UK-friendly, Chico/Connective Games platform, investigate protocol
-- [ ] **PokerStars browser** — binary/obfuscated protocol, heavy anti-bot, HARDEST target
+
+#### CoinPoker — PRIORITY (HUDs officially allowed, UK-friendly, lowest risk)
+- [ ] Create CoinPoker account (phone only, no KYC to play)
+- [ ] Deposit via USDT
+- [ ] Intercept SFS2X WebSocket (binary over ws, `BlueBox/websocket` endpoint)
+- [ ] Parse 58 TABLE_EVENTs: HOLE_CARDS, DEALER_CARDS, USER_ACTION, USER_TURN, POT_INFO, etc.
+- [ ] DOM scraping fallback (React Native Web = standard DOM elements)
+- [ ] Build CoinPoker game state reader (same interface as UnibetWSReader)
+- [ ] Wire to existing strategy engine (preflop chart + equity + CFR)
+- NOTE: HUDs officially allowed (Hand2Note, DriveHUD, PT4). Bots banned but detection is server-side ML only. No client-side anti-cheat. $156K refunded to players after bot ban = they take it seriously but detection is behavioral only.
+
+#### Ignition/Bovada — EASY (DOM scraping, proven tools)
+- [ ] Set up VPN (US exit node)
+- [ ] Create account + crypto deposit (BTC/USDT)
+- [ ] Chrome extension with MutationObserver on data-qa attributes
+- [ ] Read cards directly from DOM: `data-qa="card-As"` = Ace of spades
+- [ ] Port PokerEye+/IgnitionHUD approach to our strategy engine
+- [ ] Population-based profiling (anonymous tables, no cross-session tracking)
+
+#### BetOnline/TigerGaming — HARD (binary protocol, canvas rendering)
+- [ ] Create TigerGaming account (UK-friendly skin, same Chico network)
+- [ ] Investigate binary WebSocket protocol (no public RE exists)
+- [ ] Fallback: screen reading via YOLO + CNN (canvas-rendered)
+- [ ] Or: monkey-patch WebSocket constructor via CDP to intercept raw frames
+- [ ] Low priority — defer until Unibet + CoinPoker + Ignition working
+
+#### PokerStars Browser — HARDEST (defer)
+- [ ] Binary/obfuscated protocol, Flutter/CanvasKit rendering
+- [ ] 95%+ proactive bot detection rate
+- [ ] Defer until all other sites operational
+
+#### Cross-Site Infrastructure
 - [ ] Universal game state interface — abstract layer so strategy engine works across all sites
 - [ ] VPN management — auto-rotate for Ignition sessions
-- [ ] Crypto bankroll — wallet setup for cross-site deposits/withdrawals
+- [ ] Crypto bankroll — USDT wallet for cross-site deposits/withdrawals
+- [ ] Site-specific humanization profiles (different timing patterns per site)
 
 ### Todo — Hive Mind Controller
 - [ ] Central orchestrator that manages bot instances across multiple venues simultaneously
