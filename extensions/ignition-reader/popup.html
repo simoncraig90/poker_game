@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ignition Reader</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 340px;
+      min-height: 200px;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 12px;
+    }
+    h2 {
+      font-size: 14px;
+      color: #8bc34a;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 6px;
+    }
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .dot-green { background: #4caf50; }
+    .dot-red { background: #f44336; }
+    .dot-yellow { background: #ff9800; }
+    .section {
+      background: #16213e;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+    .label { color: #888; }
+    .value { color: #fff; font-weight: 600; }
+    .cards {
+      display: flex;
+      gap: 6px;
+      margin: 6px 0;
+    }
+    .card {
+      background: #fff;
+      color: #000;
+      padding: 4px 7px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 700;
+      min-width: 30px;
+      text-align: center;
+      border: 1px solid #555;
+    }
+    .card.heart, .card.diamond { color: #e53935; }
+    .card.spade, .card.club { color: #222; }
+    .card.empty {
+      background: #333;
+      color: #666;
+      border: 1px dashed #555;
+    }
+    .hero-turn {
+      background: #2e7d32;
+      color: #fff;
+      text-align: center;
+      padding: 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .waiting {
+      color: #666;
+      text-align: center;
+      padding: 20px;
+      font-style: italic;
+    }
+    .advisor-section {
+      margin-top: 4px;
+    }
+    .advisor-btn {
+      background: #1565c0;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      width: 100%;
+    }
+    .advisor-btn:hover { background: #1976d2; }
+    .advisor-btn.connected { background: #2e7d32; }
+    .advisor-btn.connected:hover { background: #c62828; }
+    .hand-count {
+      font-size: 11px;
+      color: #666;
+      text-align: right;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="status-bar">
+    <h2>Ignition Reader</h2>
+    <span id="statusIndicator">
+      <span class="status-dot dot-red" id="statusDot"></span>
+      <span id="statusText" style="font-size: 11px;">No table</span>
+    </span>
+  </div>
+
+  <div id="noTable" class="waiting">
+    Waiting for Ignition poker table...
+  </div>
+
+  <div id="gameInfo" style="display: none;">
+    <!-- Phase and position -->
+    <div class="section">
+      <div class="row">
+        <span class="label">Phase</span>
+        <span class="value" id="phase">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Position</span>
+        <span class="value" id="position">-</span>
+      </div>
+      <div class="row">
+        <span class="label">Players</span>
+        <span class="value" id="numPlayers">-</span>
+      </div>
+    </div>
+
+    <!-- Hero cards -->
+    <div class="section">
+      <div class="row"><span class="label">Hero Cards</span></div>
+      <div class="cards" id="heroCards"></div>
+    </div>
+
+    <!-- Board cards -->
+    <div class="section">
+      <div class="row"><span class="label">Board</span></div>
+      <div class="cards" id="boardCards"></div>
+    </div>
+
+    <!-- Betting -->
+    <div class="section">
+      <div class="row">
+        <span class="label">Pot</span>
+        <span class="value" id="pot">$0</span>
+      </div>
+      <div class="row">
+        <span class="label">Facing Bet</span>
+        <span class="value" id="facingBet">No</span>
+      </div>
+      <div class="row">
+        <span class="label">Call Amount</span>
+        <span class="value" id="callAmount">$0</span>
+      </div>
+    </div>
+
+    <!-- Hero turn indicator -->
+    <div id="turnIndicator" style="display: none;" class="hero-turn">
+      YOUR TURN TO ACT
+    </div>
+  </div>
+
+  <!-- Advisor connection -->
+  <div class="section advisor-section">
+    <button class="advisor-btn" id="advisorBtn">Connect to Advisor</button>
+  </div>
+
+  <div class="hand-count" id="handCount">Hands: 0</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

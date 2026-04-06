@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Ignition Poker Reader",
+  "version": "1.0.0",
+  "description": "Reads Ignition Casino poker game state from DOM for research purposes",
+  "permissions": [
+    "activeTab"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.ignitioncasino.eu/static/poker-game/*",
+        "*://*.bovada.lv/static/poker-game/*",
+        "*://*.bodog.eu/static/poker-game/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Ignition Reader"
+  },
+  "icons": {}
+}
