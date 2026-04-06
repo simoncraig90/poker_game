@@ -28,10 +28,18 @@ def main():
     print("  UNIBET ADVISOR — WebSocket (100% accurate)")
     print("=" * 50)
 
-    # Load the full advisor recommendation engine (CFR + equity + preflop chart)
+    # Load CFR strategy adapter
+    from cfr_adapter import CFRAdapter
+    try:
+        cfr = CFRAdapter()
+    except Exception as e:
+        print(f"[Advisor] CFR failed: {e}")
+        cfr = None
+
+    # Load the base advisor for equity + board danger
     from advisor import Advisor as BaseAdvisor
     base = BaseAdvisor(use_overlay=False, terminal=False, debug=False, unibet=True)
-    print(f"[Advisor] CFR: {len(base.cfr.strategy) if base.cfr else 0} info sets")
+    print(f"[Advisor] Base advisor loaded")
 
     # Load preflop chart
     from preflop_chart import preflop_advice
@@ -192,9 +200,22 @@ def main():
             "position_6max": pos,
         }
 
-        # Get recommendation — use base advisor for equity/danger, but handle preflop ourselves
+        # Get recommendation from base advisor (equity + board danger)
         rec = base._get_recommendation(advisor_state)
-        # Override the preflop action with our own logic (base advisor has stale CHECK override)
+
+        # Try CFR for action decision (overrides threshold logic)
+        cfr_result = None
+        if cfr:
+            try:
+                cfr_result = cfr.get_action(
+                    hero, board, pos, facing, call_amt,
+                    state["pot"], state.get("hero_stack", 1000),
+                    phase
+                )
+            except Exception:
+                pass
+
+        # Override preflop with direct chart (base advisor has stale CHECK logic)
         if rec and rec.get("phase") == "PREFLOP":
             pf_direct = preflop_advice(hero[0], hero[1], pos, facing_raise=facing)
             rec["preflop"] = pf_direct
@@ -232,7 +253,23 @@ def main():
                 elif "CALL" in action.upper() and call_amt > 0:
                     action = f"CALL {call_amt/100:.2f}"
 
-                info = f"Equity: {eq:.0%}  |  {pf.get('hand_key', '')}  {pos}{bb_hr_str}"
+                # Show CFR probabilities if available
+                cfr_info = ""
+                if cfr_result:
+                    p = cfr_result['probs']
+                    cfr_info = f"  [F:{p['fold']:.0%} C:{p['call']:.0%} R:{p['raise']:.0%}]"
+                    # Use CFR action instead of chart
+                    cfr_action = cfr_result['action']
+                    if cfr_action == 'CHECK' and facing:
+                        cfr_action = 'CALL'  # can't check facing a bet
+                    if cfr_action == 'RAISE' and cfr_result.get('amount'):
+                        action = f"RAISE to {cfr_result['amount']/100:.2f}"
+                    elif cfr_action == 'CALL' and call_amt > 0:
+                        action = f"CALL {call_amt/100:.2f}"
+                    else:
+                        action = cfr_action
+
+                info = f"Equity: {eq:.0%}  |  {pf.get('hand_key', '')}  {pos}{cfr_info}{bb_hr_str}"
 
                 rec_bg = "#1a3a1a" if "RAISE" in action.upper() or "CALL" in action.upper() else "#3a1a1a"
                 if action.upper() == "CHECK":
@@ -261,6 +298,22 @@ def main():
                 eq_str = f"Equity: {eq:.0%}"
                 if facing and adjusted_eq < eq:
                     eq_str += f" (adj: {adjusted_eq:.0%})"
+
+                # Use CFR for postflop action if available
+                if cfr_result:
+                    p = cfr_result['probs']
+                    cfr_info = f"  [F:{p['fold']:.0%} C:{p['call']:.0%} R:{p['raise']:.0%}]"
+                    cfr_action = cfr_result['action']
+                    if cfr_action == 'RAISE' and cfr_result.get('amount'):
+                        action = f"RAISE to {cfr_result['amount']/100:.2f}"
+                    elif cfr_action == 'CALL' and call_amt > 0:
+                        action = f"CALL {call_amt/100:.2f}"
+                    elif cfr_action == 'CHECK':
+                        action = "CHECK"
+                    else:
+                        action = cfr_action
+                    # Skip the threshold-based logic below
+
                 info = f"{eq_str}  |  {cat}  |  {warnings}{pot_odds_str}{bb_hr_str}"
 
                 pot_cents = state["pot"]
