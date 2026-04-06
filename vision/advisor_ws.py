@@ -258,25 +258,49 @@ def main():
                     else:
                         pot_odds_str += " (-EV)"
 
-                info = f"Equity: {eq:.0%}  |  {cat}  |  {warnings}{pot_odds_str}{bb_hr_str}"
+                eq_str = f"Equity: {eq:.0%}"
+                if facing and adjusted_eq < eq:
+                    eq_str += f" (adj: {adjusted_eq:.0%})"
+                info = f"{eq_str}  |  {cat}  |  {warnings}{pot_odds_str}{bb_hr_str}"
 
                 pot_cents = state["pot"]
                 hero_stack = state.get("hero_stack", 9999)
 
-                # Board danger adjustment — be cautious on scary boards
+                # Opponent action weighting — discount equity when facing bets
+                # Bigger bet = stronger opponent range = our real equity is lower
+                adjusted_eq = eq
+                if facing and call_amt > 0 and pot_cents > 0:
+                    bet_ratio = call_amt / pot_cents  # bet size relative to pot
+                    if bet_ratio > 1.0:
+                        # Overbet: opponent very strong, discount 35%
+                        adjusted_eq = eq * 0.65
+                    elif bet_ratio > 0.66:
+                        # Large bet: discount 25%
+                        adjusted_eq = eq * 0.75
+                    elif bet_ratio > 0.33:
+                        # Medium bet: discount 15%
+                        adjusted_eq = eq * 0.85
+                    else:
+                        # Small bet: could be bluff, discount 10%
+                        adjusted_eq = eq * 0.90
+
+                # Use adjusted equity for decisions, show raw equity on overlay
+                dec_eq = adjusted_eq if facing else eq
+
+                # Board danger adjustment
                 danger_warns = danger.get("warnings", [])
                 is_scary = any(w in danger_warns for w in
                     ["STRAIGHT_POSSIBLE", "FLUSH_POSSIBLE", "FLUSH_DRAW", "PAIRED"])
                 big_bet = call_amt > pot_cents * 0.5 if pot_cents > 0 else False
 
                 if not facing:
-                    if eq < 0.5:
+                    if dec_eq < 0.5:
                         action = "CHECK / FOLD"
-                    elif eq < 0.7:
+                    elif dec_eq < 0.7:
                         action = "CHECK / CALL"
                     else:
                         bet_size = int(pot_cents * 0.66)
-                        if is_scary and eq < 0.85:
+                        if is_scary and dec_eq < 0.85:
                             bet_size = int(pot_cents * 0.33)
                         bet_size = min(bet_size, hero_stack)
                         if bet_size >= hero_stack:
@@ -284,27 +308,28 @@ def main():
                         else:
                             action = f"BET {bet_size/100:.2f}"
                 else:
-                    # Use pot odds: if equity > pot odds, calling is +EV
+                    # Pot odds: use RAW equity for +EV check (math doesn't lie)
+                    # but use DISCOUNTED equity for raise/call thresholds
                     is_plus_ev = pot_odds > 0 and eq > pot_odds
 
                     if is_scary and big_bet:
-                        if eq > 0.90:
+                        if dec_eq > 0.90:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif is_plus_ev or eq > 0.55:
+                        elif is_plus_ev and dec_eq > 0.40:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
                     elif is_scary:
-                        if eq > 0.80:
+                        if dec_eq > 0.80:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif is_plus_ev or eq > 0.40:
+                        elif is_plus_ev or dec_eq > 0.40:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
                     else:
-                        if eq > 0.75:
+                        if dec_eq > 0.75:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif is_plus_ev or eq > 0.35:
+                        elif is_plus_ev or dec_eq > 0.35:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
@@ -314,7 +339,8 @@ def main():
                     rec_bg = "#1a1a3a"
 
                 send_overlay(cards_text, info, action, rec_bg)
-                print(f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%} | {action}")
+                adj_str = f" adj:{adjusted_eq:.0%}" if facing and adjusted_eq < eq else ""
+                print(f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%}{adj_str} | {action}")
 
     reader.on_state_change(on_state)
     reader.start()
