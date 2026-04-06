@@ -47,13 +47,23 @@
 - Less sophisticated detection than PS
 - Good for multi-table bot testing
 
-### Priority 3: Ignition/Bovada
+### Priority 3: BetOnline/Chico Network (**DEEP DIVE COMPLETE** — see `betonline-chico-deep-dive.md`)
+- Browser instant play at `poker.betonline.ag/mobilepoker/index.htm`
+- Connective Games PWA, HTML5 Canvas rendering, WebSocket binary protocol
+- 3 skins (BetOnline/TigerGaming/SportsBetting), same protocol, shared player pool
+- TigerGaming accepts UK players (BetOnline does not)
+- Up to 4 tables in browser, soft games, 90%+ crypto transactions
+- LOW detection risk in browser (no process scan, no extension detection, no CDP detection)
+- Anonymous tables at many stakes
+- Card catchers exist (Ace Poker Solutions) but desktop-only; browser = screen reading only
+
+### Priority 4: Ignition/Bovada
 - Browser instant play
 - US market (offshore)
 - Anonymous tables (no player tracking)
 - PaiWangLuo network — soft games
 
-### Priority 4: CoinPoker
+### Priority 5: CoinPoker
 - Crypto-only, less regulated
 - Browser + app
 - Provably fair RNG
