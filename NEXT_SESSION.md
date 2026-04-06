@@ -33,11 +33,30 @@
 - [ ] Player type classification — FISH/NIT/TAG/LAG/WHALE (scripts/player-profiler.js exists)
 - [ ] Nit detection — fold more vs nit bets, bluff more vs nits
 
+### Todo — Bot Improvement (Priority)
+- [ ] CFR strategy integration — map WS game state to info set keys, use 6-max CFR (3M entries) for optimal mixed strategies
+- [ ] Opponent profiling — track VPIP/PFR/AF per player, classify FISH/NIT/TAG/LAG, adjust strategy per player type
+- [ ] Move up stakes — validate profitability at 2NL, then 5NL → 10NL → 25NL
+
 ### Todo — Infrastructure
 - [ ] Multi-table support — one WS reader + overlay per table
 - [ ] Hand history logging — save all hands for post-session review + leak analysis
 - [ ] Session review — flag bad advisor recommendations post-session
 - [ ] Bet sizing optimization — size bets based on opponent tendencies (bigger vs calling stations, smaller vs nits)
+
+### Todo — Multi-Site Expansion
+- [ ] Investigate PokerStars browser WebSocket protocol
+- [ ] Investigate Ignition/Bovada browser WebSocket protocol
+- [ ] Investigate BetOnline browser WebSocket protocol
+- [ ] Investigate CoinPoker browser WebSocket protocol
+- [ ] Universal WS reader — abstract the protocol parsing to support multiple sites
+
+## End Goal
+**£100/day combining poker + HL across multiple sites and tables.**
+At 10bb/100 win rate:
+- 25NL × 6 tables = ~£10.50/hr = £84/8hr session
+- 50NL × 3 tables = ~£10.50/hr = £84/8hr session
+- Multi-site (Unibet + PS + Ignition) spreads risk and increases table availability
 
 ## Launch
 ```bash
