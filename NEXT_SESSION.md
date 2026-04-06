@@ -101,6 +101,41 @@
 - [ ] Load balancing — spread across sites to avoid detection patterns
 - [ ] Proxmox deployment — run bot instances on the server, not desktop
 
+### Todo — 24/7 Operations (Anonymous Sites)
+- [ ] **Account rotation** — 3+ Ignition accounts, one per 8hr shift, never overlap
+- [ ] **VPN rotation** — different US region per shift (East/West/Central), auto-switch
+- [ ] **Browser fingerprint isolation** — fresh Chrome profile per shift (user-data-dir rotation)
+- [ ] **Session randomization** — vary session length (4-10hr), start time (±2hr), break frequency
+- [ ] **Crypto wallet rotation** — separate wallets per account, tumbler for withdrawal aggregation
+- [ ] **Headless Chrome on Proxmox** — run 24/7 without desktop, xvfb for virtual display
+- [ ] **Health monitoring** — auto-restart crashed bots, alert on stop-loss, alert on detection signals
+- [ ] **Shift scheduler** — cron-based: start shift → launch Chrome + VPN → join tables → play → cash out → rotate
+- [ ] **Earnings aggregation** — daily/weekly P&L across all shifts/sites/accounts
+- [ ] **Detection avoidance patterns**:
+  - Random fold timing (2-8s, not constant)
+  - Occasional "mistake" plays (1-2% frequency)
+  - Vary table count per session (2-4, not always max)
+  - Skip some +EV hands to look human
+  - Take random breaks (stand up from table, rejoin after 5-15 min)
+
+### Revenue Projections
+```
+Phase 1 — Manual advisor (NOW):
+  Unibet 4 tables × 2NL = ~$2.80/hr = ~$22/day (8hr session)
+
+Phase 2 — Semi-auto multi-site:
+  Unibet 4 tables + CoinPoker 4 tables = ~$5.60/hr = ~$45/day
+
+Phase 3 — 24/7 Ignition bot farm:
+  3 shifts × 4 tables × 10NL = ~$8.40/hr × 24hr = ~$200/day
+  Plus Unibet + CoinPoker = ~$250/day total
+
+Phase 4 — Scale stakes:
+  Move profitable bots to 25NL-50NL
+  3 shifts × 4 tables × 25NL = ~$500/day
+  Target: £100/day achieved at Phase 3, exceeded at Phase 4
+```
+
 ## End Goal
 **£100/day combining poker + HL across multiple sites and tables.**
 At 10bb/100 win rate:
