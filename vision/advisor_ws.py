@@ -246,9 +246,19 @@ def main():
                 warnings = " ".join(danger.get("warnings", [])) or "clean"
                 cat = rec.get("category", "")
 
-                info = f"Equity: {eq:.0%}  |  {cat}  |  {warnings}{bb_hr_str}"
-                if facing:
-                    info += f"  (call {call_amt})"
+                # Pot odds calculation
+                pot_odds_str = ""
+                pot_odds = 0
+                if facing and call_amt > 0 and pot_cents > 0:
+                    pot_odds = call_amt / (pot_cents + call_amt)
+                    pot_odds_str = f"  |  Pot odds: {pot_odds:.0%}"
+                    # +EV if equity > pot odds
+                    if eq > pot_odds:
+                        pot_odds_str += " (+EV)"
+                    else:
+                        pot_odds_str += " (-EV)"
+
+                info = f"Equity: {eq:.0%}  |  {cat}  |  {warnings}{pot_odds_str}{bb_hr_str}"
 
                 pot_cents = state["pot"]
                 hero_stack = state.get("hero_stack", 9999)
@@ -274,27 +284,27 @@ def main():
                         else:
                             action = f"BET {bet_size/100:.2f}"
                 else:
+                    # Use pot odds: if equity > pot odds, calling is +EV
+                    is_plus_ev = pot_odds > 0 and eq > pot_odds
+
                     if is_scary and big_bet:
-                        # Scary board + big bet = need very strong hand
                         if eq > 0.90:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif eq > 0.55:
+                        elif is_plus_ev or eq > 0.55:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
                     elif is_scary:
-                        # Scary board, small bet
                         if eq > 0.80:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif eq > 0.40:
+                        elif is_plus_ev or eq > 0.40:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
                     else:
-                        # Clean board
                         if eq > 0.75:
                             action = f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
-                        elif eq > 0.35:
+                        elif is_plus_ev or eq > 0.35:
                             action = f"CALL {call_amt/100:.2f}"
                         else:
                             action = "FOLD"
