@@ -248,9 +248,9 @@ class CFRAdapter:
                 if allin_p / total_r > 0.5:
                     amount = hero_stack
                 elif pot_p / total_r > half_p / total_r:
-                    amount = min(pot, hero_stack)
+                    amount = min(max(pot, bb * 3), hero_stack)
                 else:
-                    amount = min(int(pot * 0.5), hero_stack)
+                    amount = min(max(int(pot * 0.5), bb * 3), hero_stack)
 
             if facing_bet and amount:
                 amount = max(amount, call_amount * 3)  # min 3x raise
