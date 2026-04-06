@@ -1,0 +1,13 @@
+path: C:/poker-research/vision/dataset_unibet
+train: images
+val: images
+
+names:
+  0: board_card
+  1: hero_card
+  2: card_back
+  3: player_panel
+  4: dealer_button
+  5: chip
+  6: pot_text
+  7: action_button

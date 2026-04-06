@@ -11,6 +11,13 @@ Usage:
   python vision/advisor.py --debug        # show detection details
 """
 
+# DPI awareness MUST be set before any GUI imports on Windows
+try:
+    import ctypes
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    pass
+
 import json
 import math
 import os
@@ -932,7 +939,11 @@ def find_poker_window_by_table(table_id):
 
 
 def find_table_region(frame):
-    """Find the PokerStars table by green felt detection."""
+    """Find the poker table by green felt detection.
+
+    Works for both PokerStars and Unibet. Filters out nav bars and other
+    green UI elements by requiring a reasonable aspect ratio (< 3:1).
+    """
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower = np.array([25, 30, 20])
     upper = np.array([85, 255, 255])
@@ -940,11 +951,18 @@ def find_table_region(frame):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < frame.shape[0] * frame.shape[1] * 0.03:
-        return None
-    x, y, w, h = cv2.boundingRect(largest)
-    return (x, y, w, h)
+    # Sort by area descending, find the largest that looks like a table (not a nav bar)
+    min_area = frame.shape[0] * frame.shape[1] * 0.03
+    candidates = sorted(contours, key=cv2.contourArea, reverse=True)
+    for cnt in candidates:
+        if cv2.contourArea(cnt) < min_area:
+            break
+        x, y, w, h = cv2.boundingRect(cnt)
+        aspect = w / max(h, 1)
+        # A poker felt is roughly 1.5:1 to 2.5:1 — reject thin strips (nav bars)
+        if aspect < 3.5 and h > 100:
+            return (x, y, w, h)
+    return None
 
 
 def crop_table(frame, region):
@@ -966,20 +984,24 @@ class OverlayWindow:
     """Small always-on-top Tkinter window for displaying recommendations."""
 
     def __init__(self):
+        # DPI awareness is set at module level (top of file)
         self.root = tk.Tk()
         self.root.title("Poker Advisor")
         self.root.configure(bg="#1a1a2e")
 
-        # Size and position
+        # Size and position — start at top-right, visible on any monitor
         self.width = 390
         self.height = 195
-        self.root.geometry(f"{self.width}x{self.height}+50+50")
+        screen_w = self.root.winfo_screenwidth()
+        start_x = max(0, screen_w - self.width - 30)
+        self.root.geometry(f"{self.width}x{self.height}+{start_x}+30")
         self.root.resizable(False, False)
 
         # Set topmost and transparency after geometry
         self.root.update_idletasks()
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.88)
+        self.root.lift()
 
         # Allow dragging
         self._drag_data = {"x": 0, "y": 0}
@@ -1045,12 +1067,20 @@ class OverlayWindow:
         # Place below and to the right of the table
         x = tx + tw - self.width - 10
         y = ty + th + 10
-        # Keep on screen
+        # Keep on screen — use actual screen dimensions
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
+        # On high-DPI displays, coordinates may need scaling
+        # Fallback: if computed position seems off-screen, use top-right
+        if x < 0 or x > screen_w or y < 0 or y > screen_h:
+            x = screen_w - self.width - 20
+            y = 20
         x = max(0, min(x, screen_w - self.width))
         y = max(0, min(y, screen_h - self.height))
         self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        # Force to top for visibility
+        self.root.lift()
+        self.root.attributes('-topmost', True)
 
     def show_waiting(self, msg="Waiting..."):
         """Show waiting state."""
@@ -1161,6 +1191,9 @@ class OverlayWindow:
         try:
             self.root.update_idletasks()
             self.root.update()
+            # Re-assert topmost every cycle to stay above Chrome
+            self.root.attributes("-topmost", True)
+            self.root.lift()
         except tk.TclError:
             return False  # window destroyed
         return True
@@ -1173,11 +1206,12 @@ class Advisor:
     Main advisor loop: capture -> detect -> recommend -> display.
     """
 
-    def __init__(self, use_overlay=True, terminal=False, debug=False, table_id=None):
+    def __init__(self, use_overlay=True, terminal=False, debug=False, table_id=None, unibet=False):
         self.use_overlay = use_overlay
         self.terminal = terminal
         self.debug = debug
         self.table_id = table_id
+        self.unibet = unibet
         self.window_rect = None
         if table_id is not None:
             self.window_rect = find_poker_window_by_table(table_id)
@@ -1185,6 +1219,16 @@ class Advisor:
                 print(f"[Advisor] Targeting table {table_id} at {self.window_rect}")
             else:
                 print(f"[Advisor] Table {table_id} window not found — using full screen")
+
+        # Load Unibet card detector if needed
+        self._unibet_detect = None
+        if unibet:
+            try:
+                import unibet_card_detect
+                self._unibet_detect = unibet_card_detect
+                print("[Advisor] Unibet card detection loaded")
+            except ImportError as e:
+                print(f"[Advisor] Unibet detection failed: {e}")
 
         # Load CFR strategy (table lookup — fast fallback)
         self.cfr = CFRLookup()
@@ -1196,16 +1240,26 @@ class Advisor:
         except Exception as e:
             print(f"[Advisor] Subgame solver not available: {e}")
 
-        # Load YOLO model
+        # Load YOLO model — use Unibet-trained model if in Unibet mode
         self.yolo_model = None
         self.yolo_detect = None
         try:
             from yolo_detect import load_model, detect_elements
-            model = load_model()
+            if unibet:
+                unibet_model_path = os.path.join(VISION_DIR, "models", "yolo_unibet.pt")
+                if os.path.exists(unibet_model_path):
+                    model = load_model(unibet_model_path)
+                    print(f"[Advisor] YOLO Unibet model loaded")
+                else:
+                    model = load_model()
+                    print("[Advisor] YOLO default model loaded (Unibet model not found)")
+            else:
+                model = load_model()
             if model is not None:
                 self.yolo_model = model
                 self.yolo_detect = detect_elements
-                print("[Advisor] YOLO model loaded")
+                if not unibet:
+                    print("[Advisor] YOLO model loaded")
         except Exception as e:
             print(f"[Advisor] YOLO not available: {e}")
 
@@ -1227,13 +1281,47 @@ class Advisor:
 
         # Overlay
         self.overlay = None
+        self._overlay_proc = None
         if use_overlay:
-            self.overlay = OverlayWindow()
+            if unibet:
+                self._start_overlay_process()
+            else:
+                self.overlay = OverlayWindow()
 
         # State tracking
         self.prev_hero = []
         self.prev_board = []
         self.prev_hero_turn = False
+
+    def _start_overlay_process(self):
+        """Start the overlay as a separate process (stays responsive during detection)."""
+        overlay_script = os.path.join(VISION_DIR, "overlay_process.py")
+        self._overlay_proc = subprocess.Popen(
+            [sys.executable, "-u", overlay_script],
+            stdin=subprocess.PIPE,
+            text=True
+        )
+        print(f"[Advisor] Overlay process started (PID {self._overlay_proc.pid})")
+
+    def _send_overlay(self, cards="", info="", rec="", rec_bg="#1a1a2e", rec_fg="#ffd700"):
+        """Send update to the subprocess overlay."""
+        if self._overlay_proc and self._overlay_proc.poll() is None:
+            try:
+                import json as _json
+                msg = _json.dumps({
+                    "cards": cards, "info": info, "rec": rec,
+                    "rec_bg": rec_bg, "rec_fg": rec_fg
+                }) + "\n"
+                self._overlay_proc.stdin.write(msg)
+                self._overlay_proc.stdin.flush()
+                if self.debug:
+                    print(f"[Overlay] sent: {cards[:30]}")
+            except Exception as e:
+                if self.debug:
+                    print(f"[Overlay] send failed: {e}")
+        elif self.debug:
+            alive = self._overlay_proc.poll() if self._overlay_proc else "no proc"
+            print(f"[Overlay] not alive: {alive}")
         self.action_history = ""  # tracks the action sequence for CFR key
         self.last_phase = "PREFLOP"
         self.table_region = None
@@ -1487,8 +1575,179 @@ class Advisor:
                 print(f"[OCR fallback error] {e}")
             return None
 
+    def _extract_state_unibet(self, table_img):
+        """Extract game state from Unibet table using YOLO + OCR + contour."""
+        ucd = self._unibet_detect
+        h, w = table_img.shape[:2]
+
+        # Hero card locking: once both cards detected, keep them for the hand
+        if not hasattr(self, '_locked_hero'):
+            self._locked_hero = None
+            self._locked_board_count = 0
+
+        # YOLO for board cards
+        elements = self._detect_with_yolo(table_img)
+        board_boxes = []
+        if elements:
+            board_boxes = elements.get("board_card", [])[:5]
+
+        # Convert YOLO dict boxes to (x1, y1, x2, y2) tuples
+        def yolo_to_xyxy(boxes):
+            result = []
+            for b in boxes:
+                if isinstance(b, dict):
+                    result.append((b['x'], b['y'], b['x'] + b['w'], b['y'] + b['h']))
+                else:
+                    result.append(b)
+            return result
+
+        # Identify board cards with Unibet OCR+contour pipeline
+        board_xyxy = yolo_to_xyxy(board_boxes)
+        board_cards = ucd.identify_cards_from_boxes(table_img, board_xyxy) if board_xyxy else []
+        board_cards = [c for c in board_cards if c != '??']
+
+        # Hero cards: use YOLO hero_card detections (retrained on Unibet)
+        # Filter: hero cards should be in the bottom-center of the table
+        # (y > 40% of table height, x between 25-85% of table width)
+        hero_cards = []
+        if elements and elements.get("hero_card"):
+            all_hero = yolo_to_xyxy(elements["hero_card"])
+            # Filter by position — hero cards are close together in bottom-center
+            hero_xyxy = []
+            for (x1, y1, x2, y2) in all_hero:
+                cy = (y1 + y2) / 2
+                cx = (x1 + x2) / 2
+                if cy > h * 0.40 and 0.25 * w < cx < 0.80 * w:
+                    hero_xyxy.append((x1, y1, x2, y2))
+            hero_xyxy.sort(key=lambda b: b[0])
+            # If 3+ boxes, keep only the closest pair (hero cards are adjacent)
+            if len(hero_xyxy) > 2:
+                # Find the pair with smallest gap
+                best_pair = hero_xyxy[:2]
+                best_gap = abs(hero_xyxy[1][0] - hero_xyxy[0][2])
+                for i in range(len(hero_xyxy) - 1):
+                    gap = abs(hero_xyxy[i + 1][0] - hero_xyxy[i][2])
+                    if gap < best_gap:
+                        best_gap = gap
+                        best_pair = [hero_xyxy[i], hero_xyxy[i + 1]]
+                hero_xyxy = best_pair
+            # If 2 boxes but far apart (>150px gap), likely one is an opponent card
+            if len(hero_xyxy) == 2:
+                gap = hero_xyxy[1][0] - hero_xyxy[0][2]
+                if gap > 150:
+                    # Drop the one further from center
+                    center_x = w * 0.55
+                    d0 = abs((hero_xyxy[0][0] + hero_xyxy[0][2]) / 2 - center_x)
+                    d1 = abs((hero_xyxy[1][0] + hero_xyxy[1][2]) / 2 - center_x)
+                    hero_xyxy = [hero_xyxy[0]] if d0 < d1 else [hero_xyxy[1]]
+            hero_xyxy = hero_xyxy[:2]
+            if self.debug:
+                print(f"[Unibet] YOLO hero boxes: {len(hero_xyxy)} (filtered from {len(all_hero)})")
+            # Identify hero cards:
+            # - Rank: from YOLO crop (OCR works best on full crop)
+            # - Suit: from tight crop (CNN works best on card-only crop)
+            hero_cards = []
+            for xyxy in hero_xyxy:
+                x1, y1, x2, y2 = xyxy
+                yolo_crop = table_img[y1:y2, x1:x2]
+                # Rank from YOLO crop
+                rank, _ = ucd.detect_rank(yolo_crop)
+                # Suit from tight crop
+                tx1, ty1, tx2, ty2 = ucd.find_tight_box(table_img, *xyxy)
+                tight_crop = table_img[ty1:ty2, tx1:tx2]
+                suit = ucd.detect_suit_cnn(tight_crop)
+                if suit is None:
+                    suit = ucd.detect_suit(yolo_crop)
+                if rank != '?':
+                    hero_cards.append(f"{rank}{suit}")
+            hero_cards = [c for c in hero_cards if c != '??']
+        elif self.debug and elements:
+            print(f"[Unibet] No hero_card in YOLO. Keys: {[k for k,v in elements.items() if v]}")
+
+        # Fallback: OCR name-anchor approach
+        if len(hero_cards) < 2:
+            hero_boxes = ucd.find_hero_cards(table_img, h, w)
+            if hero_boxes:
+                fallback = ucd.identify_cards_from_boxes(table_img, hero_boxes)
+                fallback = [c for c in fallback if c != '??']
+                if len(fallback) > len(hero_cards):
+                    hero_cards = fallback
+
+        # Hero card locking: stabilize across frames
+        if len(hero_cards) == 2:
+            if self._locked_hero is None:
+                # First detection of both cards — lock
+                self._locked_hero = hero_cards[:]
+            else:
+                # Already locked — only update if ranks match (suit may flicker)
+                locked_ranks = sorted([c[0] for c in self._locked_hero])
+                new_ranks = sorted([c[0] for c in hero_cards])
+                if locked_ranks != new_ranks:
+                    # Different ranks = new hand, update lock
+                    self._locked_hero = hero_cards[:]
+                # Same ranks = keep existing lock (stable suits)
+        elif self._locked_hero and len(board_cards) == 0 and len(hero_cards) == 0:
+            # Board empty + no hero cards = between hands, release lock
+            self._locked_hero = None
+
+        # Use locked hero cards if available
+        if self._locked_hero:
+            hero_cards = self._locked_hero
+
+        # Detect hero's turn and facing_bet via button colors (fast, no OCR)
+        # Unibet buttons: FOLD=red, CALL=orange, RAISE/CHECK=green
+        hero_turn = False
+        facing_bet = False
+        call_amount = None
+
+        btn_y1 = int(h * 0.65)
+        btn_y2 = int(h * 0.88)
+        btn_area = table_img[btn_y1:btn_y2, :]
+
+        if btn_area.size > 0:
+            hsv_btn = cv2.cvtColor(btn_area, cv2.COLOR_BGR2HSV)
+            # Red FOLD button (H=0-10)
+            red_px = cv2.countNonZero(
+                cv2.inRange(hsv_btn, np.array([0, 70, 70]), np.array([10, 255, 255])) |
+                cv2.inRange(hsv_btn, np.array([170, 70, 70]), np.array([180, 255, 255])))
+            # Orange CALL button (H=10-30) — only present when facing a bet
+            orange_px = cv2.countNonZero(
+                cv2.inRange(hsv_btn, np.array([10, 70, 70]), np.array([30, 255, 255])))
+            # Green RAISE/CHECK button (H=35-85)
+            green_px = cv2.countNonZero(
+                cv2.inRange(hsv_btn, np.array([35, 70, 70]), np.array([85, 255, 255])))
+
+            # Action buttons present if we see red (FOLD) + green (RAISE/CHECK)
+            if red_px > 3000 and green_px > 3000:
+                hero_turn = True
+                # Orange CALL button present = facing a bet
+                facing_bet = orange_px > 2000
+
+        # Count opponents from card backs
+        num_opp = 1
+        if elements:
+            num_opp = max(1, len(elements.get("card_back", [])))
+
+        if self.debug:
+            print(f"[Unibet] hero={hero_cards} board={board_cards} turn={hero_turn} opp={num_opp}")
+
+        return {
+            "hero_cards": hero_cards,
+            "board_cards": board_cards,
+            "hero_turn": hero_turn,
+            "facing_bet": facing_bet,
+            "pot": None,
+            "call_amount": call_amount,
+            "num_opponents": num_opp,
+            "position": None,
+            "players": [],
+        }
+
     def _extract_state(self, table_img):
         """Extract game state from table image using YOLO or OCR fallback."""
+        if self.unibet and self._unibet_detect:
+            return self._extract_state_unibet(table_img)
+
         elements = self._detect_with_yolo(table_img)
 
         if elements is not None:
@@ -1841,14 +2100,16 @@ class Advisor:
             # Call amount = BB ($0.10) means no raise — just limpers or BB option
             call_amount = state.get("call_amount")
             facing_raise = facing_bet
-            if call_amount is not None and call_amount <= 0.10:
-                facing_raise = False  # just the BB, no raise
-            # BB with no raise = check option
-            if pos_6max == "BB" and not facing_raise:
-                facing_raise = False
 
             from preflop_chart import preflop_advice
             pf = preflop_advice(hero[0], hero[1], pos_6max, facing_raise=facing_raise)
+
+            # If not facing a bet and chart says FOLD, change to CHECK
+            # (you can only fold if facing a bet — otherwise you check for free)
+            if not facing_bet and pf.get("action", "").upper() == "FOLD":
+                pf["action"] = "CHECK"
+                pf["note"] = "no bet to face"
+
             info["preflop"] = pf
             info["facing_bet"] = facing_raise
 
@@ -1961,33 +2222,159 @@ class Advisor:
         print(f"{'='*50}")
 
     def run(self):
-        """Main loop: capture, detect, recommend, display."""
+        """Main loop: Tkinter on main thread, detection on background thread."""
+        site = "Unibet" if self.unibet else "PokerStars"
         print("\n" + "=" * 50)
-        print("  POKER ADVISOR — Equity + Preflop Chart")
+        print(f"  POKER ADVISOR — Equity + Preflop Chart ({site})")
         print("=" * 50)
-        print("  Looking for PokerStars table...")
+        print(f"  Looking for {site} table...")
         print("  Right-click overlay to close | Ctrl+C to exit")
         print()
 
-        frame_count = 0
-        last_capture = 0
-        capture_interval = 0.3  # seconds
+        if self._overlay_proc:
+            # Subprocess overlay — run detection directly (overlay is separate process)
+            self._run_detection_loop()
+        elif self.overlay:
+            # In-process Tkinter — thread detection, keep Tkinter on main
+            self._running = True
+            self._pending_state = None
+            self._state_lock = threading.Lock()
+            det_thread = threading.Thread(target=self._detection_thread, daemon=True)
+            det_thread.start()
+            while self._running:
+                try:
+                    if not self.overlay.update():
+                        self._running = False
+                        break
+                    with self._state_lock:
+                        pending = self._pending_state
+                        self._pending_state = None
+                    if pending is not None:
+                        self._process_state(pending)
+                    time.sleep(0.03)
+                except KeyboardInterrupt:
+                    self._running = False
+                    break
+            try:
+                self.overlay.root.destroy()
+            except Exception:
+                pass
+        else:
+            self._run_detection_loop()
 
+    def _run_detection_loop(self):
+        """Simple detection loop — process results directly (no threading)."""
+        frame_count = 0
         while True:
             try:
-                now = time.time()
-                if now - last_capture < capture_interval:
-                    # Process overlay events between captures
-                    if self.overlay:
-                        if not self.overlay.update():
-                            break  # window closed
-                    time.sleep(0.05)
+                time.sleep(0.5)
+
+                if self.table_id is not None and frame_count % 20 == 0:
+                    self.window_rect = find_poker_window_by_table(self.table_id)
+                frame = capture_screen(self.window_rect)
+
+                region = find_table_region(frame)
+                if not region:
+                    if self.debug and frame_count % 10 == 0:
+                        print(".", end="", flush=True)
+                    frame_count += 1
                     continue
 
-                last_capture = now
+                self.table_region = region
+                table_img, offset = crop_table(frame, region)
+                state = self._extract_state(table_img)
 
-                # 1. Capture screen (or specific window)
-                # Re-find window periodically in case it moved
+                if state is None:
+                    frame_count += 1
+                    continue
+
+                if self.debug and frame_count % 20 == 0:
+                    hero = state.get("hero_cards", [])
+                    board = state.get("board_cards", [])
+                    print(f"[debug] hero={hero} board={board}")
+
+                self._process_state(state)
+                frame_count += 1
+
+            except KeyboardInterrupt:
+                print("\n\nAdvisor stopped.")
+                break
+            except Exception as e:
+                if self.debug:
+                    import traceback
+                    traceback.print_exc()
+                time.sleep(1)
+
+        if self._overlay_proc:
+            self._overlay_proc.terminate()
+        if self.solver:
+            try:
+                self.solver.quit()
+            except Exception:
+                pass
+
+    def _process_state(self, state):
+        """Process a detection result (called from main thread)."""
+        hero = state.get("hero_cards", [])
+        board = state.get("board_cards", [])
+        hero_turn = state.get("hero_turn", False)
+
+        if len(hero) >= 2:
+            if hero != self.prev_hero or board != self.prev_board or hero_turn != self.prev_hero_turn:
+                self.prev_hero = hero
+                self.prev_board = board
+                self.prev_hero_turn = hero_turn
+                rec = self._get_recommendation(state)
+                if rec:
+                    if self.overlay:
+                        self.overlay.show_recommendation(hero, board, rec)
+                    if self._overlay_proc:
+                        hero_str = " ".join(card_display(c) for c in hero)
+                        board_str = " ".join(card_display(c) for c in board) if board else ""
+                        cards_text = hero_str + ("  |  " + board_str if board_str else "")
+                        phase = rec.get("phase", "PREFLOP")
+                        eq = rec.get("equity", 0)
+                        if phase == "PREFLOP":
+                            pf = rec.get("preflop", {})
+                            info = f"Equity: {eq:.0%}  |  {pf.get('hand_key', '')}  {rec.get('position', '')}"
+                            action = pf.get("action", "?")
+                            rec_bg = "#1a3a1a" if "RAISE" in action or "CALL" in action else "#3a1a1a"
+                            self._send_overlay(cards_text, info, action, rec_bg)
+                        else:
+                            danger = rec.get("danger", {})
+                            warnings = " ".join(danger.get("warnings", [])) or "clean"
+                            cat = rec.get("category", "")
+                            info = f"Equity: {eq:.0%}  |  {cat}  |  {warnings}"
+                            rec_text = "STRONG" if eq > 0.7 else "CHECK" if eq > 0.4 else "FOLD"
+                            rec_bg = "#1a3a1a" if eq > 0.5 else "#3a1a1a"
+                            self._send_overlay(cards_text, info, rec_text, rec_bg)
+                    if self.terminal or self.debug:
+                        self._print_recommendation(state, rec)
+                    if hero_turn:
+                        self._log_recommendation(hero, board, state, rec)
+        else:
+            if self.prev_hero:
+                self.prev_hero_turn = False
+                if self.overlay:
+                    self.overlay.show_waiting("Waiting...")
+                if self._overlay_proc:
+                    self._send_overlay("Waiting for cards...")
+            if not board and self.prev_board:
+                self.action_history = ""
+                self.last_phase = "PREFLOP"
+                self.hands_seen += 1
+                self._update_session_display()
+            self.prev_hero = hero
+            self.prev_board = board
+
+    def _detection_thread(self):
+        """Background thread: capture, detect, queue results."""
+        frame_count = 0
+
+        while self._running:
+            try:
+                time.sleep(0.5)
+
                 if self.table_id is not None and frame_count % 20 == 0:
                     self.window_rect = find_poker_window_by_table(self.table_id)
                 frame = capture_screen(self.window_rect)
@@ -1995,20 +2382,13 @@ class Advisor:
                 # 2. Find table
                 region = find_table_region(frame)
                 if not region:
-                    if frame_count % 10 == 0:
-                        if self.overlay:
-                            self.overlay.show_no_table()
-                        if self.terminal or self.debug:
+                    if self.terminal or self.debug:
+                        if frame_count % 10 == 0:
                             print(".", end="", flush=True)
                     frame_count += 1
                     continue
 
                 self.table_region = region
-
-                # Position overlay near table (once)
-                if self.overlay and not self.positioned:
-                    self.overlay.position_near_table(region)
-                    self.positioned = True
 
                 # 3. Crop table
                 table_img, offset = crop_table(frame, region)
@@ -2026,43 +2406,9 @@ class Advisor:
                     fb = state.get("facing_bet", False)
                     print(f"[debug] hero={hero} board={board} turn={turn} facing_bet={fb}")
 
-                # 5. Update overlay whenever state changes
-                hero = state.get("hero_cards", [])
-                board = state.get("board_cards", [])
-                hero_turn = state.get("hero_turn", False)
-
-                if len(hero) >= 2:
-                    # State changed? Recalculate
-                    if hero != self.prev_hero or board != self.prev_board or hero_turn != self.prev_hero_turn:
-                        self.prev_hero = hero
-                        self.prev_board = board
-                        self.prev_hero_turn = hero_turn
-
-                        # Get recommendation
-                        rec = self._get_recommendation(state)
-                        if rec:
-                            if self.overlay:
-                                self.overlay.show_recommendation(hero, board, rec)
-                            if self.terminal or self.debug:
-                                self._print_recommendation(state, rec)
-                            # Log recommendation for post-session review
-                            if hero_turn:
-                                self._log_recommendation(hero, board, state, rec)
-                else:
-                    if self.prev_hero:
-                        # Had hero cards, now gone — new hand
-                        self.prev_hero_turn = False
-                        if self.overlay:
-                            self.overlay.show_waiting("Waiting...")
-
-                    # New hand detection: if board changed to empty, reset history
-                    if not board and self.prev_board:
-                        self.action_history = ""
-                        self.last_phase = "PREFLOP"
-                        self.hands_seen += 1
-                        self._update_session_display()
-                    self.prev_hero = hero
-                    self.prev_board = board
+                # Queue result for main thread
+                with self._state_lock:
+                    self._pending_state = state
 
                 frame_count += 1
 
@@ -2207,6 +2553,7 @@ def main():
     parser.add_argument("--demo", action="store_true", help="Run demo mode (no screen capture)")
     parser.add_argument("--no-overlay", action="store_true", help="Disable overlay window")
     parser.add_argument("--table", type=int, default=None, help="Target specific table window by ID (for multi-table)")
+    parser.add_argument("--unibet", action="store_true", help="Unibet mode — use OCR+contour card detection instead of PS CNN")
     args = parser.parse_args()
 
     if args.demo:
@@ -2219,6 +2566,7 @@ def main():
         terminal=args.terminal or args.debug,
         debug=args.debug,
         table_id=args.table,
+        unibet=args.unibet,
     )
     advisor.run()
 

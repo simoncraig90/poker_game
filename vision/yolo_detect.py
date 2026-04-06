@@ -28,20 +28,20 @@ CLASS_NAMES = [
 _model = None
 
 
-def load_model():
+def load_model(custom_path=None):
     """Load the trained YOLO model (lazy, once)."""
     global _model
-    if _model is not None:
+    if _model is not None and custom_path is None:
         return _model
 
-    if not os.path.exists(MODEL_PATH):
-        print(f"No trained model at {MODEL_PATH}")
-        print("Run: python vision/yolo_train.py")
+    model_path = custom_path or MODEL_PATH
+    if not os.path.exists(model_path):
+        print(f"No trained model at {model_path}")
         return None
 
     from ultralytics import YOLO
-    _model = YOLO(MODEL_PATH)
-    print(f"Loaded YOLO model from {MODEL_PATH}")
+    _model = YOLO(model_path)
+    print(f"Loaded YOLO model from {model_path}")
     return _model
 
 
