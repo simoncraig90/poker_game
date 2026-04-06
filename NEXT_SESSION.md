@@ -33,10 +33,17 @@
 - [ ] Player type classification — FISH/NIT/TAG/LAG/WHALE (scripts/player-profiler.js exists)
 - [ ] Nit detection — fold more vs nit bets, bluff more vs nits
 
+### Done — Bot Improvement
+- [x] CFR strategy integration — 50-bucket, 1.3M info sets, fuzzy matching (13/14 test hands)
+- [x] Pot odds calculation — +EV/-EV display
+- [x] Opponent action weighting — discount equity on big bets
+- [x] Board danger adjustment — cautious on scary boards
+
 ### Todo — Bot Improvement (Priority)
-- [ ] CFR strategy integration — map WS game state to info set keys, use 6-max CFR (3M entries) for optimal mixed strategies
-- [ ] Opponent profiling — track VPIP/PFR/AF per player, classify FISH/NIT/TAG/LAG, adjust strategy per player type
+- [ ] Train BIG CFR — 100-bucket, 100M+ iterations on cloud/Proxmox (~€8 Hetzner or 3hr Proxmox)
+- [ ] Opponent profiling — track VPIP/PFR/AF per player, classify FISH/NIT/TAG/LAG
 - [ ] Move up stakes — validate profitability at 2NL, then 5NL → 10NL → 25NL
+- [ ] Fix remaining CHECK/CALL timing issue
 
 ### Todo — Infrastructure
 - [ ] Multi-table support — one WS reader + overlay per table

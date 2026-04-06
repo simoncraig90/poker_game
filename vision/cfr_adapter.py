@@ -200,8 +200,53 @@ class CFRAdapter:
                 used_key = key
                 break
 
+        # Fuzzy matching: try nearby buckets ±1, ±2, ±3
         if not strategy:
-            # No CFR data — return None, let caller use fallback
+            for delta in [1, -1, 2, -2, 3, -3]:
+                fuzzy_bucket = bucket + delta
+                if fuzzy_bucket < 0 or fuzzy_bucket >= NUM_BUCKETS:
+                    continue
+                fuzzy_keys = [
+                    f"{phase}:{fuzzy_bucket}:s{stack_bucket}:{pos_str}:{action_history}",
+                    f"{phase}:{fuzzy_bucket}:s{stack_bucket}:{action_history}",
+                    f"{phase}:{fuzzy_bucket}:{action_history}",
+                ]
+                for key in fuzzy_keys:
+                    if key in self.strategy:
+                        strategy = self.strategy[key]
+                        used_key = f"~{key}"  # ~ prefix = fuzzy match
+                        break
+                if strategy:
+                    break
+
+        # Try alternate action histories if still no match
+        if not strategy:
+            alt_histories = []
+            if phase == "PREFLOP":
+                alt_histories = ["rh", "rp", "c", ""]
+            elif phase == "FLOP":
+                alt_histories = ["rpc-bh", "rhc-bh", "rpc-k", "rhc-k", "rpc-bp", "rhc-bp"]
+            elif phase == "TURN":
+                alt_histories = ["rpc-bpc-bh", "rpc-bpc-k", "rpc-kk-bh", "rpc-kk-k"]
+            elif phase == "RIVER":
+                alt_histories = ["rpc-bpc-bpc-bh", "rpc-bpc-bpc-k", "rpc-bpc-kk-bh"]
+
+            for alt_hist in alt_histories:
+                if alt_hist == action_history:
+                    continue
+                for b_delta in [0, 1, -1, 2, -2]:
+                    b = bucket + b_delta
+                    if b < 0 or b >= NUM_BUCKETS:
+                        continue
+                    key = f"{phase}:{b}:s{stack_bucket}:{pos_str}:{alt_hist}"
+                    if key in self.strategy:
+                        strategy = self.strategy[key]
+                        used_key = f"~~{key}"  # ~~ = double fuzzy
+                        break
+                if strategy:
+                    break
+
+        if not strategy:
             return None
 
         # Extract probabilities
