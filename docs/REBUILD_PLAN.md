@@ -300,17 +300,29 @@ Each subsequent stake (NL5 → NL10 → NL25 → NL50) gates on its own burn-in:
 The reason today's session felt like learning basic things is because the foundation skipped Phase 1 entirely — the strategy code was built without the validation gate, so we never knew what we had until real money was in front of it. Phase 1 must come first this time.
 
 **Phase week budget (revised):**
-- Phase 0: immediate
-- Phase 1: 1 week (validation harness + action history) — currently in progress on `rebuild-foundation-20260408`
-- Phase 2: 2 weeks (range model + range-aware equity + multi-way + combo counting)
-- Phase 2.5: 0.5 week (blockers — overlaps with end of Phase 2)
-- Phase 3: 2 weeks (decision engine retune + 24 expanded items)
+- Phase 0: immediate ✓
+- Phase 1: 1 week (validation harness + action history) ✓ DONE
+- Phase 2: 2 weeks (range model + range-aware equity + multi-way + combo counting) ✓ DONE (in 1 session)
+- Phase 2.5: 0.5 week (blockers — overlaps with end of Phase 2) — partially done via combo expansion
+- Phase 3: 2 weeks (decision engine retune + 24 expanded items) — v0 wired, full retune pending
 - Phase 4: 1 week (Phase 3 IL deploy + auto-fold)
 - Phase 5: 1 week (full auto-click + multi-table coordination)
 - Phase 6: 0.5 week (bankroll + stake progression)
 - Phase 7: 1 week (NL2 burn-in)
 
 Total: ~9 weeks. Add 1 week buffer for surprises during burn-in → 10 weeks worst case.
+
+**Actual progress 2026-04-08 (single intensive session):**
+- Phase 1: complete
+- Phase 2: complete (functionally — all modules + wiring + measurement)
+- Phase 3 v0: range_equity drives adjusted_eq
+
+Velocity has been roughly 4-5x the original estimate because the
+session was a single uninterrupted block without context-switching.
+That rate is unlikely to sustain — Phase 3 main work (postflop CFR
+recalibration) is genuinely harder per-line and Phase 7 burn-in is
+gated on real hand volume. Conservative remaining estimate from
+this point: ~5-6 weeks to NL2 autopilot.
 
 ---
 
@@ -335,6 +347,50 @@ All nine compensate for the same architectural fact: the equity model returns ha
 ## Living document
 
 This file is the source of truth for the rebuild. Edit it as scope shifts. Each phase exit must be marked with a date and the harness BB/100 number that gated it. New leak shapes discovered during burn-in get appended below as numbered entries.
+
+### Phase 2 module inventory (as of 2026-04-08)
+
+All committed on `rebuild-foundation-20260408`. Total ~2,200 lines of new code, 139 unit tests passing across the rebuild branch.
+
+| Module | Lines | Tests | Purpose |
+|---|---|---|---|
+| `vision/action_history.py` | 290 | 13 | Per-snapshot diff → ordered Action records by street |
+| `vision/range_model.py` | 320 | 18 | Starting ranges per (class × position × action) — 25 tables |
+| `vision/hand_combos.py` | 220 | 24 | 169-shape ↔ 1326-combo expansion + blocker removal |
+| `vision/range_narrow.py` | 310 | 23 | Preflop role classification + postflop street narrowing + check-raise detection |
+| `vision/hand_eval.py` | 220 | 29 | 7-card hand evaluator (correctness-first pure Python) |
+| `vision/equity_calc.py` | 280 | 17 | MC equity heads-up + multi-way (3+ players) |
+| `vision/replay_harness.py` | 580 | 15 | Walks captured corpus, drives advisor, records every decision |
+
+Plus integration changes to `vision/advisor_state_machine.py` (range_equity gates, HUD-per-seat classification, adjusted_eq replacement) and `vision/coinpoker_adapter.py` (bb_seat / dealer_seat exposed in snapshot).
+
+### Validation against the three named loss spots from 2026-04-08 session
+
+Each was a real hand the user lost real chips on, and the legacy advisor recommended the losing line:
+
+| Hand | Board | Legacy hot-cold equity | Range-aware equity | Combos remaining | Right call |
+|---|---|---|---|---|---|
+| KsKh | 5d 9s 7d 4c 8c | 69% | **0%** | 2 | FOLD |
+| AhJs | 4c Jh 5d (facing CR) | 80% | **30%** | 20 | FOLD (need 35%) |
+| 6s6c | Qd As 8h Kh Ts | 30% | **0%** | 68 | FOLD |
+
+The Phase 2 stack produces the correct number on every named loss spot. Combined chip impact across these three: -7.58 EUR ≈ user's "~$8 down" reality.
+
+### Phase 2 measurement sweep across versions
+
+Theoretical EV of the range-equity gates on the captured corpus (1,294 NL10 hands):
+
+| Version | Gates | Fires | Theoretical savings | BB/100 |
+|---|---|---|---|---|
+| v0 (preflop narrowing only) | shadow only | — | — | — |
+| v1 (postflop narrowing) | shadow only | — | — | — |
+| v2 (CALL→FOLD, 5% margin) | 1 | 6 | +16.45 BB | +1.27 |
+| v3 (+ BET→CHECK gate, 2% margin) | 2 | 10 | +40.95 BB | +3.16 |
+| v4 (+ multi-way) | 2 | 13 | +53.23 BB | +4.11 |
+| v5 (+ HUD per-seat, BET threshold 0.28) | 2 | 8 | +25.43 BB | +1.97 |
+| Phase 3 v0 (+ adjusted_eq wiring) | 2 | 8 | +23.64 BB | +1.83 |
+
+The HUD-enabled v5 number (+1.97) is the production-realistic measurement. Earlier versions inflated savings because every villain was assumed NIT-tight; the HUD reveals real wider FISH ranges and the gate correctly fires less often with smaller per-fire savings.
 
 ### Phase exit log
 

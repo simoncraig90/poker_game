@@ -333,8 +333,31 @@ The two sites we know — Unibet (Emscripten canvas) and CoinPoker (Unity client
   - Skip some +EV hands to look human
   - Take random breaks (stand up from table, rejoin after 5-15 min)
 
+### REBUILD — Status update 2026-04-08 evening
+**Branch:** `rebuild-foundation-20260408` — 21 commits ahead of main, 139 unit tests passing across 7 new modules (~2,200 lines of new code). See `docs/REBUILD_PLAN.md` for the full plan and phase exit log.
+
+**Phase progress (single intensive 2026-04-08 session):**
+
+| Phase | Status | Detail |
+|---|---|---|
+| Phase 1 — validation harness + action history | DONE | replay_harness.py walks the captured 80K-frame corpus in ~3s, records every hero decision with advisor recommendation + hero actual + agreement flag + per-shape leak tag. 28 tests. Three named loss spots reproduce correctly with chip deltas matching the user's actual session loss (~$8). |
+| Phase 2 — modules | DONE | range_model (25 starting range tables) + hand_combos (169↔1326 + blockers) + range_narrow (preflop role + postflop street + check-raise detection) + hand_eval (7-card) + equity_calc (MC heads-up + multi-way). 111 tests. |
+| Phase 2 — wiring + decision gates | DONE | Shadow-mode range_equity wired into AdvisorStateMachine. CALL→FOLD gate (margin 2%, drives -EV folds) + BET→CHECK gate (threshold 28%, drives PAIR-class checks). Per-seat HUD classification (49 ground-truth profiles loaded). All three named loss spots now produce CORRECT equity (KK 0%, AhJs 30%, 6s6c 0%). |
+| Phase 2 — measurement | DONE | Production-realistic improvement: **+1.97 BB/100** across 1,294 NL10 hands (HUD enabled, 8 gate fires, +25.43 BB theoretical savings). The gate-only metric is bounded by override frequency — Phase 3 main work is needed for the +5 BB/100 target. |
+| Phase 3 v0 — range_equity drives adjusted_eq | DONE | Wired range_equity into the SM's adjusted_eq, replacing the legacy bet-ratio + history + HUD discount approximations. The postflop engine's threshold logic now consumes range-aware equity directly when available. |
+| Phase 3 main — postflop CFR recalibration | NOT STARTED | The CFR engine's call/raise/fold thresholds were tuned for hand-vs-random equity. Retune for range_equity. This is the next major chunk of work. |
+| Phase 3 — expanded scope (24 items) | NOT STARTED | SPR awareness, MDF floors, multi-street barrel planning, push/fold module, mixed-strategy outputs, overbet handling, donk/probe handling, RIO, etc. See `## REBUILD — Postflop scope` below. |
+| Phase 4 — Phase 3 IL deploy + auto-fold | NOT STARTED | Supervised first-click test on play money required first. |
+| Phase 5 — Full auto-click + multi-table | NOT STARTED | |
+| Phase 6 — Bankroll + stake progression | NOT STARTED | |
+| Phase 7 — NL2 burn-in (5,000+ hands) | NOT STARTED | |
+
+**Live deployment status:** unchanged. The deployed runner is still on `coinpoker-strategy-fixes-20260408` with today's nine stop-loss filters. The rebuild branch is non-load-bearing for real money until Phase 7 graduation.
+
+**Next concrete step (highest leverage):** Phase 3 main — postflop CFR recalibration. The threshold-based logic in `_process_postflop` is calibrated for hand-vs-random equity in the 0-100% range; range_equity occupies a different distribution and the thresholds need retuning. Also: add SPR awareness and MDF floors per the expanded scope.
+
 ### REBUILD — Postflop scope (added 2026-04-08, see `docs/REBUILD_PLAN.md`)
-**Context:** After the 2026-04-08 grind session caught nine new leak shapes in two hours, all sandbags against the same hand-vs-random equity gap, the user approved a foundation rebuild. Branch `rebuild-foundation-20260408` (forked from main, baseline merged from `coinpoker-strategy-fixes-20260408`). Phase 1 (validation harness + action history) is in progress on that branch — see `vision/replay_harness.py`, `vision/action_history.py`, 28 unit tests passing. Per-shape leak telemetry confirms the four worst leak shapes are all PAIR class on flop/turn/river, validating the equity-vs-range structural diagnosis.
+**Context:** After the 2026-04-08 grind session caught nine new leak shapes in two hours, all sandbags against the same hand-vs-random equity gap, the user approved a foundation rebuild. Branch `rebuild-foundation-20260408` (forked from main, baseline merged from `coinpoker-strategy-fixes-20260408`). Phase 1 + Phase 2 + Phase 3 v0 landed in a single 2026-04-08 evening session.
 
 The full postflop improvement inventory below was triaged on 2026-04-08. Items are grouped by Phase, with status markers:
 - **[on plan]** — already covered by the rebuild plan as written
