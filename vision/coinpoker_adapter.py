@@ -579,6 +579,11 @@ class CoinPokerStateBuilder:
             "hero_seat":     self.hero_seat,
             "players":       players,
             "hero_turn":     hero_turn,
+            # Phase 2 wiring: needed by _compute_shadow_range_equity to
+            # derive villain positions for the range model. Was used
+            # internally for hero position derivation but not exposed.
+            "bb_seat":       self.bb_seat,
+            "dealer_seat":   getattr(self, "dealer_seat", None),
         }
 
 

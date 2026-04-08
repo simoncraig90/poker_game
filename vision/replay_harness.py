@@ -89,6 +89,12 @@ class Decision:
     advisor_action: str
     advisor_source: str
     advisor_equity: float
+    # Phase 2 shadow-mode fields. None means range equity wasn't
+    # computed for this decision (preflop / no aggressor / flag off).
+    range_equity: Optional[float] = None
+    range_combos: int = 0
+    villain_position: str = ""
+    villain_class: str = ""
     error: Optional[str] = None  # populated if SM raised
     # Filled in by the harness AFTER the next snapshot, by inspecting
     # the ActionHistory accumulator for the next hero action since
@@ -575,6 +581,10 @@ class ReplayHarness:
             advisor_action=getattr(out, "action", "") or "",
             advisor_source=getattr(out, "source", "") or "",
             advisor_equity=float(getattr(out, "equity", 0.0) or 0.0),
+            range_equity=getattr(out, "range_equity", None),
+            range_combos=int(getattr(out, "range_combos", 0) or 0),
+            villain_position=getattr(out, "villain_position_for_range", "") or "",
+            villain_class=getattr(out, "villain_class_for_range", "") or "",
         )
         hr.decisions.append(d)
         self._pending[room] = d
@@ -701,11 +711,17 @@ class ReplayHarness:
 # ── CLI ───────────────────────────────────────────────────────────────
 
 
-def _make_default_advisor_factory():
+def _make_default_advisor_factory(enable_range_equity: bool = False):
     """
     Build the standard live advisor stack (BaseAdvisor + PostflopEngine
     + preflop chart + AdvisorStateMachine). Used by the CLI; lazy-loads
     so unit tests don't pay the import cost.
+
+    Args:
+        enable_range_equity: when True, the SM is constructed with the
+            Phase 2 shadow-mode range equity flag enabled. This adds
+            a few ms per postflop facing-bet decision but produces
+            the new range_equity field on each AdvisorOutput.
     """
     from advisor import Advisor as BaseAdvisor
     from preflop_chart import preflop_advice
@@ -724,6 +740,7 @@ def _make_default_advisor_factory():
             postflop_engine=postflop,
             tracker=None,
             bb_cents=bb_cents,
+            enable_range_equity=enable_range_equity,
         )
     return factory
 
@@ -740,6 +757,10 @@ def main(argv=None):
                    help="Hero CoinPoker user_id")
     p.add_argument("--no-advisor", action="store_true",
                    help="Skip the advisor call (corpus-walker sanity check)")
+    p.add_argument("--range-equity", action="store_true",
+                   help="Enable Phase 2 shadow-mode range equity (computes "
+                        "but doesn't change decisions). Adds range_equity "
+                        "field to per-decision JSONL output.")
     p.add_argument("--limit", type=int, default=0,
                    help="Stop after processing N frames (0 = all)")
     p.add_argument("--real-money-only", action="store_true",
@@ -765,7 +786,9 @@ def main(argv=None):
                         "actual action (the leak signal)")
     args = p.parse_args(argv)
 
-    factory = None if args.no_advisor else _make_default_advisor_factory()
+    factory = (None if args.no_advisor
+               else _make_default_advisor_factory(
+                   enable_range_equity=args.range_equity))
     harness = ReplayHarness(hero_user_id=args.hero_id, advisor_factory=factory)
 
     if args.limit > 0:
@@ -836,6 +859,11 @@ def main(argv=None):
                         "rec": d.advisor_action,
                         "source": d.advisor_source,
                         "equity": round(d.advisor_equity, 3),
+                        "range_equity": (round(d.range_equity, 3)
+                                          if d.range_equity is not None else None),
+                        "range_combos": d.range_combos,
+                        "villain_pos": d.villain_position,
+                        "villain_class": d.villain_class,
                         "hero_actual": d.hero_actual_action,
                         "hero_actual_amount": d.hero_actual_amount,
                         "agreement": d.agreement,

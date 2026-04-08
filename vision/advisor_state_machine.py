@@ -25,6 +25,12 @@ class AdvisorOutput:
         "phase", "equity", "log_line", "should_update_overlay",
         "hand_id", "position", "hero_stack", "board", "pot",
         "facing_bet", "call_amount", "source", "opponent_type",
+        # Phase 2 shadow-mode field — equity computed by the new
+        # range-aware calculator. None when range equity wasn't
+        # computed for this decision (preflop, no advisor flag,
+        # or villain seat couldn't be determined).
+        "range_equity", "range_combos",
+        "villain_position_for_range", "villain_class_for_range",
     )
 
     def __init__(self):
@@ -46,6 +52,10 @@ class AdvisorOutput:
         self.call_amount = 0
         self.source = ""
         self.opponent_type = ""
+        self.range_equity = None
+        self.range_combos = 0
+        self.villain_position_for_range = ""
+        self.villain_class_for_range = ""
 
 
 class AdvisorStateMachine:
@@ -64,7 +74,7 @@ class AdvisorStateMachine:
 
     def __init__(self, base_advisor, preflop_advice_fn, postflop_engine=None,
                  equity_fn=None, assess_board_danger_fn=None, tracker=None,
-                 bb_cents=4):
+                 bb_cents=4, enable_range_equity=False):
         self.base = base_advisor
         self.preflop_advice = preflop_advice_fn
         self.postflop = postflop_engine
@@ -72,6 +82,16 @@ class AdvisorStateMachine:
         self.assess_board_danger = assess_board_danger_fn or (lambda h, b: {"warnings": []})
         self.tracker = tracker
         self.bb_cents = bb_cents
+        # Phase 2 shadow-mode flag. When True, the SM also computes
+        # range-aware equity using the new Phase 2 stack (range_model
+        # + range_narrow + equity_calc) and attaches it to
+        # AdvisorOutput.range_equity. Decisions are NOT yet driven
+        # by this number — that wiring lands after the harness
+        # validates the shadow comparison shows the right values
+        # on the named loss spots. Default False so existing tests
+        # don't pay the import cost.
+        self.enable_range_equity = enable_range_equity
+        self._range_history = None  # ActionHistory, lazy-init
 
         # Mutable state
         self.prev_hero = []
@@ -540,6 +560,144 @@ class AdvisorStateMachine:
         out.source = source
         adj_str = f" adj:{adjusted_eq:.0%}" if facing and adjusted_eq < eq else ""
         out.log_line = f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%}{adj_str} | {action}"
+
+        # Phase 2 shadow-mode: compute range-aware equity alongside the
+        # legacy hot-cold equity. Doesn't change the decision; attaches
+        # to AdvisorOutput.range_equity for the harness to compare.
+        # Only computes when the flag is on AND we're facing a real bet
+        # (otherwise there's no aggressor to model and equity vs random
+        # is the right number anyway).
+        if self.enable_range_equity and facing and call_amt > 0:
+            self._compute_shadow_range_equity(out, state, hero, board)
+
+    def _compute_shadow_range_equity(self, out, state, hero, board):
+        """
+        Compute hero equity vs the active aggressor's range and attach
+        to out.range_equity. Pure side-channel — never changes decisions.
+
+        Identifies the aggressor as the non-hero player with the highest
+        current bet. Uses the snapshot's hero_seat / players list to
+        derive their position via the same helper used by the adapter.
+        """
+        import os
+        debug = os.environ.get("RANGE_EQUITY_DEBUG") == "1"
+        try:
+            from action_history import ActionHistory  # noqa: WPS433
+            from range_narrow import narrow_villain_range  # noqa: WPS433
+            from equity_calc import hero_equity_vs_range  # noqa: WPS433
+            from coinpoker_adapter import derive_position, derive_blinds_from_dealer  # noqa: WPS433
+        except Exception as e:
+            if debug:
+                print(f"[range_eq] import failed: {e}")
+            return
+
+        # Lazy-init the per-instance ActionHistory
+        if self._range_history is None:
+            self._range_history = ActionHistory()
+        try:
+            self._range_history.update(state)
+        except Exception as e:
+            if debug: print(f"[range_eq] history.update failed: {e}")
+            return
+
+        players = state.get("players") or []
+        hero_seat = state.get("hero_seat")
+        if hero_seat is None or not players:
+            if debug: print(f"[range_eq] no hero_seat or players (h={hero_seat}, p={len(players)})")
+            return
+        aggressor = None
+        best_bet = -1
+        for p in players:
+            if not isinstance(p, dict):
+                if debug: print(f"[range_eq] non-dict player: {p}")
+                return
+            if p.get("seat") == hero_seat:
+                continue
+            b = p.get("bet", 0) or 0
+            if b > best_bet:
+                best_bet = b
+                aggressor = p
+        if aggressor is None or best_bet <= 0:
+            if debug: print(f"[range_eq] no aggressor (best_bet={best_bet})")
+            return
+
+        villain_seat = aggressor.get("seat")
+        if villain_seat is None:
+            if debug: print(f"[range_eq] aggressor has no seat: {aggressor}")
+            return
+
+        active_seats = sorted(p.get("seat") for p in players
+                              if p.get("seat") is not None)
+        bb_seat = state.get("bb_seat")
+        if bb_seat is None:
+            # Derive from dealer seat + active seats. This is the same
+            # fallback the adapter uses when game.game_alldata isn't in
+            # the live stream (every hand after table join, basically).
+            dealer = state.get("dealer_seat")
+            if dealer is not None:
+                try:
+                    _sb, bb_seat = derive_blinds_from_dealer(dealer, active_seats)
+                except Exception as e:
+                    if debug: print(f"[range_eq] derive_blinds failed: {e}")
+                    bb_seat = None
+        if bb_seat is None:
+            # Last-ditch: scan players for last_action containing 'big'
+            for p in players:
+                la = (p.get("last_action") or "").lower()
+                if "bigblind" in la or "big_blind" in la or la == "bb":
+                    bb_seat = p.get("seat")
+                    break
+        if bb_seat is None:
+            if debug:
+                print(f"[range_eq] no bb_seat — dealer={state.get('dealer_seat')} "
+                      f"active={active_seats}")
+            return
+        try:
+            villain_pos = derive_position(villain_seat, bb_seat, active_seats)
+        except Exception as e:
+            if debug: print(f"[range_eq] derive_position failed: {e}")
+            return
+
+        # Villain class via the tracker (preferred) or default
+        villain_class = "UNKNOWN"
+        if self.tracker and hasattr(self.tracker, "classify_villain"):
+            try:
+                villain_class = (self.tracker.classify_villain(state)
+                                 or "UNKNOWN").upper()
+            except Exception:
+                pass
+
+        # Narrow the range
+        try:
+            combos = narrow_villain_range(
+                history=self._range_history,
+                villain_seat=villain_seat,
+                villain_position=villain_pos,
+                villain_class=villain_class,
+                hero_cards=hero,
+                board_cards=board,
+            )
+        except Exception:
+            return
+
+        if not combos:
+            return
+
+        # Compute equity (small Monte Carlo budget for speed)
+        try:
+            eq = hero_equity_vs_range(
+                hero_hand=hero,
+                villain_combos=combos,
+                board=board,
+                samples_per_combo=40,
+            )
+        except Exception:
+            return
+
+        out.range_equity = float(eq)
+        out.range_combos = len(combos)
+        out.villain_position_for_range = villain_pos
+        out.villain_class_for_range = villain_class
 
     def _equity_rules_action(self, facing, dec_eq, raw_eq, pot_odds,
                               call_amt, pot_cents, hero_stack, danger, bb):
