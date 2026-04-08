@@ -557,9 +557,22 @@ def make_advisor_callback(session: CoinPokerSession,
         if out is not None and out.action:
             hero = " ".join(snap["hero_cards"]) or "??"
             board = " ".join(snap["board_cards"]) or "-"
+            # Show villain classification + table summary if the tracker
+            # has built up enough hands to classify. Surfaces opponent
+            # context alongside every recommendation so the user can see
+            # whether the rec is conditioning on a known villain.
+            opp_tag = ""
+            if tracker is not None:
+                vt = ""
+                try:
+                    vt = (tracker.classify_villain(snap) or "").upper()
+                except Exception:
+                    vt = ""
+                if vt and vt != "UNKNOWN":
+                    opp_tag = f" vs {vt}"
             print(f"*** [{out.phase:7}] {hero:5}  board={board:14}  "
                   f"pos={snap['position']:3}  eq={out.equity:.0%}  "
-                  f"=> {out.action}")
+                  f"=> {out.action}{opp_tag}")
 
         # Overlay update — fire on every state change so the HUD reflects
         # current cards/board/phase even when the advisor has no fresh rec.

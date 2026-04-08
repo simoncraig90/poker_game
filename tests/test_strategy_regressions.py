@@ -185,6 +185,47 @@ class TestStrategyRegressions(unittest.TestCase):
         self.assertIn("FOLD", out.action.upper(),
                       f"QJ flush on paired board facing 2x pot raise should FOLD, got {out.action!r}")
 
+    def test_synthetic_TPTK_on_coordinated_river_should_fold(self):
+        """
+        Synthetic regression test for Filter 5: top pair top kicker on a
+        coordinated river facing a 75%+ pot bet should fold.
+
+        The captured datasets don't contain a real hand matching this
+        exact shape (one-pair-only on coordinated river with big bet),
+        so this test uses a constructed state. The shape is the next
+        leak class beyond the catastrophic ones the other filters catch.
+
+        Setup: hero has Ah Jc, board is Th 7h 6h 8d 2c. That's:
+          - 4-card straight on the board (5-6-7-8 + need 9 or 4-5-6-7 + need 8 already there)
+            Actually: 6-7-8-T means 4 cards in a 5-rank window. Filter 1
+            won't fire because hero isn't an OVERPAIR (we have AJ unpaired).
+          - 3-card heart flush on board (Th 7h 6h)
+          - Hero hits 1 pair after the river (no card matches AJ)
+            Wait, actually with no Aces or Jacks on the board, hero is
+            HIGH CARD only. Let me make sure that's HAND_HIGH_CARD or
+            HAND_PAIR — the filter handles both.
+
+        Expected: Filter 5 fires because (river, one-pair-or-less,
+        coordinated board with both 4-straight and 3-flush, big bet).
+        """
+        state = {
+            "hero_cards":   ["Ah", "Jc"],
+            "board_cards":  ["Th", "7h", "6h", "8d", "2c"],
+            "hand_id":      "synthetic_TPTK_river",
+            "facing_bet":   True,
+            "call_amount":  100,    # 100% pot bet
+            "pot":          100,
+            "phase":        "RIVER",
+            "num_opponents": 1,
+            "hero_stack":   500,
+            "position":     "BTN",
+        }
+        out = self.sm.process_state(state)
+        self.assertIsNotNone(out)
+        self.assertIn("FOLD", out.action.upper(),
+                      f"AJ no-pair on 4-straight + 3-flush coordinated river facing pot bet "
+                      f"should FOLD, got {out.action!r}")
+
     def test_2460830707_KK_river_facing_raise_on_4straight_should_fold(self):
         """
         Hand 2460830707, NL10, 4-handed.
@@ -326,6 +367,143 @@ class TestDangerHelpers(unittest.TestCase):
         # so this returns False. That's correct — sets are handled differently
         # by the engine and don't need the overpair-protection filter.
         self.assertFalse(self.SM._hero_has_overpair(["Ks", "Kh"], ["Kd", "9s", "7d"]))
+
+
+class TestHandEvaluator(unittest.TestCase):
+    """
+    Tests for AdvisorStateMachine._evaluate_hand_class — the 5-card
+    hand classifier used by future danger filters that need to know
+    "what does hero actually have right now."
+
+    Naming: SM is the AdvisorStateMachine class.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from advisor_state_machine import AdvisorStateMachine
+        cls.SM = AdvisorStateMachine
+
+    def test_high_card(self):
+        # AK on Q-7-3-2-9, no pair / no straight / no flush
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ad", "Kc"], ["Qh", "7s", "3d", "2c", "9h"]),
+            self.SM.HAND_HIGH_CARD)
+
+    def test_pair_pocket(self):
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ks", "Kh"], ["9d", "6c", "2s"]),
+            self.SM.HAND_PAIR)
+
+    def test_pair_top_pair(self):
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ah", "Td"], ["Ac", "7s", "2d"]),
+            self.SM.HAND_PAIR)
+
+    def test_two_pair(self):
+        # JT on T-J-2-3-4 → two pair
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Jh", "Tc"], ["Td", "Js", "2c", "3d", "4h"]),
+            self.SM.HAND_TWO_PAIR)
+
+    def test_two_pair_with_board_pair(self):
+        # AK on A-K-Q-Q-2 → two pair (Aces and Kings, not AK + queens)
+        result = self.SM._evaluate_hand_class(
+            ["Ah", "Kc"], ["As", "Kd", "Qh", "Qc", "2s"])
+        # Hero has A+A and K+K → two pair (Aces+Kings, kicker Q)
+        # Or could see board QQ + hero pair as two pair too. Either way it's two_pair+.
+        self.assertGreaterEqual(result, self.SM.HAND_TWO_PAIR)
+
+    def test_trips(self):
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Th", "Tc"], ["Td", "5s", "2c"]),
+            self.SM.HAND_TRIPS)
+
+    def test_set_via_pocket_pair_matches_board(self):
+        # Set is technically TRIPS in our taxonomy
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Th", "Tc"], ["Td", "5s", "2c", "9h", "Kc"]),
+            self.SM.HAND_TRIPS)
+
+    def test_straight_basic(self):
+        # 9 8 + 7 6 5 board → straight
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["9h", "8c"], ["7d", "6s", "5h", "Kd", "2c"]),
+            self.SM.HAND_STRAIGHT)
+
+    def test_straight_wheel(self):
+        # A-2-3-4-5 wheel
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ad", "5c"], ["2h", "3d", "4s", "Kh", "9c"]),
+            self.SM.HAND_STRAIGHT)
+
+    def test_flush(self):
+        # All clubs: hero 2 + board 3
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Qc", "Jc"], ["Kc", "5c", "8c", "2d", "Th"]),
+            self.SM.HAND_FLUSH)
+
+    def test_flush_qj_paired_board_2379447781(self):
+        # QcJc on Kc Th Td 3c 8c — hero has K-high flush. Board is
+        # paired but hero doesn't have a boat. Should be FLUSH.
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Qc", "Jc"], ["Kc", "Th", "Td", "3c", "8c"]),
+            self.SM.HAND_FLUSH)
+
+    def test_full_house_via_set_plus_board_pair(self):
+        # 99 on 9-K-K-2-5 → 9s full of Ks
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["9h", "9c"], ["9d", "Ks", "Kh", "2c", "5d"]),
+            self.SM.HAND_FULL_HOUSE)
+
+    def test_full_house_via_paired_hero_card_matching_board_pair(self):
+        # AK on K-K-A-A-2 → AAKK two pair (technically AK aces full of kings)
+        result = self.SM._evaluate_hand_class(
+            ["Ah", "Kc"], ["Ks", "Kd", "Ac", "As", "2h"])
+        # AAKK with K kicker → full house (3K+2A or 3A+2K)
+        # Actually 2A 2K on board + AK in hand = three As + two Ks (or three Ks + two As)
+        # = full house
+        self.assertEqual(result, self.SM.HAND_FULL_HOUSE)
+
+    def test_quads(self):
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Th", "Tc"], ["Td", "Ts", "2c", "5d", "9h"]),
+            self.SM.HAND_QUADS)
+
+    def test_straight_flush(self):
+        # 9-8 + 7c-6c-5c board → 5-6-7-8-9 of clubs
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["9c", "8c"], ["7c", "6c", "5c", "Kd", "2h"]),
+            self.SM.HAND_STRAIGHT_FLUSH)
+
+    def test_straight_flush_wheel(self):
+        # A-2-3-4-5 of clubs
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ac", "2c"], ["3c", "4c", "5c", "Kh", "9d"]),
+            self.SM.HAND_STRAIGHT_FLUSH)
+
+    def test_kk_on_kk_4straight_river_2460830707(self):
+        # KsKh on 5d 9s 7d 4c 8c — KK is just a pair (overpair) on
+        # a board where someone with a 6 has a straight.
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ks", "Kh"], ["5d", "9s", "7d", "4c", "8c"]),
+            self.SM.HAND_PAIR)
+
+    def test_kk_on_3flush_2379414698(self):
+        # KsKd on 9h 6h 2h — KK is just a pair (no flush; hero has no h)
+        self.assertEqual(self.SM._evaluate_hand_class(
+            ["Ks", "Kd"], ["9h", "6h", "2h"]),
+            self.SM.HAND_PAIR)
+
+    def test_class_ordering_makes_sense(self):
+        # Smoke check that constants are ordered correctly
+        self.assertLess(self.SM.HAND_HIGH_CARD, self.SM.HAND_PAIR)
+        self.assertLess(self.SM.HAND_PAIR, self.SM.HAND_TWO_PAIR)
+        self.assertLess(self.SM.HAND_TWO_PAIR, self.SM.HAND_TRIPS)
+        self.assertLess(self.SM.HAND_TRIPS, self.SM.HAND_STRAIGHT)
+        self.assertLess(self.SM.HAND_STRAIGHT, self.SM.HAND_FLUSH)
+        self.assertLess(self.SM.HAND_FLUSH, self.SM.HAND_FULL_HOUSE)
+        self.assertLess(self.SM.HAND_FULL_HOUSE, self.SM.HAND_QUADS)
+        self.assertLess(self.SM.HAND_QUADS, self.SM.HAND_STRAIGHT_FLUSH)
 
 
 class TestActionHistoryAccumulator(unittest.TestCase):

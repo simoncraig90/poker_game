@@ -607,11 +607,29 @@ class AdvisorStateMachine:
                 multiplier *= 0.75
             elif last['phase'] == 'FLOP':
                 multiplier *= 0.85
+        elif last['action'] == 'BET' and last['phase'] == 'RIVER':
+            # River bets are commitment signals — even without a raise,
+            # a villain who bets the river has a hand they think can
+            # win at showdown. Mild discount to push hero toward folding
+            # marginal one-pair hands.
+            multiplier *= 0.90
 
         raise_count = sum(1 for a in self.action_history if a['action'] == 'RAISE')
         if raise_count >= 2:
             multiplier *= 0.85
         if raise_count >= 3:
+            multiplier *= 0.85
+
+        # If villain has been the AGGRESSOR on multiple streets in a
+        # row (bet flop, bet turn, bet river — the "barreling" pattern)
+        # apply an additional discount even without raises. This catches
+        # the leak where the equity model treats every street's bet as
+        # independent and doesn't update on the cumulative aggression.
+        bet_or_raise_streets = set(
+            a['phase'] for a in self.action_history
+            if a['action'] in ('BET', 'RAISE')
+        )
+        if len(bet_or_raise_streets) >= 3:  # bet on 3 different streets
             multiplier *= 0.85
 
         return max(0.30, multiplier)
@@ -726,6 +744,146 @@ class AdvisorStateMachine:
                     return True
         return False
 
+    # Hand class constants for _evaluate_hand_class. Ordered ascending
+    # so callers can compare with `<` / `>=`.
+    HAND_HIGH_CARD = 0
+    HAND_PAIR = 1
+    HAND_TWO_PAIR = 2
+    HAND_TRIPS = 3
+    HAND_STRAIGHT = 4
+    HAND_FLUSH = 5
+    HAND_FULL_HOUSE = 6
+    HAND_QUADS = 7
+    HAND_STRAIGHT_FLUSH = 8
+
+    HAND_CLASS_NAMES = {
+        HAND_HIGH_CARD: "high-card",
+        HAND_PAIR: "pair",
+        HAND_TWO_PAIR: "two-pair",
+        HAND_TRIPS: "trips",
+        HAND_STRAIGHT: "straight",
+        HAND_FLUSH: "flush",
+        HAND_FULL_HOUSE: "full-house",
+        HAND_QUADS: "quads",
+        HAND_STRAIGHT_FLUSH: "straight-flush",
+    }
+
+    @classmethod
+    def _evaluate_hand_class(cls, hero, board):
+        """
+        Classify hero's best 5-card hand from hole+board into one of:
+        HIGH_CARD, PAIR, TWO_PAIR, TRIPS, STRAIGHT, FLUSH, FULL_HOUSE,
+        QUADS, STRAIGHT_FLUSH.
+
+        Returns one of the HAND_* integer constants. Higher = stronger.
+
+        IMPORTANT: this evaluates HERO's best hand, not the board alone
+        and not the nut-relative ranking. PAIR returns true for both
+        "hero matches a board card" (top pair etc) AND "pocket pair"
+        (overpair etc). The danger filters that use this should still
+        check `_hero_has_overpair` separately if they need that
+        distinction.
+
+        Returns HAND_HIGH_CARD if cards are missing or unparseable.
+        """
+        if len(hero) != 2:
+            return cls.HAND_HIGH_CARD
+        all_cards = list(hero) + list(board)
+        ranks = [cls._card_rank(c) for c in all_cards]
+        suits = [cls._card_suit(c) for c in all_cards]
+        if any(r is None for r in ranks) or any(s is None for s in suits):
+            return cls.HAND_HIGH_CARD
+        if len(all_cards) < 5:
+            # Not enough cards for a 5-card hand class — return best
+            # available shape (pair / two pair / trips / quads from
+            # rank counts). No straight/flush possible with <5 cards.
+            from collections import Counter
+            rank_counts = Counter(ranks)
+            counts = sorted(rank_counts.values(), reverse=True)
+            if counts[0] == 4:
+                return cls.HAND_QUADS
+            if counts[0] == 3 and len(counts) > 1 and counts[1] >= 2:
+                return cls.HAND_FULL_HOUSE
+            if counts[0] == 3:
+                return cls.HAND_TRIPS
+            if counts[0] == 2 and len(counts) > 1 and counts[1] == 2:
+                return cls.HAND_TWO_PAIR
+            if counts[0] == 2:
+                return cls.HAND_PAIR
+            return cls.HAND_HIGH_CARD
+
+        # 5+ cards: check straight/flush/straight flush + n-of-a-kind
+        from collections import Counter
+        rank_counts = Counter(ranks)
+        suit_counts = Counter(suits)
+
+        # Flush detection
+        flush_suit = None
+        for s, count in suit_counts.items():
+            if count >= 5:
+                flush_suit = s
+                break
+        is_flush = flush_suit is not None
+
+        # Straight detection (handles wheel A-2-3-4-5)
+        unique_ranks = sorted(set(ranks))
+        is_straight = False
+        straight_high = 0
+        for i in range(len(unique_ranks) - 4):
+            window = unique_ranks[i:i+5]
+            if window[4] - window[0] == 4 and len(set(window)) == 5:
+                is_straight = True
+                straight_high = window[4]
+        # Wheel: A-2-3-4-5 → ranks 14,2,3,4,5
+        if not is_straight and 14 in unique_ranks:
+            wheel = [r if r != 14 else 1 for r in unique_ranks]
+            wheel = sorted(set(wheel))
+            for i in range(len(wheel) - 4):
+                w = wheel[i:i+5]
+                if w[4] - w[0] == 4 and len(set(w)) == 5:
+                    is_straight = True
+                    straight_high = max(straight_high, w[4])
+
+        # Straight flush: do we have 5 cards of one suit that also form a straight?
+        if is_flush and is_straight:
+            flush_ranks = sorted(set(
+                ranks[i] for i in range(len(ranks)) if suits[i] == flush_suit
+            ))
+            sf_found = False
+            for i in range(len(flush_ranks) - 4):
+                w = flush_ranks[i:i+5]
+                if w[4] - w[0] == 4 and len(set(w)) == 5:
+                    sf_found = True
+                    break
+            # Wheel straight flush
+            if not sf_found and 14 in flush_ranks:
+                wheel_fr = sorted(set(1 if r == 14 else r for r in flush_ranks))
+                for i in range(len(wheel_fr) - 4):
+                    w = wheel_fr[i:i+5]
+                    if w[4] - w[0] == 4 and len(set(w)) == 5:
+                        sf_found = True
+                        break
+            if sf_found:
+                return cls.HAND_STRAIGHT_FLUSH
+
+        # n-of-a-kind
+        counts = sorted(rank_counts.values(), reverse=True)
+        if counts[0] == 4:
+            return cls.HAND_QUADS
+        if counts[0] == 3 and len(counts) > 1 and counts[1] >= 2:
+            return cls.HAND_FULL_HOUSE
+        if is_flush:
+            return cls.HAND_FLUSH
+        if is_straight:
+            return cls.HAND_STRAIGHT
+        if counts[0] == 3:
+            return cls.HAND_TRIPS
+        if counts[0] == 2 and len(counts) > 1 and counts[1] == 2:
+            return cls.HAND_TWO_PAIR
+        if counts[0] == 2:
+            return cls.HAND_PAIR
+        return cls.HAND_HIGH_CARD
+
     @classmethod
     def _hero_can_have_boat(cls, hero, board):
         """
@@ -825,6 +983,30 @@ class AdvisorStateMachine:
                 and self._board_has_4card_flush(board)
                 and bet_ratio >= 0.20):
             return ("FOLD", f"overpair on 4-flush board facing {bet_ratio:.0%}-pot")
+
+        # ── Filter 5: One-pair-or-less on COORDINATED river facing big bet ──
+        # Catches the "top-pair-good-kicker calldown on a scary board"
+        # leak class. On the river there are no more draws, and a single
+        # pair vs an action-narrowed range that's bet big on a coordinated
+        # board is way behind the equity model's hand-vs-random estimate.
+        #
+        # Conservative — requires ALL of:
+        #   - phase is RIVER (no draws to consider)
+        #   - hero has at most a pair (not two pair, trips, straight, etc)
+        #   - facing >= 75% pot bet (clear value sizing)
+        #   - board has 4-card straight OR 3+ card flush (coordinated)
+        #
+        # The coordination requirement avoids false-positiving on TPTK
+        # facing a value bet on a dry board (e.g. QcAc on 8-7-Q-T-2 in
+        # hand 2379771919, which we verified is a +EV call). Only fires
+        # when the board itself screams "many hands beat one pair."
+        if (phase == "RIVER"
+                and bet_ratio >= 0.75
+                and self._evaluate_hand_class(hero, board) <= self.HAND_PAIR
+                and (self._board_has_4card_straight(board)
+                     or self._board_has_3card_flush(board))):
+            return ("FOLD",
+                    f"one-pair-or-less on coordinated river facing {bet_ratio:.0%}-pot")
 
         # ── Filter 4: Flush on a paired board with no boat possibility ──
         # Seed hand 2379447781 (Unibet replay test, 2026-04-08): QcJc BTN
