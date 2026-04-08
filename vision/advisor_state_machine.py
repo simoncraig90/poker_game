@@ -435,40 +435,41 @@ class AdvisorStateMachine:
         hero_stack = state.get("hero_stack", 9999)
         bb = self.bb_cents
 
+        # Phase 2/3: compute range-aware equity at the START of postflop
+        # processing (rather than at the end as a side-channel) so the
+        # rest of the decision logic can consume it via adjusted_eq.
+        if self.enable_range_equity:
+            self._compute_shadow_range_equity(out, state, hero, board)
+
         # ── Opponent equity adjustment (MUST come before eq_str) ──
-        adjusted_eq = eq
-        if facing and call_amt > 0 and pot_cents > 0:
-            bet_ratio = call_amt / pot_cents
-            if bet_ratio > 1.0:
-                adjusted_eq = eq * 0.65
-            elif bet_ratio > 0.66:
-                adjusted_eq = eq * 0.75
-            elif bet_ratio > 0.33:
-                adjusted_eq = eq * 0.85
-            else:
-                adjusted_eq = eq * 0.90
+        # When the new range_equity stack has produced a real number,
+        # use it directly. Otherwise fall back to the legacy bet-ratio +
+        # action-history + HUD discount approximations, which are
+        # stand-ins for what range_equity computes properly.
+        if out.range_equity is not None:
+            adjusted_eq = float(out.range_equity)
+        else:
+            adjusted_eq = eq
+            if facing and call_amt > 0 and pot_cents > 0:
+                bet_ratio = call_amt / pot_cents
+                if bet_ratio > 1.0:
+                    adjusted_eq = eq * 0.65
+                elif bet_ratio > 0.66:
+                    adjusted_eq = eq * 0.75
+                elif bet_ratio > 0.33:
+                    adjusted_eq = eq * 0.85
+                else:
+                    adjusted_eq = eq * 0.90
 
-        # ── Action-history discount (v0 of equity-vs-action-range) ──
-        # Compose with the bet-ratio discount above. Only fires when
-        # facing aggression AND there's accumulated villain action history
-        # this hand. The multiplier is < 1.0 only when villain has shown
-        # specific aggression patterns (recent raise, multiple raises).
-        # See _equity_discount_from_action_history for the math.
-        if facing and pot_cents > 0:
-            history_mult = self._equity_discount_from_action_history()
-            if history_mult < 1.0:
-                adjusted_eq *= history_mult
+            if facing and pot_cents > 0:
+                history_mult = self._equity_discount_from_action_history()
+                if history_mult < 1.0:
+                    adjusted_eq *= history_mult
 
-        # ── HUD-based range discount (v1 of equity-vs-action-range) ──
-        # Uses CoinPoker's actual server-side stats for the active
-        # villain to estimate how tight their range is in this spot.
-        # Tighter villain + later street + raised → bigger discount.
-        # Composes with the previous two discounts.
-        # Falls back to 1.0 (no-op) if HUD data isn't available.
-        if facing and pot_cents > 0:
-            hud_mult = self._equity_discount_from_villain_hud(state, phase)
-            if hud_mult < 1.0:
-                adjusted_eq *= hud_mult
+            if facing and pot_cents > 0:
+                hud_mult = self._equity_discount_from_villain_hud(state, phase)
+                if hud_mult < 1.0:
+                    adjusted_eq *= hud_mult
 
         dec_eq = adjusted_eq if facing else eq
 
@@ -577,14 +578,9 @@ class AdvisorStateMachine:
             action = new_action
             source = f"{source}+danger_override"
 
-        # Phase 2: compute range-aware equity BEFORE final action
-        # assignment so the range-equity gates (below) can use it.
-        # Computes for both facing (CALL→FOLD gate) and not-facing
-        # (BET→CHECK gate) scenarios. The shadow code handles the
-        # missing-aggressor case by falling back to "any non-folded
-        # opponent" as the villain.
-        if self.enable_range_equity:
-            self._compute_shadow_range_equity(out, state, hero, board)
+        # Note: shadow range_equity is now computed at the START of
+        # _process_postflop so adjusted_eq can use it. The gates below
+        # just consume out.range_equity.
 
         # ── Range-equity pot-odds gate (Phase 2 decision-driving) ──
         # When the new range_equity is computed and is below the pot

@@ -344,7 +344,11 @@ This file is the source of truth for the rebuild. Edit it as scope shifts. Each 
 | Phase 1 — partial | 2026-04-08 | +8.7 BB/100 (NL10 corpus, all-time, no advisor scoring) | Action history accumulator + replay harness skeleton landed. 22 tests passing. Open calibration items below before formal Phase 1 exit. |
 | Phase 1 — wired | 2026-04-08 | last-50: -37.4 BB/100 / corpus: +8.7 BB/100 | Live SM wired into harness end-to-end. All three of today's named loss spots (KK on 4-straight, AhJs on 4c Jh 5d, 6s6c on QA8KT) reproduce deterministically and the matching danger-override filters fire in replay. JSON-per-decision output added (`--output`, `--filters-only`). Boundary stack tracking + last-N-hands slicing in. |
 | Phase 1 — leak ranking | 2026-04-08 | corpus: 90% agreement, top leak class = PAIR turn/river | Per-shape leak telemetry landed. Each decision tagged with `STREET:HANDCLASS:facing|noface:adv/hero` shape. Aggregate ranking shows the four worst leak shapes are all PAIR class on flop/turn/river — confirms the equity-vs-range structural gap is the right Phase 2 target. 15 unit tests passing. |
-| Phase 1 — exit | — | — | Awaiting rebuy detection refinement + reproducibility check vs single-session ground truth. |
+| Phase 1 — exit | 2026-04-08 | named-spot reproducibility validated | Spot-check against today's three named loss spots reproduced their actual chip deltas (-7.58 EUR ≈ user's "~$8 down" reality). Formal corpus-wide ±2 BB/100 deferred (needs date filtering). Phase 1 functionally complete. |
+| Phase 2 — modules | 2026-04-08 | 134 tests passing | range_model, hand_combos, range_narrow (preflop+postflop+check-raise), hand_eval (7-card), equity_calc (MC heads-up). |
+| Phase 2 — shadow wiring | 2026-04-08 | gates fire end-to-end | enable_range_equity flag in SM, _compute_shadow_range_equity, JSONL output includes range_equity field. All 3 named loss spots reproduce with correct equity (KK→0%, AhJs→30%, 6s6c→0%). |
+| Phase 2 — decision-driving | 2026-04-08 | +1.27 → +3.16 → +4.11 → +1.97 BB/100 | CALL→FOLD gate, BET→CHECK gate, multi-way equity, per-seat HUD classification. The +1.97 number is the production-realistic measurement (HUD-enabled). Without HUD the number was inflated because all villains were treated as NIT-tight. |
+| Phase 2 — exit | — | — | Need Phase 3's deeper integration to hit the original +5 BB/100 gate-aggregate target. Phase 2 stack itself is feature-complete. |
 | Phase 2 | — | — | |
 | Phase 3 | — | — | |
 | Phase 4 | — | — | |
