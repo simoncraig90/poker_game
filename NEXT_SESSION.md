@@ -96,6 +96,15 @@ See `project_coinpoker_unity.md` in memory for the full session-by-session log o
 
 **Bankroll budget:** $15-20 (~1.5 NL10 buy-ins). Stop at -1 buy-in over the first 30 hands rather than push for the next.
 
+### Quality-of-life: round bet sizes to clean increments
+- [ ] **(P1) Round advisor bet sizes to nice numbers** — added 2026-04-09 mid-game by user request. The advisor currently outputs raw amounts like `RAISE to 1.47` or `BET 0.27` derived from `pot * fraction` math. For manual play these are awkward to type into CoinPoker's bet input — the user has to look at the suggestion, calculate the closest clean number, and type it. Fix: snap output to a clean increment ladder appropriate to the table BB:
+  - Increments scale with BB: at NL10 (BB=$0.10) → snap to $0.05 increments. At NL50 (BB=$0.50) → snap to $0.25. Etc.
+  - Default rule: round to the nearest 0.5 BB. Floor for "smaller" sizings (where rounding up would commit too much), ceiling for "bigger" sizings (where rounding down would underweight).
+  - Apply ONLY to the displayed string, not to the internal calculation. Don't propagate the rounded value back into the postflop engine's math (it might cause downstream desync).
+  - Implementation site: in `AdvisorStateMachine._process_postflop` and `_process_preflop`, the place where `f"RAISE to {raise_to/100:.2f}"` and similar formatting happens. Wrap in a `_snap_to_clean_increment(amount_cents, bb_cents)` helper.
+  - Edge cases to handle: all-in (don't round), tiny sizings below the BB (round up to BB), pot-sized bets (round to nearest 0.5 pot).
+  - Add unit tests for the helper covering: NL10 raise to 1.47 → 1.50, NL10 bet to 0.27 → 0.25, all-in pass-through, sub-BB → BB.
+
 ### Data capture decision (2026-04-08)
 **Practice tables are NOT viable for validation data.** Fake chips → players play randomly → opponent profiles get poisoned. Two viable paths:
 - **Observer mode** at real-money tables (if CoinPoker supports it — needs check) — free, large volume, no hero hole cards (so no replay validation, only opponent profiling)
