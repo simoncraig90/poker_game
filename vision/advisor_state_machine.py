@@ -323,6 +323,17 @@ class AdvisorStateMachine:
             if history_mult < 1.0:
                 adjusted_eq *= history_mult
 
+        # ── HUD-based range discount (v1 of equity-vs-action-range) ──
+        # Uses CoinPoker's actual server-side stats for the active
+        # villain to estimate how tight their range is in this spot.
+        # Tighter villain + later street + raised → bigger discount.
+        # Composes with the previous two discounts.
+        # Falls back to 1.0 (no-op) if HUD data isn't available.
+        if facing and pot_cents > 0:
+            hud_mult = self._equity_discount_from_villain_hud(state, phase)
+            if hud_mult < 1.0:
+                adjusted_eq *= hud_mult
+
         dec_eq = adjusted_eq if facing else eq
 
         # ── Pot odds ──
@@ -562,6 +573,98 @@ class AdvisorStateMachine:
                     'action': action_type,
                 })
             self._prev_villain_actions[seat] = la
+
+    # ─────────────────────────────────────────────────────────────────────
+    # HUD-based equity-vs-range discount (v1 of the proper fix)
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # The kanban's P0 "equity-vs-action-range" item asks for proper
+    # range-vs-range equity computation. The full version requires either
+    # a new equity NN that takes a villain range vector OR per-villain
+    # combo enumeration with hand-vs-hand evaluation. Both are
+    # multi-week efforts.
+    #
+    # This v1 takes a shortcut: use the actual CoinPoker HUD stats
+    # (vpip/pfr/3bet/cbet) to estimate how TIGHT villain's range is in
+    # the current spot, then discount hero's equity proportionally.
+    # Doesn't compute true equity-vs-range, but uses real ground-truth
+    # data instead of heuristics, which is a meaningful improvement
+    # over the action-history v0 (whose flat multipliers didn't change
+    # any decisions on tonight's data).
+    #
+    # The discount composes with the existing bet-ratio and action-
+    # history discounts in _process_postflop. They never inflate equity
+    # — only narrow it.
+
+    def _equity_discount_from_villain_hud(self, state, phase):
+        """
+        Compute an equity discount based on the active villain's HUD
+        stats and the current street/action context. Returns a
+        multiplier in [0.5, 1.0]. 1.0 means no discount; lower values
+        mean villain's range is tighter than average.
+
+        Returns 1.0 (no discount) if:
+          - tracker doesn't have a get_villain_hud_stats method
+          - no HUD data is available for the active villain
+          - villain's stats look incomplete
+
+        The score is computed as follows:
+          1. Baseline range tightness from VPIP. Tight player (VPIP=15%)
+             is suspect to have a value-heavy range; loose player
+             (VPIP=35%) is more likely bluffing or thin-value betting.
+          2. Street modifier: river bets/raises tighten the range MORE
+             than flop bets, because villain has had more streets to
+             realize they don't have it.
+          3. Bet vs raise modifier: a raise on any street is much
+             stronger than a bet (raises are commitment signals).
+
+        Tuned to be CONSERVATIVE: most spots produce no discount or a
+        very mild one. Only tight-villain + late-street + raised
+        scenarios produce big discounts.
+        """
+        if not state or phase not in ("FLOP", "TURN", "RIVER"):
+            return 1.0
+        if not self.tracker:
+            return 1.0
+        if not hasattr(self.tracker, "get_villain_hud_stats"):
+            return 1.0
+        try:
+            stats = self.tracker.get_villain_hud_stats(state)
+        except Exception:
+            return 1.0
+        if not stats:
+            return 1.0
+
+        vpip = stats.get("vpip")
+        pfr = stats.get("pfr")
+        if vpip is None or pfr is None:
+            return 1.0
+
+        # Baseline: tighter villain → bigger discount
+        # 0.10 vpip (NIT) → tightness = 0.4 (significant discount)
+        # 0.20 vpip (TAG) → tightness = 0.2 (moderate)
+        # 0.35 vpip (LAG) → tightness = 0.05 (minimal)
+        # 0.50 vpip (FISH) → tightness = 0.0 (no discount)
+        baseline_tightness = max(0.0, 0.5 - vpip)
+
+        # Street modifier
+        street_mult = {"FLOP": 0.5, "TURN": 0.75, "RIVER": 1.0}[phase]
+
+        # Action-type modifier from the action history accumulator
+        action_mult = 0.5  # baseline: villain just bet (not raised)
+        if self.action_history:
+            last = self.action_history[-1]
+            if last["action"] == "RAISE" and last["phase"] == phase:
+                action_mult = 1.0  # raise on the current street: full strength
+            elif last["action"] == "RAISE":
+                action_mult = 0.75  # raise on a previous street still counts
+
+        # Combine: tightness * street * action → discount
+        # Max possible: 0.4 * 1.0 * 1.0 = 0.4 (NIT river-raised)
+        # → multiplier = 1 - 0.4 = 0.6
+        discount = baseline_tightness * street_mult * action_mult
+        multiplier = max(0.5, 1.0 - discount)
+        return multiplier
 
     def _equity_discount_from_action_history(self):
         """

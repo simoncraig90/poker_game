@@ -623,6 +623,130 @@ class TestBetSizeSnapping(unittest.TestCase):
         self.assertEqual(self.snap(60, 10), 60)
 
 
+class TestVillainHudDiscount(unittest.TestCase):
+    """
+    Tests for AdvisorStateMachine._equity_discount_from_villain_hud — the
+    v1 of equity-vs-action-range that uses CoinPoker HUD ground-truth
+    stats to discount equity based on villain range tightness +
+    street + action context.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from advisor_state_machine import AdvisorStateMachine
+        cls.SM = AdvisorStateMachine
+
+    def _new_sm(self, hud_stats_for_state=None):
+        """Build a SM with a mock tracker that returns the given HUD stats."""
+        class MockTracker:
+            def __init__(self, stats):
+                self._stats = stats
+
+            def get_villain_hud_stats(self, state):
+                return self._stats
+
+            def classify_villain(self, state):
+                return "UNKNOWN"
+
+        class MockAdvisor:
+            def _get_recommendation(self, state):
+                return {"phase": state.get("phase", "PREFLOP"), "equity": 0.5}
+
+        return self.SM(
+            base_advisor=MockAdvisor(),
+            preflop_advice_fn=lambda c1, c2, p, facing_raise: {
+                "action": "FOLD", "hand_key": "??", "in_range": False, "note": ""},
+            postflop_engine=None,
+            tracker=MockTracker(hud_stats_for_state),
+            bb_cents=10,
+        )
+
+    def test_no_tracker_returns_1(self):
+        from advisor_state_machine import AdvisorStateMachine
+
+        class MockAdvisor:
+            def _get_recommendation(self, state):
+                return {"phase": state.get("phase", "PREFLOP"), "equity": 0.5}
+
+        sm = AdvisorStateMachine(
+            base_advisor=MockAdvisor(),
+            preflop_advice_fn=lambda c1, c2, p, fr: {},
+            tracker=None, bb_cents=10,
+        )
+        self.assertEqual(sm._equity_discount_from_villain_hud({}, "FLOP"), 1.0)
+
+    def test_tracker_without_method_returns_1(self):
+        class StubTracker:
+            pass
+        from advisor_state_machine import AdvisorStateMachine
+
+        class MockAdvisor:
+            def _get_recommendation(self, state):
+                return {"phase": state.get("phase", "PREFLOP"), "equity": 0.5}
+
+        sm = AdvisorStateMachine(
+            base_advisor=MockAdvisor(),
+            preflop_advice_fn=lambda c1, c2, p, fr: {},
+            tracker=StubTracker(), bb_cents=10,
+        )
+        self.assertEqual(sm._equity_discount_from_villain_hud({}, "FLOP"), 1.0)
+
+    def test_no_hud_data_returns_1(self):
+        sm = self._new_sm(hud_stats_for_state=None)
+        self.assertEqual(sm._equity_discount_from_villain_hud({"phase": "FLOP"}, "FLOP"), 1.0)
+
+    def test_preflop_phase_skipped(self):
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.10, "pfr": 0.08})
+        # Even with very tight stats, preflop is skipped (chart handles it)
+        self.assertEqual(sm._equity_discount_from_villain_hud({}, "PREFLOP"), 1.0)
+
+    def test_loose_villain_no_discount(self):
+        # FISH (vpip=0.50) → no discount
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.50, "pfr": 0.20})
+        m = sm._equity_discount_from_villain_hud({"phase": "FLOP"}, "FLOP")
+        self.assertEqual(m, 1.0)
+
+    def test_tag_villain_mild_discount_on_river(self):
+        # TAG (vpip=0.20) on river with no recent raise
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.20, "pfr": 0.18})
+        sm.action_history = []  # no raises
+        m = sm._equity_discount_from_villain_hud({"phase": "RIVER"}, "RIVER")
+        # tightness = 0.5 - 0.20 = 0.30; street = 1.0; action = 0.5 (no raise)
+        # discount = 0.30 * 1.0 * 0.5 = 0.15 → multiplier = 0.85
+        self.assertAlmostEqual(m, 0.85, places=2)
+
+    def test_nit_villain_river_raise_max_discount(self):
+        # NIT (vpip=0.10) river-raise → maximum discount in v1
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.10, "pfr": 0.08})
+        sm.action_history = [{"phase": "RIVER", "seat": 2, "action": "RAISE"}]
+        m = sm._equity_discount_from_villain_hud({"phase": "RIVER"}, "RIVER")
+        # tightness = 0.4; street = 1.0; action = 1.0 (river raise)
+        # discount = 0.4 * 1.0 * 1.0 = 0.4 → multiplier = 0.6
+        self.assertAlmostEqual(m, 0.6, places=2)
+
+    def test_floor_at_50_percent(self):
+        # Even crazier inputs can't push the multiplier below 0.5
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.0, "pfr": 0.0})
+        sm.action_history = [{"phase": "RIVER", "seat": 2, "action": "RAISE"}]
+        m = sm._equity_discount_from_villain_hud({"phase": "RIVER"}, "RIVER")
+        self.assertGreaterEqual(m, 0.5)
+
+    def test_flop_bet_only_mild(self):
+        # NIT on the flop with just a bet (no raise) — minimal discount
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.10, "pfr": 0.08})
+        sm.action_history = []
+        m = sm._equity_discount_from_villain_hud({"phase": "FLOP"}, "FLOP")
+        # tightness = 0.4; street = 0.5 (flop); action = 0.5 (no raise)
+        # discount = 0.4 * 0.5 * 0.5 = 0.10 → multiplier = 0.9
+        self.assertAlmostEqual(m, 0.9, places=2)
+
+    def test_missing_pfr_returns_1(self):
+        # Defensive: if HUD data is partial, fall back to no-op
+        sm = self._new_sm(hud_stats_for_state={"vpip": 0.20})  # no pfr key
+        m = sm._equity_discount_from_villain_hud({"phase": "FLOP"}, "FLOP")
+        self.assertEqual(m, 1.0)
+
+
 class TestActionHistoryAccumulator(unittest.TestCase):
     """
     Tests for the v0 equity-vs-action-range action-history accumulator.

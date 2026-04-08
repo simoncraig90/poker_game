@@ -719,6 +719,34 @@ class _CoinPokerTrackerAdapter:
         except Exception as e:
             print(f"[tracker] flush failed: {type(e).__name__}: {e}")
 
+    def get_villain_hud_stats(self, state: dict) -> Optional[dict]:
+        """
+        Return the HUD stats dict for the active villain (highest non-hero
+        bet) in this state, or None if no HUD data is available for them.
+
+        This is the bridge that lets AdvisorStateMachine query the
+        CoinPoker server-side ground-truth stats without coupling to the
+        HUD loader directly. Used by the v1 equity-vs-range discount.
+        """
+        if self._hud_loader is None or not state:
+            return None
+        cp_players = state.get('players') or []
+        if not cp_players or not isinstance(cp_players[0], dict):
+            return None
+        hero_seat = state.get('hero_seat')
+        best_uid = None
+        best_bet = -1
+        for p in cp_players:
+            if p.get('seat') == hero_seat:
+                continue
+            b = p.get('bet', 0) or 0
+            if b > best_bet:
+                best_bet = b
+                best_uid = p.get('user_id')
+        if best_uid is None:
+            return None
+        return self._hud_loader.get_stats(best_uid)
+
 
 # ── advisor wiring (deferred imports so tests don't pay the cost) ─────────────
 
