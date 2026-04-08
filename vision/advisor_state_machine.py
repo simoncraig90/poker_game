@@ -244,6 +244,30 @@ class AdvisorStateMachine:
         action = pf.get("action", "?")
         bb = self.bb_cents
 
+        # RFI re-route: if hero is "folded-to" (only blinds in front of them),
+        # the snapshot reports facing_bet=True because the BB is technically
+        # a bet. But that's the OPEN-RAISE spot, not the facing-real-raise
+        # spot. The chart's facing_raise branch is too tight for RFI.
+        #
+        # Detection: call_amt > 0 AND call_amt <= bb. Catches:
+        #   - SB facing BB only (call_amt = 0.5 BB; hero already has SB in)
+        #   - BTN/CO/MP/UTG folded-to (call_amt = exactly 1 BB)
+        #   - Any folded-to-with-limpers spot (call_amt still 1 BB max)
+        # Does NOT fire on actual raises:
+        #   - Min-raise to 2 BB → call_amt = 2 BB > bb → no fire
+        #   - 3-bet, 4-bet → all > bb → no fire
+        #
+        # 2026-04-09: discovered live by user when chart said FOLD on
+        # KdQs SB folded-to (hand 2502750418) and FOLD on QsTh BTN
+        # folded-to. Both are textbook open-raises.
+        if facing and 0 < call_amt <= bb:
+            pf_open = self.preflop_advice(hero[0], hero[1], pos,
+                                          facing_raise=False)
+            if pf_open:
+                pf = pf_open
+                rec["preflop"] = pf
+                action = pf.get("action", action)
+
         # SAFETY NET: never fold when you can check for free.
         # This catches BB option AND any position misdetection where the bot
         # thinks you're UTG/MP/CO but you actually have the check option.

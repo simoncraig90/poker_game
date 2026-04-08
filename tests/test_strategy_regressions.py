@@ -185,6 +185,112 @@ class TestStrategyRegressions(unittest.TestCase):
         self.assertIn("FOLD", out.action.upper(),
                       f"QJ flush on paired board facing 2x pot raise should FOLD, got {out.action!r}")
 
+    def test_2502750418_KQo_SB_folded_to_should_open_not_fold(self):
+        """
+        Hand 2502750418, NL10 real money, KdQs SB.
+
+        Folded around to hero in SB. Hero has KQo. Faces only the
+        BB blind (call_amount = 0.05, half a BB on top of the SB
+        already posted). The chart used to FOLD because it routed
+        through the facing_raise branch (KQo isn't in SB_3BET_EXTRA
+        or SB_CALL_RANGE). But this is the textbook RFI spot for SB
+        — KQo SB folded-to is a clear open across every published
+        6-max chart.
+
+        FIXED 2026-04-09 by the RFI re-route in _process_preflop:
+        if call_amt <= bb the chart is re-resolved with
+        facing_raise=False so the open-raise range applies.
+        """
+        sm = self.sm
+        # Reset state
+        sm.prev_hero = []; sm.prev_board = []; sm.prev_hand_id = None
+        sm.prev_phase = None; sm.last_facing = None
+        sm.last_call_amount = None; sm.last_pot = None
+        sm.bb_cents = 10  # NL10
+        state = {
+            "hero_cards":   ["Kd", "Qs"],
+            "board_cards":  [],
+            "hand_id":      "2502750418",
+            "facing_bet":   True,    # snapshot says True (BB is a bet)
+            "call_amount":  5,       # 0.05 = half-BB on top of SB
+            "pot":          15,
+            "phase":        "PREFLOP",
+            "num_opponents": 5,
+            "hero_stack":   1140,
+            "position":     "SB",
+        }
+        out = sm.process_state(state)
+        self.assertIsNotNone(out)
+        # Must NOT be FOLD — should be RAISE (open) or at minimum CALL
+        self.assertNotIn("FOLD", out.action.upper(),
+                         f"KQo SB folded-to should open, not fold. Got: {out.action!r}")
+
+    def test_2502750xxx_QTo_BTN_folded_to_should_open_not_fold(self):
+        """
+        Same RFI bug as KdQs SB but for BTN. Reported live by user
+        on QsTh BTN with no raise (everyone folded to BTN). The chart
+        used to FOLD because call_amt = 1 BB and the snapshot reports
+        facing_bet=True (you're "facing" the BB blind). QTo BTN
+        folded-to is a clear open in every 6-max chart.
+
+        FIXED 2026-04-09 by the same RFI re-route as the SB case.
+        """
+        sm = self.sm
+        # Reset state
+        sm.prev_hero = []; sm.prev_board = []; sm.prev_hand_id = None
+        sm.prev_phase = None; sm.last_facing = None
+        sm.last_call_amount = None; sm.last_pot = None
+        sm.bb_cents = 10  # NL10
+        state = {
+            "hero_cards":   ["Qs", "Th"],
+            "board_cards":  [],
+            "hand_id":      "btn_rfi_test",
+            "facing_bet":   True,
+            "call_amount":  10,      # exactly 1 BB (no raise, just the BB)
+            "pot":          15,
+            "phase":        "PREFLOP",
+            "num_opponents": 5,
+            "hero_stack":   1000,
+            "position":     "BTN",
+        }
+        out = sm.process_state(state)
+        self.assertIsNotNone(out)
+        self.assertNotIn("FOLD", out.action.upper(),
+                         f"QTo BTN folded-to should open, not fold. Got: {out.action!r}")
+
+    def test_rfi_reroute_does_NOT_fire_on_actual_raise(self):
+        """
+        Defensive: the RFI re-route must not fire when there's an
+        actual raise. A min-raise to 2 BB makes call_amt > bb, which
+        should still route through the facing_raise branch.
+        """
+        sm = self.sm
+        # Reset state
+        sm.prev_hero = []; sm.prev_board = []; sm.prev_hand_id = None
+        sm.prev_phase = None; sm.last_facing = None
+        sm.last_call_amount = None; sm.last_pot = None
+        sm.bb_cents = 10  # NL10
+        # Hero in BTN with 72o facing a real 3x raise (call=30, bb=10)
+        state = {
+            "hero_cards":   ["7c", "2d"],
+            "board_cards":  [],
+            "hand_id":      "rfi_negative",
+            "facing_bet":   True,
+            "call_amount":  30,      # 3x BB raise — NOT an RFI spot
+            "pot":          50,
+            "phase":        "PREFLOP",
+            "num_opponents": 4,
+            "hero_stack":   1000,
+            "position":     "BTN",
+        }
+        out = sm.process_state(state)
+        self.assertIsNotNone(out)
+        # 72o BTN facing a raise → fold is correct, RFI re-route must NOT
+        # have flipped this to "open with 72o because BTN_RAISE is wide"
+        self.assertIn("FOLD", out.action.upper(),
+                      f"72o BTN facing actual 3x raise should FOLD, "
+                      f"got: {out.action!r}")
+
     def test_2502750404_call_amount_change_must_re_fire_advisor(self):
         """
         Hand 2502750404, NL10 real money, 9c8c CO.
