@@ -299,6 +299,119 @@ def test_unknown_class_treated_as_nit():
     assert len(nit_combos) == len(unknown_combos)
 
 
+def test_postflop_narrowing_disabled_by_flag():
+    """apply_postflop=False returns the preflop-only narrowed range."""
+    h = _hand_with_actions([(3, "Raise", 30)])
+    pre_only = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_NIT,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=False,
+    )
+    # 3 board cards but no postflop actions, so postflop=True would
+    # also leave the range untouched. Test passes when both are equal.
+    with_postflop = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_NIT,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=True,
+    )
+    # With no postflop actions, both should be identical
+    assert len(pre_only) == len(with_postflop)
+
+
+def test_postflop_narrowing_shrinks_range_when_villain_bets():
+    """Villain bets the flop → range narrows to top half by strength."""
+    from action_history import ActionHistory
+    h = ActionHistory()
+    # Preflop: BTN open
+    h.update(_snap("h1", "PREFLOP", [
+        _p(1, bet=5),
+        _p(2, bet=10),
+        _p(3, bet=0),
+    ]))
+    h.update(_snap("h1", "PREFLOP", [
+        _p(1, bet=5),
+        _p(2, bet=10),
+        _p(3, bet=30, last_action="Raise"),
+    ]))
+    h.update(_snap("h1", "PREFLOP", [
+        _p(1, bet=5, last_action="Fold"),
+        _p(2, bet=30, last_action="Call"),
+        _p(3, bet=30, last_action="Raise"),
+    ]))
+    # Flop: BB checks, BTN bets
+    h.update(_snap("h1", "FLOP", [
+        _p(2, bet=0, last_action="Check"),
+        _p(3, bet=0),
+    ]))
+    h.update(_snap("h1", "FLOP", [
+        _p(2, bet=0, last_action="Check"),
+        _p(3, bet=50, last_action="Bet"),
+    ]))
+
+    pre_only = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=False,
+    )
+    with_postflop = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=True,
+    )
+    assert 0 < len(with_postflop) < len(pre_only)
+    # BET keeps the top 50% — should be roughly half
+    assert len(with_postflop) <= len(pre_only) * 0.6
+
+
+def test_postflop_narrowing_check_keeps_all():
+    """A check is no info — combo count unchanged."""
+    from action_history import ActionHistory
+    h = ActionHistory()
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5), _p(2, bet=10), _p(3, bet=0)]))
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5), _p(2, bet=10), _p(3, bet=30, last_action="Raise")]))
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5, last_action="Fold"), _p(2, bet=30, last_action="Call"), _p(3, bet=30, last_action="Raise")]))
+    h.update(_snap("h1", "FLOP", [_p(2, bet=0), _p(3, bet=0)]))
+    # BTN checks back the flop
+    h.update(_snap("h1", "FLOP", [_p(2, bet=0), _p(3, bet=0, last_action="Check")]))
+
+    pre_only = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=False,
+    )
+    with_postflop = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=True,
+    )
+    assert len(with_postflop) == len(pre_only)
+
+
+def test_postflop_narrowing_raise_aggressive_filter():
+    """Villain raises an opponent's bet → top 30% only."""
+    from action_history import ActionHistory
+    h = ActionHistory()
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5), _p(2, bet=10), _p(3, bet=0)]))
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5), _p(2, bet=10), _p(3, bet=30, last_action="Raise")]))
+    h.update(_snap("h1", "PREFLOP", [_p(1, bet=5, last_action="Fold"), _p(2, bet=30, last_action="Call"), _p(3, bet=30, last_action="Raise")]))
+    h.update(_snap("h1", "FLOP", [_p(2, bet=0), _p(3, bet=0)]))
+    h.update(_snap("h1", "FLOP", [_p(2, bet=50, last_action="Bet"), _p(3, bet=0)]))
+    h.update(_snap("h1", "FLOP", [_p(2, bet=50, last_action="Bet"), _p(3, bet=180, last_action="Raise")]))
+
+    with_postflop = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=True,
+    )
+    pre_only = narrow_villain_range(
+        h, 3, POS_BTN, CLASS_TAG,
+        hero_cards=[], board_cards=["As", "Kh", "Qd"],
+        apply_postflop=False,
+    )
+    # RAISE keeps top 30% — should be much tighter than the open range
+    assert 0 < len(with_postflop) < len(pre_only) * 0.4
+
+
 def test_no_position_returns_empty():
     """Empty position is a hard error → empty range."""
     h = _hand_with_actions([(3, "Raise", 30)])

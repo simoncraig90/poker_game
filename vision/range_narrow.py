@@ -69,6 +69,7 @@ from range_model import (
     ACTION_LIMP,
 )
 from hand_combos import remove_blockers, expand_range
+from hand_eval import evaluate
 
 
 # ── role constants ────────────────────────────────────────────────────
@@ -191,27 +192,30 @@ def narrow_villain_range(history: ActionHistory,
                          villain_position: str,
                          villain_class: str,
                          hero_cards: list,
-                         board_cards: list) -> list[tuple[str, str]]:
+                         board_cards: list,
+                         apply_postflop: bool = True) -> list[tuple[str, str]]:
     """
     Top-level entry point. Returns a list of (card1, card2) combos that
-    villain could plausibly be holding given:
-
-      - Their classification (NIT/TAG/LAG/FISH/UNKNOWN)
-      - Their position
-      - Their preflop action history (which selects a role)
-      - Hero's hole cards (blockers)
-      - The visible board (more blockers)
+    villain could plausibly be holding given everything observed.
 
     Algorithm:
-      1. Classify villain's role from action history
+      1. Classify villain's role from preflop action history
       2. Look up the starting range for (class, role, position)
-      3. If role is UNKNOWN or the starting range is empty, fall
-         back to `get_continuing_range(class, position)` — wider
-         but still much tighter than 1326-random
+      3. Fall back to continuing range if role-specific is empty
       4. Expand to combo level
       5. Remove combos blocked by hero cards or board cards
+      6. If apply_postflop=True (default), walk villain's postflop
+         actions and apply per-street strength filters via
+         narrow_postflop. Each street narrows further based on
+         what action villain took at THAT street's board state.
 
-    Returns an empty list only on input errors (no class, no position).
+    Args:
+        apply_postflop: when False, returns the preflop-only narrowed
+            range (used by tests that want to verify the preflop
+            stage in isolation, and by performance-sensitive callers).
+
+    Returns an empty list only on input errors (no class, no position)
+    or when narrowing eliminated all combos.
     """
     cls = normalize_class(villain_class)
     if not villain_position:
@@ -225,15 +229,125 @@ def narrow_villain_range(history: ActionHistory,
     else:
         keys = set()
 
-    # Fallback: if the role-specific range is empty (e.g., FISH OPEN
-    # from BB which doesn't exist), fall back to the continuing range
-    # for the position. Still much tighter than 1326-random.
     if not keys:
         keys = get_continuing_range(cls, villain_position)
 
     # Apply blockers from hero hole cards + visible board
     dead = list(hero_cards) + list(board_cards)
-    return remove_blockers(keys, dead)
+    combos = remove_blockers(keys, dead)
+
+    # Postflop narrowing — walk villain's per-street actions and
+    # filter by hand strength implied by each action.
+    if apply_postflop and len(board_cards) >= 3:
+        combos = narrow_postflop(combos, history, villain_seat, board_cards)
+
+    return combos
+
+
+def _filter_combos_by_strength(combos: list,
+                               board: list,
+                               keep_top_pct: float) -> list:
+    """
+    Sort combos by hand strength on the given board and keep the top
+    `keep_top_pct` fraction (by hand_eval tuple, descending).
+
+    Used by postflop narrowing — when villain takes an action that
+    reveals strength, we keep only the combos at or above the implied
+    strength percentile.
+
+    Edge cases:
+      - keep_top_pct >= 1.0 → all combos returned (no narrowing)
+      - keep_top_pct <= 0.0 → empty list
+      - empty input → empty list
+      - len(combos) == 1 → returns the one combo (always keeps at least 1)
+    """
+    if not combos or keep_top_pct <= 0.0:
+        return []
+    if keep_top_pct >= 1.0:
+        return list(combos)
+    if len(combos) <= 1:
+        return list(combos)
+
+    scored = []
+    for combo in combos:
+        try:
+            score = evaluate(list(combo) + list(board))
+        except Exception:
+            # Combo invalid (shouldn't happen — caller filtered blockers)
+            continue
+        scored.append((score, combo))
+    if not scored:
+        return []
+    scored.sort(reverse=True)  # strongest first
+
+    keep_n = max(1, int(round(len(scored) * keep_top_pct)))
+    return [combo for _, combo in scored[:keep_n]]
+
+
+# Per-action retention percentages used by postflop narrowing.
+# Tuned to be conservative — too-tight narrowing biases equity wrong
+# the other way. Numbers are "fraction of combos kept" by strength rank.
+_POSTFLOP_KEEP = {
+    ACTION_FOLD:  0.00,  # gone
+    ACTION_CHECK: 1.00,  # no info — could be anything
+    ACTION_CALL:  0.65,  # medium and up — drops the worst third
+    ACTION_BET:   0.50,  # value-bets and bluffs from the top half
+    ACTION_RAISE: 0.30,  # mostly value at micros
+    ACTION_ALLIN: 0.20,  # very polarized — top of range or pure bluff
+}
+
+
+def narrow_postflop(combos: list,
+                    history: ActionHistory,
+                    villain_seat: int,
+                    final_board: list) -> list:
+    """
+    Walk villain's postflop actions and apply per-action strength
+    filters to narrow the combo set street by street.
+
+    For each street the villain acted on:
+      - Look up villain's actions on that street (in order)
+      - For each action, filter combos by `_POSTFLOP_KEEP[action]`
+        applied to combos' hand strength on the BOARD AT THAT STREET
+        (the prefix of `final_board` for that street)
+
+    The board prefix matters: a combo's hand strength on the flop
+    might be PAIR but on the river it might be TWO_PAIR after another
+    matching card lands. We narrow against villain's perception at
+    the time they took the action.
+
+    v0 quirks (deferred to refinement):
+      - Treats CHECK as no-info (real solvers know what kinds of hands
+        check). Conservative.
+      - Doesn't model bet sizing — a pot-sized bet narrows more than
+        a small block bet. v0 uses one threshold for all sizings.
+      - Doesn't model multi-street consistency (a player can't have a
+        flush on the turn if the third heart was the river card).
+        That falls out naturally from the per-street board prefix.
+    """
+    if not combos:
+        return []
+    work = list(combos)
+    for street in ("FLOP", "TURN", "RIVER"):
+        if street == "FLOP":
+            board_at_street = final_board[:3]
+        elif street == "TURN":
+            board_at_street = final_board[:4]
+        else:
+            board_at_street = final_board[:5]
+        if len(board_at_street) < 3:
+            break  # haven't reached this street yet
+
+        street_actions = [
+            a for a in history.actions_on_street(street)
+            if a.seat == villain_seat
+        ]
+        for a in street_actions:
+            keep_pct = _POSTFLOP_KEEP.get(a.action, 1.0)
+            work = _filter_combos_by_strength(work, board_at_street, keep_pct)
+            if not work:
+                return []
+    return work
 
 
 def villain_combo_count(history: ActionHistory,
