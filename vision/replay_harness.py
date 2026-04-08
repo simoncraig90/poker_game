@@ -53,6 +53,7 @@ if VISION_DIR not in sys.path:
 
 from coinpoker_runner import MultiTableCoinPokerSession  # noqa: E402
 from coinpoker_adapter import CHIP_SCALE  # noqa: E402
+from action_history import ActionHistory, AGGRESSIVE_ACTIONS  # noqa: E402
 
 
 # ── records ───────────────────────────────────────────────────────────
@@ -75,6 +76,13 @@ class Decision:
     advisor_source: str
     advisor_equity: float
     error: Optional[str] = None  # populated if SM raised
+    # Filled in by the harness AFTER the next snapshot, by inspecting
+    # the ActionHistory accumulator for the next hero action since
+    # this decision point. None means we never observed an action
+    # (typically: hand ended at EOF before hero acted again).
+    hero_actual_action: Optional[str] = None
+    hero_actual_amount: int = 0
+    agreement: Optional[str] = None  # "AGREE" / "DISAGREE" / None
 
 
 @dataclass
@@ -116,6 +124,11 @@ class HandRecord:
     bb_cents: int            # the BB scale for this room (chips per BB)
     decisions: list[Decision] = field(default_factory=list)
     ending_finalized: bool = False
+    # Re-buy detection: a "bust" is hero's LAST in-hand stack being 0.
+    # We can't use min_stack — hero may go all-in mid-hand (stack hits
+    # 0), then scoop the pot at showdown (stack goes back up). Only
+    # the END-of-hand stack matters.
+    last_in_hand_stack: int = -1
 
     @property
     def chip_delta(self) -> int:
@@ -158,11 +171,28 @@ class ReplayReport:
             return 0.0
         return (self.total_bb_delta / self.total_hands) * 100.0
 
+    def agreement_counts(self) -> dict[str, int]:
+        """Count decisions by AGREE / DISAGREE / unknown."""
+        counts = {"AGREE": 0, "DISAGREE": 0, "?": 0, "(no observation)": 0}
+        for h in self.hands:
+            for d in h.decisions:
+                if d.agreement is None:
+                    counts["(no observation)"] += 1
+                else:
+                    counts[d.agreement] = counts.get(d.agreement, 0) + 1
+        return counts
+
     def summary(self) -> str:
         """One-paragraph human-readable summary."""
+        ac = self.agreement_counts()
+        agree = ac.get("AGREE", 0)
+        disagree = ac.get("DISAGREE", 0)
+        observed = agree + disagree
+        agree_pct = (agree / observed * 100.0) if observed else 0.0
         return (
             f"ReplayReport: hands={self.total_hands} "
             f"decisions={self.total_decisions} "
+            f"agree={agree}/{observed} ({agree_pct:.0f}%) "
             f"chip_delta={self.total_chip_delta} "
             f"bb_delta={self.total_bb_delta:+.2f} "
             f"bb/100={self.bb_per_100():+.2f} "
@@ -306,6 +336,18 @@ class ReplayHarness:
         self._advisors = {}
         self._hand_state = {}
         self._last_seen_stack: dict[str, int] = {}
+        # Per-room ActionHistory accumulator. Used to recover the
+        # hero's actual action AFTER each decision point — we update()
+        # the history with each snapshot, then check for new hero
+        # actions to attach to any pending decision.
+        self._histories: dict[str, ActionHistory] = {}
+        # Per-room hero seat (so the history queries know which seat
+        # is hero — captured from the first snapshot of each hand).
+        self._hero_seats: dict[str, int] = {}
+        # Per-room "pending decision" — the most recent Decision that
+        # is still waiting for hero's actual action to be observed.
+        # Cleared once an action is attributed.
+        self._pending: dict[str, Optional[Decision]] = {}
         self._report = ReplayReport()
         self._session = MultiTableCoinPokerSession(
             hero_user_id=self.hero_user_id,
@@ -330,6 +372,29 @@ class ReplayHarness:
         if hand_id is None:
             return
 
+        # Update action history BEFORE checking for hand transitions —
+        # the new actions in this snapshot may include hero's response
+        # to a previous decision point. The history's own update() does
+        # internal hand-transition handling.
+        history = self._histories.setdefault(room, ActionHistory())
+        new_actions = history.update(snap)
+
+        # If there's a pending decision for this room, look for hero's
+        # action in this snapshot's new actions to attribute it.
+        pending = self._pending.get(room)
+        hero_seat = self._hero_seats.get(room)
+        if pending is not None and hero_seat is not None and new_actions:
+            for a in new_actions:
+                if a.seat != hero_seat:
+                    continue
+                pending.hero_actual_action = a.action
+                pending.hero_actual_amount = a.amount
+                pending.agreement = self._compare_actions(
+                    pending.advisor_action, a.action
+                )
+                self._pending[room] = None
+                break
+
         # Hand transition: finalize previous hand for this room, start new.
         # The new hand's starting hero_stack is also the previous hand's
         # *ending* hero_stack — both are captured from "first snapshot of
@@ -342,7 +407,16 @@ class ReplayHarness:
                 # Finalize previous hand using THIS snapshot's stack as
                 # the ending — that's "stack between hands" measured at
                 # the start of the next hand.
-                prev.ending_stack = starting_stack
+                #
+                # Re-buy guard: if hero's LAST in-hand stack was 0,
+                # the player busted. The new hand's starting_stack
+                # reflects a re-buy, not a hand outcome. Cap at 0.
+                # (We can't use min stack because all-in-then-scoop
+                # also passes through 0 mid-hand.)
+                if prev.last_in_hand_stack == 0:
+                    prev.ending_stack = 0
+                else:
+                    prev.ending_stack = starting_stack
                 prev.ending_finalized = True
                 self._finalize(room)
             self._hand_state[room] = HandRecord(
@@ -353,14 +427,23 @@ class ReplayHarness:
                 bb_cents=0,  # filled in at finalize
                 ending_finalized=False,
             )
+            # Hand transition: clear pending decision (we never observed
+            # the action — likely hero folded between snapshots and the
+            # hand ended fast). Re-capture hero seat from this snapshot.
+            self._pending[room] = None
+            hs = snap.get("hero_seat")
+            if hs is not None:
+                self._hero_seats[room] = int(hs)
 
         hr = self._hand_state[room]
-        # Track the most recent within-hand stack as a fallback ending
-        # value, used only if this hand is the LAST one in the corpus
-        # (no successor hand to provide the proper boundary).
+        # Track the most recent within-hand stack — used as the
+        # rebuy detection signal at hand finalization (if this is 0
+        # at the moment of the next hand's first snapshot, hero
+        # busted) AND as the EOF fallback ending stack.
         hero_stack = snap.get("hero_stack")
         if hero_stack is not None:
             self._last_seen_stack[room] = int(hero_stack)
+            hr.last_in_hand_stack = int(hero_stack)
 
         # Decision point: hero_turn AND hero has cards
         if not snap.get("hero_turn"):
@@ -372,7 +455,7 @@ class ReplayHarness:
         sm = self._get_advisor(room)
         if sm is None:
             # Skip but still record we saw a decision point
-            hr.decisions.append(Decision(
+            d = Decision(
                 hand_id=str(hand_id),
                 room=room,
                 phase=snap.get("phase", "") or "",
@@ -386,14 +469,16 @@ class ReplayHarness:
                 advisor_action="",
                 advisor_source="(no advisor)",
                 advisor_equity=0.0,
-            ))
+            )
+            hr.decisions.append(d)
+            self._pending[room] = d
             return
 
         try:
             out = sm.process_state(snap)
         except Exception as e:
             self._report.sm_errors += 1
-            hr.decisions.append(Decision(
+            d = Decision(
                 hand_id=str(hand_id),
                 room=room,
                 phase=snap.get("phase", "") or "",
@@ -408,13 +493,15 @@ class ReplayHarness:
                 advisor_source=f"ERROR:{type(e).__name__}",
                 advisor_equity=0.0,
                 error=f"{type(e).__name__}: {e}",
-            ))
+            )
+            hr.decisions.append(d)
+            self._pending[room] = d
             return
 
         if out is None:
             return
 
-        hr.decisions.append(Decision(
+        d = Decision(
             hand_id=str(hand_id),
             room=room,
             phase=getattr(out, "phase", "") or snap.get("phase", "") or "",
@@ -428,7 +515,55 @@ class ReplayHarness:
             advisor_action=getattr(out, "action", "") or "",
             advisor_source=getattr(out, "source", "") or "",
             advisor_equity=float(getattr(out, "equity", 0.0) or 0.0),
-        ))
+        )
+        hr.decisions.append(d)
+        self._pending[room] = d
+
+    @staticmethod
+    def _compare_actions(advisor_action: str, hero_action: str) -> str:
+        """
+        Compare an advisor recommendation string ("FOLD", "RAISE to 0.30",
+        "CALL 2.50", "CHECK") to a canonical hero action from
+        ActionHistory ("FOLD", "CHECK", "CALL", "BET", "RAISE", "ALLIN").
+
+        Returns:
+            "AGREE"    — both intended the same direction
+            "DISAGREE" — they pointed at different actions
+            "?"        — couldn't tell (empty advisor action, etc)
+
+        The comparison is intentionally coarse: only the verb matters,
+        not the sizing. A "RAISE to 0.30" vs hero RAISE counts as
+        AGREE even if hero raised to 0.40. Sizing differences belong
+        to a sizing-leak metric, not the disagreement metric.
+        """
+        if not advisor_action or not hero_action:
+            return "?"
+        a = advisor_action.upper()
+        h = hero_action.upper()
+        # Map advisor strings to canonical verbs (preserving the
+        # action's intent regardless of sizing).
+        if "FOLD" in a:
+            adv_verb = "FOLD"
+        elif "ALL" in a and "IN" in a:
+            adv_verb = "ALLIN"
+        elif "RAISE" in a:
+            adv_verb = "RAISE"
+        elif "BET" in a:
+            adv_verb = "BET"
+        elif "CALL" in a:
+            adv_verb = "CALL"
+        elif "CHECK" in a:
+            adv_verb = "CHECK"
+        else:
+            return "?"
+        # Treat BET and RAISE as the same intent class — both are
+        # voluntary aggression. The distinction is street-context only.
+        AGGR = {"BET", "RAISE", "ALLIN"}
+        if adv_verb in AGGR and h in AGGR:
+            return "AGREE"
+        if adv_verb == h:
+            return "AGREE"
+        return "DISAGREE"
 
     def _finalize(self, room: str):
         hr = self._hand_state.get(room)
@@ -512,6 +647,10 @@ def main(argv=None):
     p.add_argument("--filters-only", action="store_true",
                    help="With --output, only write decisions where a "
                         "danger-override filter or shove-gate fired")
+    p.add_argument("--disagreements-only", action="store_true",
+                   help="With --output, only write decisions where the "
+                        "advisor's recommendation differs from hero's "
+                        "actual action (the leak signal)")
     args = p.parse_args(argv)
 
     factory = None if args.no_advisor else _make_default_advisor_factory()
@@ -553,16 +692,10 @@ def main(argv=None):
         with open(args.output, "w", encoding="utf-8") as f:
             for h in report.hands:
                 for d in h.decisions:
-                    if args.filters_only:
-                        # Filter override / shove gate / RFI re-route
-                        # all surface in advisor_source via the danger
-                        # override print() — but the source field on
-                        # the SM output reflects only the engine source.
-                        # Use note-style detection: action mentions
-                        # FOLD when raw equity is high, or source has
-                        # +danger_override suffix.
-                        if "danger_override" not in d.advisor_source:
-                            continue
+                    if args.filters_only and "danger_override" not in d.advisor_source:
+                        continue
+                    if args.disagreements_only and d.agreement != "DISAGREE":
+                        continue
                     rec = {
                         "hand_id": d.hand_id,
                         "room": d.room,
@@ -577,6 +710,9 @@ def main(argv=None):
                         "rec": d.advisor_action,
                         "source": d.advisor_source,
                         "equity": round(d.advisor_equity, 3),
+                        "hero_actual": d.hero_actual_action,
+                        "hero_actual_amount": d.hero_actual_amount,
+                        "agreement": d.agreement,
                         "hand_chip_delta": h.chip_delta,
                         "hand_bb_delta": round(h.bb_delta, 2),
                         "hand_bb_cents": h.bb_cents,
