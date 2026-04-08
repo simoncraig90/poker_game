@@ -506,6 +506,123 @@ class TestHandEvaluator(unittest.TestCase):
         self.assertLess(self.SM.HAND_QUADS, self.SM.HAND_STRAIGHT_FLUSH)
 
 
+class TestBetSizeSnapping(unittest.TestCase):
+    """
+    Tests for AdvisorStateMachine._snap_bet_to_clean_increment — the
+    bet/raise rounding helper that turns awkward decimals like
+    'RAISE to 1.47' into typeable values like 'RAISE to 1.50' for
+    manual multi-table play.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from advisor_state_machine import AdvisorStateMachine
+        cls.snap = AdvisorStateMachine._snap_bet_to_clean_increment
+
+    # ── NL10 (BB = 10 cents) ─────────────────────────────────────────
+
+    def test_nl10_typical_raise_rounds_to_5(self):
+        # 1.47 → 1.45 (nearest 5 cents from 147)
+        self.assertEqual(self.snap(147, 10), 145)
+        # 1.48 → 1.50 (nearest 5 cents)
+        self.assertEqual(self.snap(148, 10), 150)
+        # 1.50 → 1.50 (already snapped)
+        self.assertEqual(self.snap(150, 10), 150)
+
+    def test_nl10_small_bet_rounds_to_5(self):
+        self.assertEqual(self.snap(27, 10), 25)
+        self.assertEqual(self.snap(28, 10), 30)
+
+    def test_nl10_floors_to_bb(self):
+        # Anything < BB rounds up to BB
+        self.assertEqual(self.snap(3, 10), 10)
+        self.assertEqual(self.snap(7, 10), 10)
+        # Equal to BB stays
+        self.assertEqual(self.snap(10, 10), 10)
+
+    # ── NL25 (BB = 25 cents) ─────────────────────────────────────────
+
+    def test_nl25_rounds_to_5(self):
+        self.assertEqual(self.snap(73, 25), 75)
+        self.assertEqual(self.snap(137, 25), 135)
+        self.assertEqual(self.snap(312, 25), 310)
+
+    def test_nl25_floors_to_bb(self):
+        self.assertEqual(self.snap(15, 25), 25)
+        self.assertEqual(self.snap(24, 25), 25)
+
+    # ── NL50 (BB = 50 cents) ─────────────────────────────────────────
+
+    def test_nl50_rounds_to_25(self):
+        # 187/25 = 7.48 → 7 → 175  (175 closer than 200: 12 vs 13)
+        self.assertEqual(self.snap(187, 50), 175)
+        # 213/25 = 8.52 → 9 → 225
+        self.assertEqual(self.snap(213, 50), 225)
+        # 263/25 = 10.52 → 11 → 275
+        self.assertEqual(self.snap(263, 50), 275)
+        # 412/25 = 16.48 → 16 → 400 (400 closer than 425: 12 vs 13)
+        self.assertEqual(self.snap(412, 50), 400)
+
+    def test_nl50_floors_to_bb(self):
+        self.assertEqual(self.snap(40, 50), 50)
+        self.assertEqual(self.snap(20, 50), 50)
+
+    # ── NL100 (BB = 100 cents = $1) ──────────────────────────────────
+
+    def test_nl100_rounds_to_25(self):
+        self.assertEqual(self.snap(347, 100), 350)
+        self.assertEqual(self.snap(412, 100), 400)
+        self.assertEqual(self.snap(763, 100), 775)
+
+    # ── NL200+ (BB >= 200 cents = $2) ────────────────────────────────
+
+    def test_nl200_rounds_to_50(self):
+        self.assertEqual(self.snap(537, 200), 550)
+        self.assertEqual(self.snap(573, 200), 550)
+        self.assertEqual(self.snap(1247, 200), 1250)
+
+    # ── practice / scaled chip tables (BB = 10000 = 100 chips) ───────
+
+    def test_practice_table_scaled_chips(self):
+        # The practice tables have BB in scaled chip units (100 chips
+        # × CHIP_SCALE=100 = 10000). The increment table caps at
+        # bb > 100 → 50 increment.
+        # 14700 → 14700 (already a multiple of 50)
+        self.assertEqual(self.snap(14700, 10000), 14700)
+        # 14723 → 14700 (294.46 → 294 → 14700, closer than 14750)
+        self.assertEqual(self.snap(14723, 10000), 14700)
+        # 14735 → 14750 (294.7 → 295 → 14750)
+        self.assertEqual(self.snap(14735, 10000), 14750)
+        # Floors to BB
+        self.assertEqual(self.snap(50, 10000), 10000)
+
+    # ── edge cases ───────────────────────────────────────────────────
+
+    def test_zero_amount_passthrough(self):
+        self.assertEqual(self.snap(0, 10), 0)
+
+    def test_negative_amount_passthrough(self):
+        self.assertEqual(self.snap(-5, 10), -5)
+
+    def test_zero_bb_passthrough(self):
+        # If we don't know the BB, just leave the amount alone
+        self.assertEqual(self.snap(147, 0), 147)
+
+    def test_none_inputs_passthrough(self):
+        self.assertEqual(self.snap(None, 10), None)
+        self.assertEqual(self.snap(147, None), 147)
+
+    def test_real_world_kk_iso_raise(self):
+        # The actual hand from the user's recent session:
+        # NL10 (BB=10), KK in BB iso-raising 2 limpers, 4.5x BB = 45 cents
+        # The chart already produced 45 — should pass through
+        self.assertEqual(self.snap(45, 10), 45)
+
+    def test_real_world_aqo_3bet(self):
+        # AQo SB 3-bet from the regression suite: 60 cents at NL10
+        self.assertEqual(self.snap(60, 10), 60)
+
+
 class TestActionHistoryAccumulator(unittest.TestCase):
     """
     Tests for the v0 equity-vs-action-range action-history accumulator.

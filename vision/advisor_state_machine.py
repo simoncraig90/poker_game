@@ -263,12 +263,14 @@ class AdvisorStateMachine:
         if "RAISE" in action.upper():
             if facing and call_amt > 0:
                 raise_to = call_amt * 3
+                raise_to = self._snap_bet_to_clean_increment(raise_to, bb)
                 action = f"RAISE to {raise_to/100:.2f}"
             else:
                 bets = state.get("bets", [])
                 limpers = len([b for b in bets if b == bb]) - 1
                 limpers = max(0, limpers)
                 raise_size = int(bb * 2.5 + bb * limpers)
+                raise_size = self._snap_bet_to_clean_increment(raise_size, bb)
                 action = f"RAISE to {raise_size/100:.2f}"
         elif "CALL" in action.upper() and call_amt > 0:
             action = f"CALL {call_amt/100:.2f}"
@@ -379,8 +381,10 @@ class AdvisorStateMachine:
                 pf_amt = call_amt
 
             if pf_action == 'RAISE' and pf_amt:
+                pf_amt = self._snap_bet_to_clean_increment(pf_amt, bb)
                 action = f"RAISE to {pf_amt/100:.2f}"
             elif pf_action == 'BET' and pf_amt:
+                pf_amt = self._snap_bet_to_clean_increment(pf_amt, bb)
                 action = f"BET {pf_amt/100:.2f}"
             elif pf_action == 'CALL' and call_amt > 0:
                 action = f"CALL {call_amt/100:.2f}"
@@ -457,27 +461,32 @@ class AdvisorStateMachine:
                 bet_size = min(bet_size, hero_stack)
                 if bet_size >= hero_stack:
                     return "BET ALL-IN"
+                bet_size = self._snap_bet_to_clean_increment(bet_size, bb)
                 return f"BET {bet_size/100:.2f}"
         else:
             is_plus_ev = pot_odds > 0 and raw_eq > pot_odds
 
+            def _raise_to_3x():
+                amt = min(int(call_amt * 3), hero_stack)
+                return self._snap_bet_to_clean_increment(amt, bb)
+
             if is_scary and big_bet:
                 if dec_eq > 0.90:
-                    return f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
+                    return f"RAISE to {_raise_to_3x()/100:.2f}"
                 elif is_plus_ev and dec_eq > 0.40:
                     return f"CALL {call_amt/100:.2f}"
                 else:
                     return "FOLD"
             elif is_scary:
                 if dec_eq > 0.80:
-                    return f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
+                    return f"RAISE to {_raise_to_3x()/100:.2f}"
                 elif is_plus_ev or dec_eq > 0.40:
                     return f"CALL {call_amt/100:.2f}"
                 else:
                     return "FOLD"
             else:
                 if dec_eq > 0.75:
-                    return f"RAISE to {min(int(call_amt*3), hero_stack)/100:.2f}"
+                    return f"RAISE to {_raise_to_3x()/100:.2f}"
                 elif is_plus_ev or dec_eq > 0.35:
                     return f"CALL {call_amt/100:.2f}"
                 else:
@@ -639,6 +648,65 @@ class AdvisorStateMachine:
     # model has known calibration failures. Each pattern represents a real
     # named loss in tests/test_strategy_regressions.py.
     # ─────────────────────────────────────────────────────────────────────
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Bet-size rounding for manual play
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # The advisor's raw bet sizes come from `pot * fraction` math and
+    # often produce awkward values like RAISE to 1.47 or BET 0.27. When
+    # the user is manually clicking these into CoinPoker's bet input
+    # across 4+ tables, those decimals slow them down meaningfully.
+    # Snapping to a clean per-stake increment makes each rec
+    # immediately typeable.
+    #
+    # Tier-based increment table (in scaled chip cents):
+    #   NL10 and below (BB <= 10):  snap to 5  (0.05 increments)
+    #   NL25         (BB <= 25):    snap to 5  (1/5 BB, still typeable)
+    #   NL50         (BB <= 50):    snap to 25 (1/2 BB, clean quarters)
+    #   NL100        (BB <= 100):   snap to 25 (1/4 BB)
+    #   NL200+       (BB >= 200):   snap to 50
+    #
+    # The increment is selected from BB to give "round numbers a human
+    # would type." NL25 is a special case because BB/2 = 12.5 isn't
+    # typeable; we use 5 instead.
+    #
+    # Floor: a bet can never be smaller than 1 BB (you'd just lose
+    # postflop initiative for no reason). Cap (max): caller is
+    # responsible for not exceeding hero_stack — this helper does NOT
+    # know about it.
+    #
+    # IMPORTANT: applies to the DISPLAYED amount only. The internal
+    # math (pot odds, equity, etc.) still uses the unrounded value
+    # to avoid downstream desync.
+
+    @classmethod
+    def _snap_bet_to_clean_increment(cls, amount_cents, bb_cents):
+        """
+        Round a bet/raise amount (in scaled chip cents) to the nearest
+        clean increment for manual play. See class docstring above for
+        the increment table. Floors at 1 BB, passes through invalid
+        inputs.
+        """
+        if amount_cents is None or bb_cents is None:
+            return amount_cents
+        if amount_cents <= 0 or bb_cents <= 0:
+            return amount_cents
+        if bb_cents <= 10:
+            increment = 5
+        elif bb_cents <= 25:
+            increment = 5
+        elif bb_cents <= 50:
+            increment = 25
+        elif bb_cents <= 100:
+            increment = 25
+        else:
+            increment = 50
+        snapped = round(amount_cents / increment) * increment
+        # Never undersize below 1 BB
+        if snapped < bb_cents:
+            return bb_cents
+        return snapped
 
     # Card rank → numeric value for straight detection
     _RANK_VAL = {
