@@ -179,14 +179,22 @@ The structural fix.
 **Deliverables:**
 1. **Starting range tables.** For each (villain_classification × position × first action), define the range. Sourced from population studies + the captured corpus.
 2. **Range narrowing engine.** Given a starting range and a sequence of board cards + actions, return the narrowed range.
-3. **Range vs hero equity calculator.** Given a hero hand, board, and villain range, return hero's exact equity. Replaces the EquityNet hot-cold call inside the SM.
+3. **Range vs hero equity calculator.** Given a hero hand, board, and villain range, return hero's exact equity. Replaces the EquityNet hot-cold call inside the SM. **Includes combo counting** (range equity depends on how many combos of each hand villain has — card removal effects matter).
 4. **Multi-way equity (3-player and 4-player).** Equity computed against the intersection of multiple ranges. Engine becomes multi-way capable.
 
-**Exit criteria:** harness BB/100 increases by at least +5 vs the Phase 1 baseline, run across the full corpus.
+**Exit criteria:** harness BB/100 increases by at least +5 vs the Phase 1 baseline, run across the full corpus. The four worst leak shapes from Phase 1's leak ranking (`RIVER:PAIR:noface:CHECK/BET`, `RIVER:PAIR:facing:FOLD/ALLIN`, `FLOP:PAIR:noface:CHECK/BET`, `RIVER:PAIR:facing:FOLD/CALL`) must drop in chip impact by at least 50%.
 
-### Phase 3 — Decision engine retune (week 4)
+### Phase 2.5 — Blocker-aware decisions (week 3-4 overlap)
 
 **Deliverables:**
+1. **Blocker analysis.** For each hero hand on a given board, compute which villain combos are blocked by hero's cards. Plumbed into the range equity calculator from Phase 2.
+2. **Bluff-catcher selection.** Facing a polarized river bet, choose between equally-strong one-pair holdings using blockers — prefer the call that blocks more value combos and unblocks more bluff combos.
+
+**Exit criteria:** synthetic test cases show correct preference for blocker-equipped bluff catchers vs blocker-deficient ones.
+
+### Phase 3 — Decision engine retune (weeks 4-5, expanded scope)
+
+**Original scope (still in):**
 1. **Postflop engine recalibration.** CFR engine's call/raise/fold thresholds were tuned for hand-vs-random equity. Retune to consume the new range-aware equity.
 2. **EV-based decision output.** Engine returns EV(fold), EV(call), EV(raise), and picks the max. Currently it picks via threshold rules.
 3. **Bet sizing module.** Postflop sizing aware of: board texture, position, range advantage, stack depth.
@@ -194,7 +202,45 @@ The structural fix.
 5. **Squeeze logic.** Detect open-then-call situations and respond.
 6. **Retire most danger filters.** With range equity the leaks they patch should not appear. Filters stay as belt-and-braces but stop being load-bearing.
 
-**Exit criteria:** harness BB/100 ≥ +10 above Phase 1 baseline.
+**Expanded scope (added 2026-04-08 after postflop inventory review):**
+
+7. **Stack-to-pot ratio (SPR) awareness.** Same hand plays totally differently at SPR 1 vs SPR 10. Top pair commits at SPR 1, pot controls at SPR 10. Currently the engine has no SPR concept.
+8. **Initiative / preflop aggressor status.** Whether hero raised preflop changes everything postflop. Track explicitly via the action history accumulator from Phase 1.
+9. **Multi-street barrel planning.** Barreling turn requires planning the river. Otherwise the engine fires turn and has nothing on most rivers. Plan must include the river response BEFORE firing the turn barrel.
+10. **Minimum defense frequency (MDF).** Hero can't fold more than MDF allows facing a bet, or villain prints money bluffing. Hard floor on fold rate, computed from bet size.
+11. **Overbet handling.** Sometimes the right play is bet >100% pot. Engine currently caps at 1x. Both for hero (sizing tree includes overbet sizings) and as input (recognize when villain overbets and adjust).
+12. **Donk bets and probe bets.** When OOP villain donks (leads into hero), or when IP villain checks back and hero (OOP) probes the next street. Specific spot patterns the engine doesn't currently handle.
+13. **Push/fold module for short stacks.** At <15 BB, raise/call breaks down — must use Nash push/fold ranges. Currently no push/fold module at all. Required for re-buy and short-stack-recovery scenarios.
+14. **Reverse implied odds (RIO).** Hands that win small but lose big (second pair on wet boards) need an EV discount.
+15. **Mixed-strategy outputs.** Optimal play is often "bet 60% / check 40%". Engine outputs deterministic actions, which is exploitable. Add weighted-random selection from the solver-derived mix.
+16. **Capped vs uncapped range detection.** When villain's range is capped (no nuts), overbet attacks. Engine doesn't track this — needs a "max hand class possible in this villain's range on this board" computation.
+17. **River check behind for SDV.** On the river OOP after villain checks behind, hero with showdown value wins by checking. Engine should not bluff into a checked-down line.
+18. **Protection bets.** Betting medium-strength hands to deny equity to draws. Engine should fire these on wet boards with vulnerable made hands.
+19. **Equity realization (EQR).** Raw equity ≠ what you actually win. Position multiplier on equity (OOP draws realize less than IP draws). Apply as a multiplier on the equity output.
+20. **Fold-equity calculations for semi-bluffs.** Should include FE in the bluff EV calculation. Engine uses raw equity only.
+21. **Implied / reverse-implied odds for draws.** Extend pot odds for draws. Engine uses raw pot odds only.
+22. **Range merging vs polarization.** Choosing which hands to bet thin (merged) vs which to check-raise (polarized).
+23. **Bluff catcher selection beyond Phase 2.5.** When villain bets the river polarized, hero needs to call with the RIGHT one-pair (one with blockers, no relevant unblock). Phase 2.5 covers the equity side; this is the action-selection side.
+24. **Equity-vs-commitment threshold.** When hero is committed (30%+ stack invested), the call/fold threshold drops. Engine should know this.
+25. **Set mining implied odds calculation.** Pre-call with small pp / suited connector for implied odds. Requires implied odds ≥ 10x the call.
+26. **Cold 4-bet and squeeze + cold 4-bet preflop spots.** Specific spots that should be in the chart.
+27. **Float bet.** Calling IP with weak hands intending to bluff later streets when villain shows weakness.
+28. **Check-raise bluffing frequency.** Currently engine fires check-raise value but bluff frequency is ~0.
+29. **River value-vs-bluff frequencies (alpha).** On the river, optimal bluff frequency depends on bet size. Compute and emit accordingly.
+30. **Solver-derived preflop with stack-depth conditioning.** At 200 BB deep, opening ranges shrink (more vulnerable to 3bets).
+
+**Exit criteria:** harness BB/100 ≥ +10 above Phase 1 baseline. AND the Phase 2 leak shapes drop further (target: 80% reduction from Phase 1 baseline, not just 50%). AND at least 80% of the expanded items 7-30 land — items pushed past Phase 3 must be re-scoped explicitly into a Phase 3.5 with named exit criteria.
+
+### Phase 3.5 — Exploit module (defer, scope after Phase 7)
+
+Items below are nice-to-have and will not gate any earlier phase. Documented here so they don't get lost.
+
+- Time-weighted villain classification drift (TAG → LAG when tilted)
+- Bet-sizing-as-range-tell adjustments (big bets are polarized, small bets merged)
+- Adjusting cbet frequency for max-fold vs calling-station villains beyond range conditioning
+- Float and float-bet detection (read villain's float pattern from action history)
+- Slowplay vs fastplay decision module beyond EV-implied behavior
+- Adjustments for unusual antes/structures
 
 ### Phase 4 — Phase 3 IL deployment + auto-fold (week 5)
 
@@ -249,7 +295,22 @@ Each subsequent stake (NL5 → NL10 → NL25 → NL50) gates on its own burn-in:
 
 ## Total scope
 
-**~7-8 weeks** of focused work to get from current state to "click the stake-up button at NL2 → autopilot grinds to NL5 → repeats." That is the honest estimate. The reason today's session felt like learning basic things is because the foundation skipped Phase 1 entirely — the strategy code was built without the validation gate, so we never knew what we had until real money was in front of it. Phase 1 must come first this time.
+**~9-10 weeks** of focused work to get from current state to "click the stake-up button at NL2 → autopilot grinds to NL5 → repeats." Original estimate was 7-8 weeks; the postflop-inventory expansion on 2026-04-08 added Phase 2.5 (blockers) and grew Phase 3 from 1 week to 2 weeks (24 new items including SPR awareness, MDF, multi-street planning, push/fold module, mixed strategies, overbet handling, and equity realization).
+
+The reason today's session felt like learning basic things is because the foundation skipped Phase 1 entirely — the strategy code was built without the validation gate, so we never knew what we had until real money was in front of it. Phase 1 must come first this time.
+
+**Phase week budget (revised):**
+- Phase 0: immediate
+- Phase 1: 1 week (validation harness + action history) — currently in progress on `rebuild-foundation-20260408`
+- Phase 2: 2 weeks (range model + range-aware equity + multi-way + combo counting)
+- Phase 2.5: 0.5 week (blockers — overlaps with end of Phase 2)
+- Phase 3: 2 weeks (decision engine retune + 24 expanded items)
+- Phase 4: 1 week (Phase 3 IL deploy + auto-fold)
+- Phase 5: 1 week (full auto-click + multi-table coordination)
+- Phase 6: 0.5 week (bankroll + stake progression)
+- Phase 7: 1 week (NL2 burn-in)
+
+Total: ~9 weeks. Add 1 week buffer for surprises during burn-in → 10 weeks worst case.
 
 ---
 

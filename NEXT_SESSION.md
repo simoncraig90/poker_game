@@ -333,6 +333,78 @@ The two sites we know — Unibet (Emscripten canvas) and CoinPoker (Unity client
   - Skip some +EV hands to look human
   - Take random breaks (stand up from table, rejoin after 5-15 min)
 
+### REBUILD — Postflop scope (added 2026-04-08, see `docs/REBUILD_PLAN.md`)
+**Context:** After the 2026-04-08 grind session caught nine new leak shapes in two hours, all sandbags against the same hand-vs-random equity gap, the user approved a foundation rebuild. Branch `rebuild-foundation-20260408` (forked from main, baseline merged from `coinpoker-strategy-fixes-20260408`). Phase 1 (validation harness + action history) is in progress on that branch — see `vision/replay_harness.py`, `vision/action_history.py`, 28 unit tests passing. Per-shape leak telemetry confirms the four worst leak shapes are all PAIR class on flop/turn/river, validating the equity-vs-range structural diagnosis.
+
+The full postflop improvement inventory below was triaged on 2026-04-08. Items are grouped by Phase, with status markers:
+- **[on plan]** — already covered by the rebuild plan as written
+- **[implied]** — falls out of structural Phase 2 work for free
+- **[expand]** — needs to be added to the rebuild plan (Phase 2 / 2.5 / 3)
+- **[defer]** — nice-to-have, after Phase 7 graduation
+- **[skip]** — explicitly not chasing
+
+#### Already on the rebuild plan (Phase 2 / Phase 3)
+- [ ] **[on plan]** Range modeling per villain class × position × action sequence (Phase 2)
+- [ ] **[on plan]** Range-vs-range equity (replace hand-vs-random) (Phase 2)
+- [ ] **[on plan]** Multi-way pot support (3+ players) (Phase 2)
+- [ ] **[on plan]** EV-based decision (max-EV among actions, replace threshold rules) (Phase 3)
+- [ ] **[on plan]** Bet sizing tree (small/medium/large, replace fixed 0.66-pot) (Phase 3)
+- [ ] **[on plan]** 2D preflop chart (hero × opener position, eliminate "average opener" leak) (Phase 3)
+- [ ] **[on plan]** Squeeze logic (detect open-then-call → respond) (Phase 3)
+
+#### Implied — should land "for free" once Phase 2 lands
+- [ ] **[implied]** Postflop ranges narrowing with each street — falls out of range narrowing engine
+- [ ] **[implied]** 3-bet pot vs SRP differentiation — different starting ranges → different postflop
+- [ ] **[implied]** Range advantage by board texture — computed from range vs board
+- [ ] **[implied]** Equity-aware vs nits / calling stations — class-conditioned ranges already differ
+- [ ] **[implied]** Showdown value preservation (give-up vs thin-value) — EV math distinguishes naturally
+- [ ] **[implied]** Auto-profit threshold spots — EV calc shows them
+- [ ] **[implied]** Polarized vs linear 3-bet ranges — falls out of range model
+- [ ] **[implied]** Slowplay vs fastplay decisions — EV math chooses
+- [ ] **[implied]** Cbet adjustments by board texture (high vs low, paired vs unpaired) — falls out of range vs board
+
+#### EXPAND the rebuild plan — important and not currently on it
+- [ ] **[expand → Phase 2]** **Combo counting in range equity** — range equity depends on how many combos of each hand villain has. Card removal effects matter.
+- [ ] **[expand → Phase 2.5]** **Blocker-aware decisions** — Holding Ah on a heart-flush board removes nut-flush combos from villain's range, making bluff-catching better/worse. Critical at the river.
+- [ ] **[expand → Phase 3]** **Stack-to-pot ratio (SPR) awareness** — Same hand plays totally differently at SPR 1 vs SPR 10. Top pair commits at SPR 1, pot controls at SPR 10. Currently engine has no SPR concept.
+- [ ] **[expand → Phase 3]** **Initiative / preflop aggressor status** — Whether hero raised preflop changes everything postflop. Currently tracked weakly.
+- [ ] **[expand → Phase 3]** **Multi-street barrel planning** — Barreling turn requires planning river. Otherwise you fire turn and have nothing on most rivers.
+- [ ] **[expand → Phase 3]** **Minimum defense frequency (MDF)** — Hero can't fold more than MDF allows facing a bet, or villain prints money bluffing. Hard floor on fold rate.
+- [ ] **[expand → Phase 3]** **Overbet handling** — Sometimes the right play is bet >100% pot. Engine currently caps at 1x.
+- [ ] **[expand → Phase 3]** **Donk bets and probe bets** — When OOP villain donks, or when IP checks back and hero probes next street. Specific spot patterns.
+- [ ] **[expand → Phase 3]** **Push/fold ranges for short stacks** — At <15 BB, raise/call breaks down — must use Nash push/fold. Currently no push/fold module at all.
+- [ ] **[expand → Phase 3]** **Reverse implied odds (RIO)** — Hands that win small but lose big (second pair on wet boards) need an EV discount.
+- [ ] **[expand → Phase 3]** **Mixed-strategy outputs** — Optimal play is often "bet 60% / check 40%". Engine outputs deterministic actions, which is exploitable.
+- [ ] **[expand → Phase 3]** **Capped vs uncapped range detection** — When villain's range is capped (no nuts), overbet attacks. Engine doesn't track this.
+- [ ] **[expand → Phase 3]** **River check behind for SDV** — On the river OOP after villain checks behind, hero with showdown value wins by checking. Engine should not bluff into a checked-down line.
+- [ ] **[expand → Phase 3]** **Protection bets** — Betting medium-strength hands to deny equity to draws.
+- [ ] **[expand → Phase 3]** **Equity realization (EQR)** — Raw equity ≠ what you actually win. Position multiplier on equity (OOP draws realize less than IP draws).
+- [ ] **[expand → Phase 3]** **Fold-equity calculations for semi-bluffs** — Should include FE in bluff EV calculation. Engine uses raw equity only.
+- [ ] **[expand → Phase 3]** **Implied odds and reverse implied odds for draws** — Extend pot odds for draws. Engine uses raw pot odds only.
+- [ ] **[expand → Phase 3]** **Range merging vs polarization** — Choosing which hands to bet thin (merged) vs which to check-raise (polarized). Strategic decomposition.
+- [ ] **[expand → Phase 3]** **Bluff catcher selection** — When villain bets the river polarized, hero needs to call with the RIGHT one-pair (one with blockers, no relevant unblock).
+- [ ] **[expand → Phase 3]** **Equity vs commitment threshold** — When hero is committed (30%+ stack invested), the call/fold threshold drops. Engine should know this.
+- [ ] **[expand → Phase 3]** **Set mining implied odds calc** — Pre-call with small pp / suited connector for implied odds. Requires implied odds ≥ 10x the call.
+- [ ] **[expand → Phase 3]** **Cold 4-bet and squeeze + cold 4-bet** — Specific preflop spots that should be in the chart.
+- [ ] **[expand → Phase 3]** **Float bet** — Calling IP with weak hands intending to bluff later streets when villain shows weakness.
+- [ ] **[expand → Phase 3]** **Check-raise bluffing frequency** — Currently engine fires check-raise value but bluff frequency is ~0.
+- [ ] **[expand → Phase 3]** **River value-vs-bluff frequencies (alpha)** — On the river, optimal bluff frequency depends on bet size.
+- [ ] **[expand → Phase 3]** **Solver-derived preflop with stack-depth conditioning** — At 200 BB deep, opening ranges shrink (more vulnerable to 3bets).
+
+#### Defer — nice-to-have, after Phase 7 graduation
+- [ ] **[defer]** Time-weighted villain classification drift (TAG → LAG when tilted)
+- [ ] **[defer]** Bet-sizing-as-range-tell adjustments (big bets are polarized, small bets merged)
+- [ ] **[defer]** Adjusting cbet frequency for max-fold vs calling-station villains beyond range conditioning
+- [ ] **[defer]** Float and float-bet detection (read villain's float pattern from action history)
+- [ ] **[defer]** Slowplay vs fastplay decision module beyond EV-implied behavior
+- [ ] **[defer]** Adjustments for unusual antes/structures (engine validated against standard NL no-ante)
+
+#### Explicitly NOT chasing
+- [ ] **[skip]** Live tells — irrelevant online
+- [ ] **[skip]** Timing tells — too noisy at micros, detection-signal risk
+- [ ] **[skip]** ICM / bubble factor — cash games only, no tournaments
+- [ ] **[skip]** Cross-table action correlation as feature — covered by anti-detection humanizer instead
+
 ### Revenue Projections
 ```
 Phase 1 — Manual advisor (NOW):
