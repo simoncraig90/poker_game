@@ -296,6 +296,13 @@ _POSTFLOP_KEEP = {
     ACTION_ALLIN: 0.20,  # very polarized — top of range or pure bluff
 }
 
+# Check-raise is much more polarized than a regular raise. The "I
+# checked, opponent bet, now I raise" line at micros is almost always
+# value (sets, two pair, top pair + good kicker on dynamic boards).
+# Pure bluff check-raises are rare; semi-bluff check-raises are more
+# common but still narrow. Conservative tuning at v0.
+_CHECK_RAISE_KEEP = 0.15
+
 
 def narrow_postflop(combos: list,
                     history: ActionHistory,
@@ -342,9 +349,17 @@ def narrow_postflop(combos: list,
             a for a in history.actions_on_street(street)
             if a.seat == villain_seat
         ]
+        prev_villain_action_on_street = None
         for a in street_actions:
             keep_pct = _POSTFLOP_KEEP.get(a.action, 1.0)
+            # Check-raise detection: villain's PREVIOUS action this
+            # street was a CHECK and now they're betting/raising. Much
+            # narrower than a regular raise.
+            if (a.action in (ACTION_BET, ACTION_RAISE)
+                    and prev_villain_action_on_street == ACTION_CHECK):
+                keep_pct = _CHECK_RAISE_KEEP
             work = _filter_combos_by_strength(work, board_at_street, keep_pct)
+            prev_villain_action_on_street = a.action
             if not work:
                 return []
     return work

@@ -156,6 +156,24 @@ class AdvisorStateMachine:
         # has cards we already have history for them.
         self._ingest_snapshot_for_action_history(state)
 
+        # Phase 2: also update the standalone ActionHistory used by the
+        # range-equity calculator. Must update on every snapshot (not
+        # just state-change-passing ones) so check-raise sequences and
+        # other multi-event-per-street patterns are captured. Lazy-init
+        # on first use to avoid the import cost when the flag is off.
+        if self.enable_range_equity:
+            if self._range_history is None:
+                try:
+                    from action_history import ActionHistory  # noqa: WPS433
+                    self._range_history = ActionHistory()
+                except Exception:
+                    self._range_history = None
+            if self._range_history is not None:
+                try:
+                    self._range_history.update(state)
+                except Exception:
+                    pass
+
         # No hero cards = waiting
         if len(hero) < 2:
             if self.prev_hero:
@@ -591,13 +609,10 @@ class AdvisorStateMachine:
                 print(f"[range_eq] import failed: {e}")
             return
 
-        # Lazy-init the per-instance ActionHistory
+        # _range_history is now updated in process_state on every
+        # snapshot (not just state-change-passing ones), so check-raise
+        # sequences are captured. We just read from it here.
         if self._range_history is None:
-            self._range_history = ActionHistory()
-        try:
-            self._range_history.update(state)
-        except Exception as e:
-            if debug: print(f"[range_eq] history.update failed: {e}")
             return
 
         players = state.get("players") or []
