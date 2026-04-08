@@ -57,6 +57,8 @@ const gameModule = GAME_MODE === "preflop"
   ? require("./simple-holdem")
   : GAME_MODE === "sixmax"
   ? require("./sixmax-holdem")
+  : GAME_MODE === "flop"
+  ? require("./flop-holdem")
   : require("./full-holdem");
 
 const MODEL_DIR = path.join(__dirname, "..", "..", "vision", "models");

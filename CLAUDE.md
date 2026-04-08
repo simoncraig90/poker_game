@@ -4,6 +4,23 @@
 
 Poker research platform with two goals: (1) real-time play assistance via CFR strategy + vision pipeline, and (2) **anti-bot detection research** — building realistic bots and detection systems to test against each other. Combines a deterministic Node.js game engine with a Python vision/ML pipeline, PokerStars-like browser client (91.8% visual match), screen-reading bots, and multi-dimensional detection/humanness scoring.
 
+## CoinPoker pipeline (2026-04-08, sessions 5-11)
+
+The "stop chasing auto-click" decision was reversed. CoinPoker turned out to be the **easiest** auto-play target via IL-patched managed DLL. Status:
+
+- **Game state capture LIVE**: patched `PBClient.dll` (`C:\Program Files\CoinPoker\...\Managed\PBClient.dll`) mirrors every cmd_bean event to `C:\Users\Simon\coinpoker_frames.jsonl`. Plaintext JSON. No encryption.
+- **Advisor pipeline LIVE**: `vision/coinpoker_runner.py --follow` tails the JSONL, drives `AdvisorStateMachine`, renders to the existing Tk overlay.
+- **Click adapter Phase 2 (dry-run) LIVE**: 50/50 round-trips verified via `tools/phase2_gauntlet.py`.
+- **Click adapter Phase 3 IL BUILT, NOT DEPLOYED**: `C:\Users\Simon\coinpoker_patcher\PBClient.phase3.dll`. Calls `_PROJECT_NEW.Scripts.TableEventHandlers.UserActionHandler.UserAction(ActionId, Nullable<float>)` via inlined IL. Gated on operator-supervised single-hand live test.
+
+Read `HANDOFF.md` and the `project_coinpoker_unity.md` auto-memory for the full session-by-session history.
+
+Key files:
+- `vision/coinpoker_adapter.py` (28 tests), `vision/coinpoker_runner.py` (36 tests), `vision/coinpoker_clicker.py` (20 tests)
+- `tools/phase2_gauntlet.py` — round-trip reliability gauntlet
+- `tests/fixtures/coinpoker_session.jsonl` — 200-frame test fixture
+- Patcher + deploy at `C:\Users\Simon\coinpoker_patcher\` (NOT in this repo)
+
 ## Current State
 
 - Engine phases 1-8 complete (692 tests passing)

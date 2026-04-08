@@ -1,0 +1,208 @@
+"""
+Named regression tests for advisor strategy leaks that have cost real money.
+
+Each test in this file represents a SPECIFIC live hand where the advisor
+recommended an action that lost (or would have lost) the user money. The
+test name encodes the hand ID and the leak class. Tests are marked
+``expectedFailure`` until the leak is fixed; when the fix lands, the
+marker is removed and the test becomes a permanent regression guard.
+
+Rules of engagement:
+  1. NEVER delete a test from this file. If the spot is no longer relevant
+     because the engine was rewritten, leave the test (the spot is still a
+     good check on the new code).
+  2. NEVER weaken an assertion to make a test pass. The recommended action
+     is what's correct for the spot. If the engine can't produce it, the
+     engine is wrong, not the test.
+  3. New strategy leaks discovered in real play get added here, with the
+     hand ID and a short description, before any fix is attempted.
+
+Currently catalogued leaks:
+  - 2460830661  AQo SB facing 2.5x at 4-handed → flat-called instead of 3-betting
+  - 2460830707  KK BB on 5d 9s 7d 4c 8c facing river raise → CALL with eq=69%
+                (villain showed 7h6h straight; the equity model didn't account
+                for villain's action-narrowed range)
+
+See ``feedback_passing_tests_not_validation.md`` for the broader context.
+"""
+
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "vision"))
+
+
+def _build_state_machine():
+    """
+    Construct an AdvisorStateMachine identical to what the live runners
+    use, so the assertions exercise the real code path. Heavy import — only
+    pay it when these tests actually run.
+    """
+    from advisor import Advisor as BaseAdvisor
+    from preflop_chart import preflop_advice
+    from advisor_state_machine import AdvisorStateMachine
+    try:
+        from strategy.postflop_engine import PostflopEngine
+        postflop = PostflopEngine()
+    except Exception:
+        postflop = None
+    try:
+        from advisor import assess_board_danger
+    except ImportError:
+        assess_board_danger = lambda h, b: {"warnings": []}
+
+    base = BaseAdvisor(use_overlay=False, terminal=False, debug=False, unibet=True)
+    return AdvisorStateMachine(
+        base_advisor=base,
+        preflop_advice_fn=preflop_advice,
+        postflop_engine=postflop,
+        assess_board_danger_fn=assess_board_danger,
+        tracker=None,
+        bb_cents=10,  # NL10 ($0.05/$0.10) — matches both regression hands
+    )
+
+
+class TestStrategyRegressions(unittest.TestCase):
+    """One test per named real-money loss spot. See module docstring."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.sm = _build_state_machine()
+        except Exception as e:
+            raise unittest.SkipTest(f"could not load advisor dependencies: {e}")
+
+    def test_2460830661_AQo_SB_facing_open_should_3bet(self):
+        """
+        Hand 2460830661, NL10, 4-handed.
+
+        Hero in SB with As Qh, facing a 2.5x open from BTN/CO. AQo at 4-max
+        is a top-15% hand and the standard play vs a 2.5x open from a late
+        position is a 3-bet for value/protection. Flat-calling OOP with a
+        domination-prone hand bleeds EV.
+
+        FIXED 2026-04-08 (session 13) by per-position 3-bet ranges in
+        `vision/preflop_chart.py`. SB now has SB_3BET_EXTRA which adds
+        AQo+, AJs+, KQs+, JJ/TT for value plus a few blocker bluffs to
+        the universal premium 3-bet range.
+        """
+        state = {
+            "hero_cards":   ["As", "Qh"],
+            "board_cards":  [],
+            "hand_id":      "2460830661",
+            "facing_bet":   True,
+            "call_amount":  20,        # 2 BB more on top of the SB
+            "pot":          40,        # in chip cents (CHIP_SCALE=100)
+            "phase":        "PREFLOP",
+            "num_opponents": 3,        # 4-handed
+            "hero_stack":   1009,
+            "position":     "SB",
+        }
+        out = self.sm.process_state(state)
+        self.assertIsNotNone(out, "advisor returned None for AQo SB decision")
+        self.assertIn("RAISE", out.action.upper(),
+                      f"AQo SB facing open at 4-max should 3-BET, got {out.action!r}")
+
+    def test_2460830707_KK_river_facing_raise_on_4straight_should_fold(self):
+        """
+        Hand 2460830707, NL10, 4-handed.
+
+        Hero in BB with Ks Kh. Action: hero iso-raised 2 limpers preflop,
+        was check-raised the flop (5d 9s 7d), c-bet turn (4c), then on the
+        river (8c — completes 5-6-7-8-9 straights) hero min-bet 0.10 and
+        was raised to 4.49 by villain who had check-called every prior
+        street. Villain showed 7h 6h (9-high straight). Hero called the
+        rest of the stack — busto.
+
+        The equity model computes KK vs random hand and reports ~69%.
+        That's correct vs random but villain's *action-narrowed* range on
+        a 4-straight river facing a check-raise is almost exclusively
+        straights, sets, and two pair — KK has maybe 10-15% equity, not
+        69%. The advisor uses the inflated equity to recommend CALL.
+
+        FIXED 2026-04-08 (session 13) by `_apply_danger_overrides` in
+        AdvisorStateMachine: hard-coded fold filter for "overpair on a
+        4-card-straight board facing ≥20%-pot aggression." This is a
+        narrow override that only ever folds, never bluffs/calls. The
+        deeper equity-vs-action-range fix is still on the kanban; this
+        is the cheap version that prevents the catastrophic loss class.
+        """
+        state = {
+            "hero_cards":   ["Ks", "Kh"],
+            "board_cards":  ["5d", "9s", "7d", "4c", "8c"],
+            "hand_id":      "2460830707",
+            "facing_bet":   True,
+            "call_amount":  439,       # villain's raise to 4.39 above hero's 0.10
+            "pot":          1328,      # accumulated pot before this call
+            "phase":        "RIVER",
+            "num_opponents": 1,        # HU after CHIGG folded the flop
+            "hero_stack":   137,       # what's left of the stack
+            "position":     "BB",
+        }
+        out = self.sm.process_state(state)
+        self.assertIsNotNone(out, "advisor returned None for KK river decision")
+        self.assertIn("FOLD", out.action.upper(),
+                      f"KK on 4-straight river facing raise should FOLD, got {out.action!r}")
+
+
+class TestDangerHelpers(unittest.TestCase):
+    """
+    Unit tests for the board-texture / overpair helpers used by
+    AdvisorStateMachine._apply_danger_overrides. These don't require
+    loading the full advisor — they only import the class methods.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from advisor_state_machine import AdvisorStateMachine
+        cls.SM = AdvisorStateMachine
+
+    def test_4card_straight_basic(self):
+        # 5-6-7-8 fits in a 5-rank window (5,6,7,8,9) → straight reachable
+        self.assertTrue(self.SM._board_has_4card_straight(["5d", "6h", "7s", "8c"]))
+        # 5-7-8-9 (the actual KK board pre-river) — 5,7,8,9 fit in 5..9 window → 4 ranks
+        self.assertTrue(self.SM._board_has_4card_straight(["5d", "9s", "7d", "8c"]))
+        # The full KK river board: 5-7-8-9 + 4 → still has the 4-straight
+        self.assertTrue(self.SM._board_has_4card_straight(["5d", "9s", "7d", "4c", "8c"]))
+
+    def test_no_4card_straight_when_too_spread(self):
+        # 2, 7, K, A — no 4 cards within 5 ranks
+        self.assertFalse(self.SM._board_has_4card_straight(["2d", "7h", "Ks", "Ac"]))
+
+    def test_4card_straight_wheel(self):
+        # A-2-3-4 wheel → should detect via the A-low check
+        self.assertTrue(self.SM._board_has_4card_straight(["Ad", "2h", "3s", "4c"]))
+
+    def test_no_straight_with_three_cards(self):
+        self.assertFalse(self.SM._board_has_4card_straight(["5d", "6h", "7s"]))
+
+    def test_4card_flush(self):
+        self.assertTrue(self.SM._board_has_4card_flush(["5d", "9d", "7d", "8d"]))
+        self.assertTrue(self.SM._board_has_4card_flush(["5d", "9d", "7d", "8d", "Kc"]))
+
+    def test_no_4card_flush_with_3_diamonds(self):
+        self.assertFalse(self.SM._board_has_4card_flush(["5d", "9d", "7d", "Kc"]))
+
+    def test_overpair_kk_on_low_board(self):
+        # KK on 5-9-7 — overpair
+        self.assertTrue(self.SM._hero_has_overpair(["Ks", "Kh"], ["5d", "9s", "7d"]))
+
+    def test_overpair_kk_with_ace_on_board(self):
+        # KK on A-9-7 — NOT an overpair, ace beats us
+        self.assertFalse(self.SM._hero_has_overpair(["Ks", "Kh"], ["Ad", "9s", "7d"]))
+
+    def test_overpair_unpaired_hero(self):
+        self.assertFalse(self.SM._hero_has_overpair(["As", "Kh"], ["5d", "9s", "7d"]))
+
+    def test_overpair_set(self):
+        # KK on a board with a king — that's a set, not an overpair
+        # (technically still > all other cards, but a king is on the board)
+        # Our definition: pocket pair must be > MAX board card. K > K is False,
+        # so this returns False. That's correct — sets are handled differently
+        # by the engine and don't need the overpair-protection filter.
+        self.assertFalse(self.SM._hero_has_overpair(["Ks", "Kh"], ["Kd", "9s", "7d"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

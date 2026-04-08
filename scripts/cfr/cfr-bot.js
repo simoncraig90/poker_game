@@ -18,15 +18,17 @@ const path = require("path");
 const { evaluateHandStrength, strengthToBucket, makeInfoSetKey, encodeAction } = require("./abstraction");
 const { adjustStrategy, getAdjustments } = require("../player-profiler");
 
-const NUM_BUCKETS = 50;
+const DEFAULT_NUM_BUCKETS = 50;
 
 /**
  * Create a CFR strategy function that can be used as a bot strategy.
  *
  * @param {string} strategyPath - path to cfr_strategy.json
+ * @param {number} [numBuckets=50] - number of abstraction buckets
  * @returns {Function} strategy(seat, legal, state, rng) -> { action, amount? }
  */
-function createCFRStrategy(strategyPath) {
+function createCFRStrategy(strategyPath, numBuckets) {
+  const NUM_BUCKETS = numBuckets || DEFAULT_NUM_BUCKETS;
   const fullPath = path.resolve(strategyPath);
   if (!fs.existsSync(fullPath)) {
     throw new Error(`CFR strategy file not found: ${fullPath}`);
