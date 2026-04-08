@@ -280,13 +280,38 @@ This file is the source of truth for the rebuild. Edit it as scope shifts. Each 
 | Phase | Exit date | Harness BB/100 | Notes |
 |---|---|---|---|
 | Phase 0 | 2026-04-08 | n/a | Plan approved, branch created. |
-| Phase 1 | — | — | |
+| Phase 1 — partial | 2026-04-08 | +8.7 (NL10 corpus, all-time, no advisor scoring) | Action history accumulator + replay harness skeleton landed. 22 tests passing. Open calibration items below before formal Phase 1 exit. |
+| Phase 1 — exit | — | — | |
 | Phase 2 | — | — | |
 | Phase 3 | — | — | |
 | Phase 4 | — | — | |
 | Phase 5 | — | — | |
 | Phase 6 | — | — | |
 | Phase 7 | — | — | |
+
+### Phase 1 calibration TODOs (before formal Phase 1 exit)
+
+1. **Stack-delta accuracy at hand boundaries.** Current MVP uses
+   first-snapshot `hero_stack` as starting and last-snapshot as
+   ending. This is wrong when (a) hand-end payouts arrive a few
+   snapshots late, (b) the next hand starts before the previous
+   one's payout settles, (c) re-buys / top-ups happen mid-session.
+   Fix: track hero_stack at hand boundaries (start of next hand =
+   end of previous hand) instead of within-hand snapshots.
+2. **Date-range filter.** The corpus is multi-day. The Phase 1
+   exit criterion (reproduce session result within ±2 BB/100)
+   needs to scope to a single session. Add `--from / --to` flags
+   reading frame timestamps.
+3. **Per-shape leak telemetry.** Tag each decision with its
+   shape (river call facing big bet, turn barrel, etc) so
+   aggregate losses can be attributed to leak classes.
+4. **Reproducibility check against today's session.** Run
+   harness against today's date range; the result must match
+   the in-session running EUR within ±2 BB/100. This is the
+   formal Phase 1 exit criterion.
+5. **CLI tightening.** Currently the CLI has hardcoded paths to
+   `C:\Users\Simon\coinpoker_frames.jsonl`. Move to a config file
+   or env var so the harness is portable.
 
 ### New leak shapes discovered during build
 
