@@ -362,6 +362,42 @@ def make_console_printer() -> Callable[[dict], None]:
 
 # ── opponent tracker adapter ──────────────────────────────────────────────────
 
+def _last_aggressor_user_id(snap):
+    """
+    Find the user_id of the most recent aggressor (highest bet among
+    non-hero players in the snapshot). Used to look up HUD stats for
+    the same villain the OpponentTracker.classify_villain considers
+    the primary opponent — keeping both sources apples-to-apples.
+
+    Returns None if there's no clear aggressor or hero is the only
+    player with a bet.
+    """
+    if not snap:
+        return None
+    players = snap.get("players") or []
+    hero_seat = snap.get("hero_seat")
+    if not players or not isinstance(players[0], dict):
+        return None
+    best_uid = None
+    best_bet = -1
+    for p in players:
+        if p.get("seat") == hero_seat:
+            continue
+        bet = p.get("bet", 0) or 0
+        if bet > best_bet:
+            best_bet = bet
+            best_uid = p.get("user_id")
+    if best_uid is not None:
+        return best_uid
+    # Fallback: pick any non-hero player with a user_id
+    for p in players:
+        if p.get("seat") == hero_seat:
+            continue
+        if p.get("user_id"):
+            return p.get("user_id")
+    return None
+
+
 class _CoinPokerTrackerAdapter:
     """
     Wraps OpponentTracker so it can consume CoinPoker-format snapshots.
@@ -497,6 +533,27 @@ def make_advisor_callback(session: CoinPokerSession,
         print(f"[runner]   OpponentTracker SKIPPED: {type(e).__name__}: {e}")
         tracker = None
 
+    # CoinPoker server-side HUD stats loader. This runs ALONGSIDE
+    # OpponentTracker — both sources are active in parallel. The SM
+    # still drives decisions from the OpponentTracker (no behavioral
+    # change, no risk), but every recommendation log line shows BOTH
+    # classifications side-by-side so we can compare accuracy in
+    # post-session analysis. Loader gracefully degrades to UNKNOWN
+    # if the sniffer hasn't captured anything yet.
+    hud_loader = None
+    try:
+        from coinpoker_hud_loader import CoinPokerHudLoader
+        hud_loader = CoinPokerHudLoader()
+        if len(hud_loader) > 0:
+            print(f"[runner]   CoinPokerHudLoader loaded "
+                  f"({len(hud_loader)} ground-truth player profiles)")
+        else:
+            print(f"[runner]   CoinPokerHudLoader empty — "
+                  f"run tools/coinpoker_stats_sniffer.py to capture")
+    except Exception as e:
+        print(f"[runner]   CoinPokerHudLoader SKIPPED: {type(e).__name__}: {e}")
+        hud_loader = None
+
     sm = AdvisorStateMachine(
         base_advisor=base,
         preflop_advice_fn=preflop_advice,
@@ -557,19 +614,31 @@ def make_advisor_callback(session: CoinPokerSession,
         if out is not None and out.action:
             hero = " ".join(snap["hero_cards"]) or "??"
             board = " ".join(snap["board_cards"]) or "-"
-            # Show villain classification + table summary if the tracker
-            # has built up enough hands to classify. Surfaces opponent
-            # context alongside every recommendation so the user can see
-            # whether the rec is conditioning on a known villain.
-            opp_tag = ""
+            # Show villain classification from BOTH sources side-by-side:
+            #   - "trk:TYPE" — our OpponentTracker (computed from observed
+            #     actions during this session, slow-converging but always
+            #     available once we've seen enough hands)
+            #   - "hud:TYPE" — CoinPoker server-side ground truth (instant
+            #     classification, requires the stats sniffer to have
+            #     captured the player at some point)
+            # The SM still uses the tracker for decisions; HUD is for
+            # comparison only. If they disagree (e.g. trk:TAG vs hud:NIT)
+            # that's a flag to investigate.
+            tag_parts = []
             if tracker is not None:
-                vt = ""
                 try:
                     vt = (tracker.classify_villain(snap) or "").upper()
+                    if vt and vt != "UNKNOWN":
+                        tag_parts.append(f"trk:{vt}")
                 except Exception:
-                    vt = ""
-                if vt and vt != "UNKNOWN":
-                    opp_tag = f" vs {vt}"
+                    pass
+            if hud_loader is not None:
+                hud_uid = _last_aggressor_user_id(snap)
+                if hud_uid is not None:
+                    hud_cls = hud_loader.classify(hud_uid)
+                    if hud_cls and hud_cls != "UNKNOWN":
+                        tag_parts.append(f"hud:{hud_cls}")
+            opp_tag = (" " + " ".join(tag_parts)) if tag_parts else ""
             print(f"*** [{out.phase:7}] {hero:5}  board={board:14}  "
                   f"pos={snap['position']:3}  eq={out.equity:.0%}  "
                   f"=> {out.action}{opp_tag}")
