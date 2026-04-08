@@ -199,6 +199,24 @@ class CoinPokerSession:
         for line in lines:
             self.feed_line(line)
 
+    def warmup(self, lines: Iterable[str]) -> int:
+        """
+        Silently ingest frames into the builder without dispatching to
+        on_snapshot. Used by --follow mode to seed state from the existing
+        file before tailing for new lines. Returns the count ingested.
+        """
+        count = 0
+        for line in lines:
+            if not line:
+                continue
+            try:
+                frame = json.loads(line) if isinstance(line, str) else line
+            except json.JSONDecodeError:
+                continue
+            self.builder.ingest(frame)
+            count += 1
+        return count
+
 
 # ── multi-table session ───────────────────────────────────────────────────────
 
@@ -346,6 +364,38 @@ class MultiTableCoinPokerSession:
     def run(self, lines: Iterable[str]) -> None:
         for line in lines:
             self.feed_line(line)
+
+    def warmup(self, lines: Iterable[str]) -> int:
+        """
+        Multi-table version of warmup: silently ingest frames into the
+        per-room builders WITHOUT firing on_snapshot. Spawns a new
+        builder for each room as needed (same logic as feed_frame
+        minus the dispatch). Returns the count ingested.
+
+        This was added 2026-04-09 after the single-table warmup loop
+        in main() — which poked session.builder.ingest() directly —
+        crashed on multi-table mode because session.builder returns
+        None until at least one room has been seen.
+        """
+        count = 0
+        for line in lines:
+            if not line:
+                continue
+            try:
+                frame = json.loads(line) if isinstance(line, str) else line
+            except json.JSONDecodeError:
+                continue
+            room = frame.get("room_name") or ""
+            if not room:
+                continue
+            builder = self._builders.get(room)
+            if builder is None:
+                builder = CoinPokerStateBuilder(self.hero_user_id)
+                self._builders[room] = builder
+            builder.ingest(frame)
+            self._most_recent_room = room
+            count += 1
+        return count
 
     def __len__(self) -> int:
         return len(self._builders)
@@ -1073,36 +1123,48 @@ def main(argv=None) -> int:
             print(f"\n[runner] replay done. frames={session.frames_seen} "
                   f"snapshots={session.snapshots_dispatched}")
         else:
-            # Warmup: silently feed the existing file into the builder so
-            # it knows the current hand_id / hero_seat / blinds before we
-            # start dispatching. Without this, --follow seeks to EOF and
-            # snapshot() returns None for every new frame because the
-            # builder never sees the seed events.
+            # Warmup: silently feed the existing file into the builder(s)
+            # so they know the current hand_id / hero_seat / blinds
+            # before we start dispatching. Without this, --follow seeks
+            # to EOF and snapshot() returns None for every new frame
+            # because the builder never sees the seed events.
+            #
+            # Uses session.warmup() which both CoinPokerSession and
+            # MultiTableCoinPokerSession implement. The multi-table
+            # version routes to per-room builders without firing the
+            # on_snapshot callback.
             print(f"[runner] warming up builder from {args.file} ...")
-            warmup_n = 0
             with open(args.file, "r", encoding="utf-8") as wf:
-                for raw in wf:
-                    raw = raw.rstrip("\n")
-                    if not raw:
-                        continue
-                    try:
-                        frame = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-                    session.builder.ingest(frame)
-                    warmup_n += 1
-            print(f"[runner] warmup ingested {warmup_n} frames; "
-                  f"hand={session.builder.hand_id} "
-                  f"hero_seat={session.builder.hero_seat} "
-                  f"phase={session.builder.phase}")
+                warmup_n = session.warmup(wf)
+            # Builder summary — for single-table this is the only builder,
+            # for multi-table it's the most recently seen room's builder.
+            b = session.builder
+            if b is not None:
+                print(f"[runner] warmup ingested {warmup_n} frames; "
+                      f"hand={b.hand_id} hero_seat={b.hero_seat} "
+                      f"phase={b.phase}")
+            else:
+                print(f"[runner] warmup ingested {warmup_n} frames "
+                      f"(no rooms seen yet)")
+            if hasattr(session, "_builders"):
+                room_count = len(session._builders)
+                if room_count > 1:
+                    print(f"[runner] {room_count} rooms tracked: "
+                          f"{', '.join(sorted(session._builders.keys())[:4])}"
+                          f"{' ...' if room_count > 4 else ''}")
             # Force one dispatch of the current state so the overlay is
             # populated immediately rather than empty until the next change.
-            current = session.builder.snapshot()
-            if current is not None and callback_holder[0] is not None:
-                try:
-                    callback_holder[0](current)
-                except Exception as e:
-                    print(f"[runner] warmup snapshot dispatch failed: {e}")
+            if b is not None:
+                current = b.snapshot()
+                if current is not None and callback_holder[0] is not None:
+                    # Inject room_name for multi-table compatibility
+                    if hasattr(session, "_most_recent_room") and session._most_recent_room:
+                        current = dict(current)
+                        current["room_name"] = session._most_recent_room
+                    try:
+                        callback_holder[0](current)
+                    except Exception as e:
+                        print(f"[runner] warmup snapshot dispatch failed: {e}")
             print(f"[runner] tailing {args.file} — Ctrl+C to stop\n")
             session.run(follow_iter(args.file))
     except KeyboardInterrupt:
