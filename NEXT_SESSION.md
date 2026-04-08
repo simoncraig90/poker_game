@@ -69,10 +69,32 @@ See `project_coinpoker_unity.md` in memory for the full session-by-session log o
 - [x] **Action-history accumulator (v0 of equity-vs-action-range)** — `AdvisorStateMachine._ingest_snapshot_for_action_history` + `_equity_discount_from_action_history`. Diffs villain `last_action` across snapshots, computes per-hand discount based on raise sequence. 12 unit tests. Activates on 16% of hero-turn decisions in the captured CoinPoker dataset. Provides defense in depth alongside the danger filters. Proper range-vs-range fix is still on the kanban as the bigger P0 — this v0 is not a replacement, just a stand-in that catches the most obvious patterns.
 - [x] **Default unknown villains to NIT at micro stakes** — `_process_postflop` overrides UNKNOWN→NIT when bb_cents <= 1000 (NL10 and below). Validated against 733 captured hands via replay_whatif: was the only +EV variant tested (+EUR 0.22 over UNKNOWN baseline), now folded into the production code.
 - [x] **`tools/coinpoker_frames_to_session.py`** — converter from raw CoinPoker frame log to Unibet-format session JSONL, so replay_whatif can run on CoinPoker hands. Walks frames via CoinPokerStateBuilder, runs production AdvisorStateMachine, pipes through SessionLogger. Output lands in vision/data/.
-- [ ] **(P1) Replay validation gate** — before any session, require: replay_whatif.py shows ≥+5 bb/100 over ≥1000 captured hands AND all named regression tests are green. Wire this as a `tools/check_ready_for_live.py` that exits non-zero if any gate fails.
-- [ ] **(P1) Wire `OpponentTracker` into `coinpoker_runner.py`** — currently `tracker=None`. Code already exists in advisor_ws/coinpoker_player. This is the first step toward fish/reg classification feeding the recs.
-- [ ] **(P2) CoinPoker built-in HUD stats sniffer** — `tools/coinpoker_stats_sniffer.py` exists but unverified (CDP-attached, watches /v2/stats/ — needs an opponent hover to trigger a request). Built 2026-04-08, untested at runtime. CoinPoker has built-in VPIP/PFR/3-bet display via REST endpoint, used for accuracy comparison vs our OpponentTracker.
-- [ ] **(P3, longer term) 6-max CFR training** — would replace HU CFR for 6-max strategy, but: (a) NOT what's broken — KK loss was equity-estimation, not strategy selection; (b) CFR runs ON TOP of equity, GIGO; (c) GTO underperforms exploit at micros anyway; (d) months of compute. Defer until P0/P1 items are landed and we're capped.
+- [x] **Replay validation gate `tools/check_ready_for_live.py`** — single-command go/no-go bundling the test suite + strategy regressions + named-override sweep + replay_whatif. Currently returns GO across all 4 gates. ~12s total runtime. ALWAYS run before any real-money session.
+- [x] **OpponentTracker wired into `coinpoker_runner.py`** — via `_CoinPokerTrackerAdapter` shape adapter that converts CoinPoker dict-format snapshots to the Unibet name-list format the tracker expects. Loads 57 cross-site villains from HandDB on startup. `classify_villain` results now appear inline on every recommendation log line as " vs <TYPE>".
+- [x] **CoinPoker HUD stats sniffer LIVE** — `tools/coinpoker_stats_sniffer.py` confirmed working at runtime against a real CoinPoker session (2026-04-08 night). **Discovered the endpoint:** `https://nxtgenapi.thecloudinfra.com/pbshots/v2/stats/cash?user_id=N1,N2,...` returns per-player ratios for `vpip`, `pfr`, `3bet`, `cbet`, `check_raise`, `fold_to_3bet`, `fold_to_cbet`, `steal`, `wsd`, `wtsd`, `allin`, `fta`, `fold`. **This is the server-side ground truth** that our OpponentTracker approximates. Captured 11 unique players from tonight's session. Output lands in `C:\Users\Simon\coinpoker_hud_stats.jsonl` (gitignored).
+- [x] **HUD stats dump tool `tools/coinpoker_hud_stats_dump.py`** — parses sniffer output, prints per-player table with our same FISH/NIT/TAG/LAG/WHALE classification logic so CoinPoker stats are directly comparable to OpponentTracker output.
+- [x] **Hand class evaluator** — `AdvisorStateMachine._evaluate_hand_class` classifies hero's best 5-card hand into HIGH_CARD/PAIR/TWO_PAIR/TRIPS/STRAIGHT/FLUSH/FULL_HOUSE/QUADS/STRAIGHT_FLUSH. 21 unit tests including wheel straight, wheel straight flush, and the named loss spots. Foundation for Filter 5 and future filters that need to know "what hero actually has."
+- [x] **Filter 5: one-pair-or-less on coordinated river facing big bet** — synthetic regression test (no real seed hand in captured data). Requires hero one-pair-or-less + 4-card-straight or 3-card-flush board + ≥75% pot bet. Coordination requirement avoids false-positiving TPTK on dry boards (verified against real hand 2379771919 QcAc on 8-7-Q-T-2 = +EUR 9.24 win).
+- [ ] **(P3, longer term) 6-max CFR training** — would replace HU CFR for 6-max strategy, but: (a) NOT what's broken — losses were equity-estimation, not strategy selection; (b) CFR runs ON TOP of equity, GIGO; (c) GTO underperforms exploit at micros anyway; (d) months of compute. Defer until P0/P1 items are landed and we're capped.
+
+### Next session: TAG-vs-NIT default test (concrete experiment)
+**Hypothesis:** the `nit_assume` default applied tonight is too conservative for the actual NL10 population. Tonight's HUD stats sniffer captured 11 unique players from your real-money table — **8 of 11 were classified as TAG**, only 1 FISH, 1 LAG, 1 NIT (hero himself). TAGs c-bet thinner than nits (their CB% in the captured stats was 56-79%), so discounting equity 35% on a TAG c-bet may fold too much.
+
+**Experiment plan:**
+1. Run `python tools/check_ready_for_live.py` — must return GO before starting
+2. Launch CoinPoker via `tools/coinpoker_open_practice.py` (need `--remote-debugging-port=9223` for sniffer)
+3. Background: `python tools/coinpoker_stats_sniffer.py` (collects HUD ground truth as you hover/play)
+4. Foreground: `python vision/coinpoker_runner.py --follow` (overlay-only, you click)
+5. Sit at NL10 and play 30-50 hands manually following the overlay
+6. Watch the `vs <TYPE>` tag on each rec — note when advisor says FOLD vs TAG c-bets that you'd want to call
+7. After session: `python tools/coinpoker_hud_stats_dump.py` → see all captured players' actual CoinPoker server stats
+8. Compare what advisor recommended vs (a) what you'd play and (b) what CoinPoker's per-villain stats would suggest
+
+**If hypothesis confirmed:** next code change is "import HUD stats directly into OpponentTracker" — replace our slow-converging hand-counted stats with CoinPoker's server-side ground truth, so the SM gets per-villain classification immediately on table-join instead of after 50+ observed hands.
+
+**If hypothesis rejected:** the nit_assume default stays. Either way we have new data and a new captured-hands set to feed into `replay_whatif.py`.
+
+**Bankroll budget:** $15-20 (~1.5 NL10 buy-ins). Stop at -1 buy-in over the first 30 hands rather than push for the next.
 
 ### Data capture decision (2026-04-08)
 **Practice tables are NOT viable for validation data.** Fake chips → players play randomly → opponent profiles get poisoned. Two viable paths:

@@ -57,14 +57,66 @@ Four named real-money loss spots fixed and locked in as regression tests:
   - **Hand 2379447781** QcJc BTN call-off on Kc-Th-Td-3c-8c river (flush on paired
     board, no boat possibility) → fixed by Filter 4
 
+Plus a 5th synthetic-only filter:
+  - **Filter 5**: one-pair-or-less on COORDINATED river facing ≥75% pot bet → FOLD
+    (no real seed hand in captured data — coordination requirement is 4-card
+    straight OR 3-card flush on the board, prevents false-positiving TPTK on dry
+    boards)
+
 Plus:
+  - **Hand class evaluator** `AdvisorStateMachine._evaluate_hand_class` —
+    classifies hero's best 5-card hand into 9 standard categories incl. wheel
+    straights and wheel straight flushes. 21 unit tests. Foundation for Filter 5
+    and future filters.
   - Action-history accumulator (v0 of equity-vs-action-range) in `AdvisorStateMachine`
+    — diffs villain `last_action` across snapshots, computes per-hand discount
+    based on raise sequence + river bets + 3-street barreling. Plumbed correctly
+    with 12 unit tests but A/B comparison shows 0 action-flips on tonight's data
+    (defense-in-depth for future hands matching the patterns).
   - Default unknown villains to NIT at micro stakes (validated +EUR 0.22 in
     replay against 733 captured hands, then folded into baseline)
   - Position derivation fix in `vision/coinpoker_adapter.py` (was always returning MP)
   - `tools/coinpoker_frames_to_session.py` converter so `replay_whatif.py` can
     run on CoinPoker frame logs alongside Unibet sessions
   - `tools/check_ready_for_live.py` validation gate (above)
+  - Recommendation log lines now show `vs <TYPE>` tag from `OpponentTracker.classify_villain`
+
+## CoinPoker HUD stats endpoint (discovered 2026-04-08)
+
+CoinPoker maintains server-side player stats and serves them to the client via
+a REST endpoint. Discovered live by running `tools/coinpoker_stats_sniffer.py`
+against an active CoinPoker session and observing the network traffic:
+
+```
+GET https://nxtgenapi.thecloudinfra.com/pbshots/v2/stats/cash?user_id=N1,N2,N3,...
+```
+
+Returns one entry per `user_id` with `ratios[]` containing:
+
+```
+vpip, pfr, 3bet, cbet, check_raise, fold_to_3bet, fold_to_cbet,
+steal, wsd, wtsd, allin, fta, fold
+```
+
+This is the **server-side ground truth** that our `OpponentTracker` approximates
+by accumulating actions over a session. We can import these directly as opponent
+profiles instead of building our own slower-to-converge stats. 11 unique players
+were captured from the 2026-04-08 session including hero (precious0864449,
+user_id 1571120, classified as NIT with VPIP 11.8%, PFR 5.9%).
+
+Tools:
+  - `tools/coinpoker_stats_sniffer.py` — CDP-attached, captures `/v2/stats/`
+    responses to `C:\Users\Simon\coinpoker_hud_stats.jsonl` (gitignored).
+    Run alongside the live runner to collect data passively while playing.
+  - `tools/coinpoker_hud_stats_dump.py` — parses captured JSONL, prints a
+    per-player table with our same FISH/NIT/TAG/LAG/WHALE classification.
+
+**Strategic note from the captured data:** at the NL10 table observed, 8 of
+11 players classified as TAG (VPIP 20-35%, PFR 16-21%). This contradicts the
+common assumption that "micros are FISH-heavy" — the population may be much
+more reg-leaning at certain time-of-day windows. The `nit_assume` default
+(treating unknowns as nits at micro stakes) may be too conservative for this
+table type. Test scheduled for next session — see NEXT_SESSION.md kanban.
 
 ## Current State
 
