@@ -35,6 +35,16 @@ async function main() {
 
   await sleep(2500);
 
+  // Check for the Chrome 137+ "unsupported command-line flag" warning
+  // bar and try to dismiss it. We removed the flag from start.bat
+  // (the cause), but this guards against future regressions or other
+  // bad-flag-blocklist hits.
+  try {
+    await detectAndDismissChromeWarningBar(page);
+  } catch (e) {
+    console.log(`[login] warning bar check errored: ${e.message}`);
+  }
+
   // Reject cookies if present
   try {
     const btns = await page.$$("button");
@@ -201,6 +211,73 @@ async function enforceWindowSize(page, width, height) {
   } catch (e) {
     console.log(`[login] enforceWindowSize failed: ${e.message}`);
   }
+}
+
+// Detect and try to dismiss the Chrome 137+ "unsupported command-line flag"
+// yellow warning bar that appears at the top of the viewport.
+//
+// The bar is rendered by Chrome itself (not the page DOM), so JavaScript
+// running on the page can't see or click it directly. We detect it via
+// window dimensions math: when the bar is present, window.outerHeight
+// minus window.innerHeight is ~30px larger than normal.
+//
+// Dismiss path: send keyboard shortcut F11 (toggle fullscreen) then F11
+// again to exit. Fullscreen mode forces the bar away; subsequent restore
+// keeps it away because the user has interacted with the window.
+//
+// Returns:
+//   { detected: bool, dismissed: bool, dimensionsBefore, dimensionsAfter }
+async function detectAndDismissChromeWarningBar(page) {
+  const result = { detected: false, dismissed: false };
+
+  // Take a baseline measurement
+  const dims = await page.evaluate(() => ({
+    inner: window.innerHeight,
+    outer: window.outerHeight,
+    delta: window.outerHeight - window.innerHeight,
+  }));
+  result.dimensionsBefore = dims;
+
+  // Heuristic: in a normal Chrome window with our launch flags
+  // (window-size=1280,721, no zoom), the chrome (toolbar+tabs+address)
+  // adds ~85-95px. With the warning bar present, it's ~115-125px.
+  // We flag anything > 100px as suspicious.
+  if (dims.delta <= 100) {
+    return result;  // No bar detected
+  }
+  result.detected = true;
+  console.log(`[login] Chrome warning bar detected (delta=${dims.delta}px > 100px) — attempting dismiss`);
+
+  // Approach 1: send F11 to fullscreen, then F11 again to exit
+  try {
+    await page.keyboard.press('F11');
+    await sleep(800);
+    await page.keyboard.press('F11');
+    await sleep(800);
+
+    const after = await page.evaluate(() => ({
+      inner: window.innerHeight,
+      outer: window.outerHeight,
+      delta: window.outerHeight - window.innerHeight,
+    }));
+    result.dimensionsAfter = after;
+    if (after.delta <= 100) {
+      result.dismissed = true;
+      console.log(`[login] Chrome warning bar dismissed via F11 toggle (delta now ${after.delta}px)`);
+      return result;
+    }
+  } catch (e) {
+    console.log(`[login] F11 dismiss attempt errored: ${e.message}`);
+  }
+
+  // Approach 2: log the warning so the operator notices.
+  // We don't have a reliable way to click the bar's X button without
+  // OS-level mouse_event from outside the browser, which defeats the
+  // whole point of avoiding host-cursor interference.
+  console.log(`[login] *** Chrome warning bar still present after dismiss attempt ***`);
+  console.log(`[login] *** This is a fingerprint signal — review the launch flags in start.bat ***`);
+  console.log(`[login] *** Most likely cause: a flag in the bad-flags blocklist (--disable-blink-features, etc) ***`);
+  return result;
 }
 
 // Inject patches to mask CDP/automation tells before any page script runs.

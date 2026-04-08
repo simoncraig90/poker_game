@@ -29,12 +29,21 @@ if exist "C:\Users\Simon\chrome-debug\Default\Preferences" (
 )
 
 REM Launch Chrome with debug port
+REM
+REM IMPORTANT: do NOT use --disable-blink-features=AutomationControlled.
+REM Chrome 137+ shows a visible yellow warning bar when that flag is
+REM set, which is itself a fingerprint signal AND visible to the user.
+REM The JS-level navigator.webdriver patch in scripts/auto-login.js
+REM (applyStealth, patch #1) achieves the same thing without the bar.
+REM
+REM We keep --exclude-switches=enable-automation because that suppresses
+REM the OTHER banner ("controlled by automated test software"), which
+REM is unrelated to the flag-warnings logic.
 echo Starting Chrome...
 start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" ^
   --remote-debugging-port=9222 ^
   --user-data-dir=C:\Users\Simon\chrome-debug ^
   --no-first-run ^
-  --disable-blink-features=AutomationControlled ^
   --disable-features=PasswordManagerOnboarding,IsolateOrigins,site-per-process ^
   --exclude-switches=enable-automation ^
   --window-size=1280,721 ^
