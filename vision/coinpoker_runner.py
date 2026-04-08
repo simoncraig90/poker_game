@@ -887,6 +887,15 @@ def make_advisor_callback(session: CoinPokerSession,
     # to load, immutable in operation), so per-room SMs are cheap.
     sms: dict[str, "AdvisorStateMachine"] = {}
     caches: dict[str, dict] = {}
+    # Per-table-id last-seen wall-clock for stale-table sweep. When a
+    # CoinPoker table is closed by the user it simply stops emitting
+    # frames — there is no explicit "leave" event we can hook. We
+    # detect that by remembering the last time each panel received a
+    # snapshot and sending table_remove to the overlay when a panel
+    # has gone quiet for STALE_TABLE_SECS.
+    import time as _time
+    overlay_last_seen: dict[str, float] = {}
+    STALE_TABLE_SECS = 60.0
 
     def get_sm_for_room(room: str) -> "AdvisorStateMachine":
         if room in sms:
@@ -958,6 +967,15 @@ def make_advisor_callback(session: CoinPokerSession,
                 cache["out"] = out
 
         display_out = cache["out"]
+
+        # When hero has no cards (between hands, or after folding mid-hand)
+        # don't show the previous hand's cached recommendation. Forcing
+        # display_out=None makes snapshot_to_overlay_msg emit a blank rec,
+        # and the empty hero_cards already produces blank card widgets.
+        # Result: the panel visibly clears the moment a hand ends instead
+        # of lingering on stale advice until the next hand starts.
+        if len(snap.get("hero_cards", []) or []) < 2:
+            display_out = None
 
         # Console line — only print when the advisor JUST produced a fresh
         # action this turn. Avoids spamming the same rec on every villain
@@ -1036,6 +1054,25 @@ def make_advisor_callback(session: CoinPokerSession,
                     room_name=snap_room or room_name,
                 )
                 overlay.send(msg)
+                # Mark this panel as live and sweep any panels that
+                # have not received a frame in STALE_TABLE_SECS — those
+                # tables have been closed by the user and should be
+                # removed from the overlay so it stops growing forever.
+                now_ts = _time.time()
+                overlay_last_seen[table_id_for_panel] = now_ts
+                stale = [
+                    tid for tid, ts in overlay_last_seen.items()
+                    if (now_ts - ts) > STALE_TABLE_SECS
+                ]
+                for tid in stale:
+                    try:
+                        overlay.send({"type": "table_remove",
+                                      "table_id": tid})
+                        print(f"[overlay] removed stale table {tid!r} "
+                              f"(no frames for {STALE_TABLE_SECS:.0f}s)")
+                    except Exception:
+                        pass
+                    overlay_last_seen.pop(tid, None)
             except Exception as e:
                 print(f"[overlay] build failed: {type(e).__name__}: {e}")
 

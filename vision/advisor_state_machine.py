@@ -98,6 +98,13 @@ class AdvisorStateMachine:
         self.action_history_hand = None
         self._prev_villain_actions = {}  # seat -> last_action string
 
+        # Per-hand record of which postflop streets hero already aggressed
+        # on (BET/RAISE/ALL-IN). Used by Filter 7 to detect "we cbet, got
+        # raised, now we're facing a check-raise" — that's a different
+        # equity context than facing a donk-bet. Reset on new hand.
+        self.aggressed_phases_hand = None
+        self.aggressed_phases: set[str] = set()
+
     def process_state(self, state):
         """
         Process a game state update and return an AdvisorOutput.
@@ -227,6 +234,12 @@ class AdvisorStateMachine:
         out.facing_bet = facing
         out.call_amount = call_amt
 
+        # Reset per-hand aggression tracker on every new hand. Filter 7
+        # uses self.aggressed_phases to detect raise-after-our-bet spots.
+        if self.aggressed_phases_hand != hand_id:
+            self.aggressed_phases_hand = hand_id
+            self.aggressed_phases = set()
+
         if phase_str == "PREFLOP":
             self._process_preflop(out, rec, state, hero, pos, facing, call_amt,
                                   hero_str, eq, bb_hr_str)
@@ -234,6 +247,15 @@ class AdvisorStateMachine:
             self._process_postflop(out, rec, state, hero, board, pos, facing,
                                    call_amt, hero_str, board_str, eq, bb_hr_str,
                                    phase, num_opp, hand_changed)
+
+        # Record aggression AFTER processing so the next snapshot's
+        # danger filter can detect "we already aggressed this street."
+        # Includes the override outcome — if a danger filter folded our
+        # would-be bet, we never invested, so don't mark aggressed.
+        if phase_str != "PREFLOP" and out.action:
+            act_upper = out.action.upper()
+            if "BET " in act_upper or "RAISE" in act_upper or "ALL-IN" in act_upper:
+                self.aggressed_phases.add(phase_str)
 
         return out
 
@@ -260,13 +282,43 @@ class AdvisorStateMachine:
         # 2026-04-09: discovered live by user when chart said FOLD on
         # KdQs SB folded-to (hand 2502750418) and FOLD on QsTh BTN
         # folded-to. Both are textbook open-raises.
-        if facing and 0 < call_amt <= bb:
+        # IMPORTANT: BB is excluded — BB is the last seat preflop, so
+        # any "raise" hero faces is by definition a real raise, not an
+        # RFI spot. Without this exclusion, BB facing a min-raise (where
+        # call_amt = 1 BB exactly because hero already has 1 BB in)
+        # would re-route through facing_raise=False and the chart's
+        # BB-no-raise branch returns CHECK — catastrophic when the real
+        # buttons are RAISE/FOLD only. 2026-04-08: caught live with 8c7s.
+        if facing and 0 < call_amt <= bb and pos != "BB":
             pf_open = self.preflop_advice(hero[0], hero[1], pos,
                                           facing_raise=False)
             if pf_open:
                 pf = pf_open
                 rec["preflop"] = pf
                 action = pf.get("action", action)
+
+        # SHOVE GATE: when call_amt > 15 BB the villain has effectively
+        # 4-bet or jammed. The chart's facing_raise branch is sized for
+        # standard 3-bets and happily returns CALL on hands like T9s SB
+        # (in SB_CALL_RANGE) — but calling 100 BB with T9s vs a shove
+        # range is catastrophic. Until we have proper range-vs-shove
+        # equity, fold everything except premium value, and force any
+        # would-be RAISE down to CALL (you can't raise a shove anyway).
+        #
+        # 2026-04-08: discovered live — advisor said CALL 10.22 (full
+        # 100 BB stack) with Th9h SB after a jam. Conservative gate
+        # locked in as the defensive minimum.
+        if facing and call_amt > 15 * bb:
+            hand_key = pf.get("hand_key", "")
+            SHOVE_CONTINUE = {"AA", "KK", "QQ", "JJ", "AKs", "AKo"}
+            if hand_key in SHOVE_CONTINUE:
+                action = "CALL"
+                rec["preflop"] = {**pf, "action": "CALL",
+                                  "note": f"shove gate: {hand_key} call vs {call_amt/bb:.0f}bb"}
+            else:
+                action = "FOLD"
+                rec["preflop"] = {**pf, "action": "FOLD",
+                                  "note": f"shove gate: {hand_key} fold vs {call_amt/bb:.0f}bb"}
 
         # SAFETY NET: never fold when you can check for free.
         # This catches BB option AND any position misdetection where the bot
@@ -1097,6 +1149,67 @@ class AdvisorStateMachine:
         return cls.HAND_HIGH_CARD
 
     @classmethod
+    def _is_pocket_underpair_to_board(cls, hero, board):
+        """
+        True if hero holds a pocket pair whose rank is strictly lower
+        than every visible board card. Used by Filter 8 to fold tiny
+        underpairs facing river bets on overcard-heavy boards.
+
+        Returns False if hero isn't a pocket pair, the board is empty,
+        or any board card is <= the pair rank.
+        """
+        if len(hero) != 2:
+            return False
+        h1 = cls._card_rank(hero[0])
+        h2 = cls._card_rank(hero[1])
+        if h1 is None or h2 is None or h1 != h2:
+            return False
+        board_ranks = [cls._card_rank(c) for c in board]
+        board_ranks = [r for r in board_ranks if r is not None]
+        if not board_ranks:
+            return False
+        return all(br > h1 for br in board_ranks)
+
+    @classmethod
+    def _is_counterfeited_two_pair(cls, hero, board):
+        """
+        True if hero's TWO_PAIR is composed of (a) the board's natural
+        pair plus (b) one hero card pairing a different board card.
+        Functionally hero is playing one pair against any villain.
+
+        Returns False when:
+          - Hero has a pocket pair (could be set/full house path)
+          - Hero contributes to the board's paired rank (trips path)
+          - Board is unpaired (no counterfeit possible)
+          - Hero matches no other board card (no second pair to begin with)
+
+        Used by danger Filter 6 — see seed hand 7s6s on Jc Kh Qc 6h Kc.
+        """
+        if len(hero) != 2:
+            return False
+        h1 = cls._card_rank(hero[0])
+        h2 = cls._card_rank(hero[1])
+        if h1 is None or h2 is None:
+            return False
+        # Pocket pair → set/boat path, not counterfeited
+        if h1 == h2:
+            return False
+        board_ranks = [cls._card_rank(c) for c in board]
+        board_ranks = [r for r in board_ranks if r is not None]
+        if len(board_ranks) < 3:
+            return False
+        from collections import Counter
+        bcounts = Counter(board_ranks)
+        board_pair_ranks = [r for r, c in bcounts.items() if c >= 2]
+        if not board_pair_ranks:
+            return False
+        # Hero must NOT have either of the board's paired ranks (else trips/boat)
+        if any(r in (h1, h2) for r in board_pair_ranks):
+            return False
+        # Hero must match at least one OTHER board card to form second pair
+        return (h1 in board_ranks) or (h2 in board_ranks)
+
+    @classmethod
     def _hero_can_have_boat(cls, hero, board):
         """
         True if hero's hand class could include trips or full house given
@@ -1157,7 +1270,8 @@ class AdvisorStateMachine:
         Each filter must:
           - Only trigger in narrow, named spots (no broad "fold whenever")
           - Document the seed hand it was added for
-          - Only ever turn an action INTO a fold, never away from one
+          - Only ever turn an action INTO a more passive action (FOLD
+            or CHECK), never away from one
 
         The cost of false positives is folding too often in some marginal
         spots. The cost of false negatives is busting stacks. We pay the
@@ -1195,6 +1309,77 @@ class AdvisorStateMachine:
                 and self._board_has_4card_flush(board)
                 and bet_ratio >= 0.20):
             return ("FOLD", f"overpair on 4-flush board facing {bet_ratio:.0%}-pot")
+
+        # ── Filter 8: Pocket underpair to all board cards, river bet ──
+        # Seed: 6s6c BTN on Qd As 8h Kh Ts. Pocket sixes — every board
+        # card is higher, board has a 4-card straight (T-Q-K-A missing J),
+        # advisor said CALL 0.62 at 30% raw equity. Vs any river-betting
+        # range here we have ~5%; we're not catching enough bluffs to
+        # make this profitable at any sizing > min-bet.
+        #
+        # Detection:
+        #   - phase RIVER
+        #   - hero is a pocket pair (h1 rank == h2 rank)
+        #   - hero's pair rank is strictly LOWER than every board card
+        #   - facing >= 30% pot (won't fire on tiny block bets)
+        #
+        # Hand class is PAIR (pocket pair, no set/boat). Won't fire on
+        # over-pairs, sets, or non-pocket-pair hands.
+        if (phase == "RIVER"
+                and bet_ratio >= 0.30
+                and self._evaluate_hand_class(hero, board) == self.HAND_PAIR
+                and self._is_pocket_underpair_to_board(hero, board)):
+            return ("FOLD",
+                    f"pocket underpair to all board cards facing "
+                    f"{bet_ratio:.0%}-pot river bet")
+
+        # ── Filter 7: One-pair facing a check-raise / raise after we bet ──
+        # Seed: AhJs SB on 4c Jh 5d, hero c-bet 0.45, FISH check-raised,
+        # advisor said CALL 2.50 with TPTK at 80% raw equity. Vs a passive
+        # villain's check-raise range (sets/two-pair/value-TP, occasional
+        # combo draw) TPTK has ~35-40% — well below the 80% the equity
+        # model reports because it's hand-vs-random.
+        #
+        # Detection:
+        #   - Hero already aggressed this street (we bet/raised)
+        #   - Now facing a non-trivial bet (>= 40% pot, accounting for
+        #     small min-raises that might be call-friendly)
+        #   - Hand class is exactly PAIR (top pair, mid pair, etc — NOT
+        #     two pair, sets, draws, or anything stronger)
+        #   - Phase is FLOP or TURN (river check-raises are caught by
+        #     Filters 5/6; this filter is for the cbet→raise spot
+        #     specifically)
+        #
+        # Conservative — only ever turns CALL into FOLD.
+        if (phase in ("FLOP", "TURN")
+                and phase in self.aggressed_phases
+                and bet_ratio >= 0.40
+                and self._evaluate_hand_class(hero, board) == self.HAND_PAIR):
+            return ("FOLD",
+                    f"one-pair facing raise after our {phase.lower()} bet "
+                    f"({bet_ratio:.0%}-pot)")
+
+        # ── Filter 6: Counterfeited two-pair on paired board, river big bet ──
+        # Hero's TWO_PAIR uses the BOARD's pair (e.g. 7s6s on Jc Kh Qc 6h Kc
+        # → KK + 66 with hero contributing one 6). Functionally hero is
+        # playing one pair against any villain who has a higher kicker,
+        # overcards, or any better second pair on the board.
+        #
+        # _evaluate_hand_class returns HAND_TWO_PAIR for this shape so
+        # Filter 5 (which requires <= HAND_PAIR) doesn't catch it. The
+        # equity model rates it as legitimate two pair (~49% vs random),
+        # but vs an action-narrowed value range it's closer to 5-15%.
+        #
+        # Seed: 7s6s on Jc Kh Qc 6h Kc river, called 12.31 EUR (full
+        # stack) on 2026-04-08. Conservative threshold (>= 50% pot)
+        # because this shape is almost always behind to a value sizing.
+        if (phase == "RIVER"
+                and bet_ratio >= 0.50
+                and self._evaluate_hand_class(hero, board) == self.HAND_TWO_PAIR
+                and self._is_counterfeited_two_pair(hero, board)):
+            return ("FOLD",
+                    f"counterfeited two-pair (board's pair shared) "
+                    f"facing {bet_ratio:.0%}-pot")
 
         # ── Filter 5: One-pair-or-less on COORDINATED river facing big bet ──
         # Catches the "top-pair-good-kicker calldown on a scary board"

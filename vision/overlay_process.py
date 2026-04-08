@@ -362,12 +362,18 @@ class OverlayApp:
 
     def update_table(self, msg):
         tid = msg.get("table_id", "default")
-        if tid not in self.panels:
+        new_panel = tid not in self.panels
+        if new_panel:
             panel = TablePanel(self.tables_container, tid)
             panel.pack(fill="x", pady=(0, 4))
             self.panels[tid] = panel
-            self._resize()
         self.panels[tid].update(msg)
+        # Always resize after content updates: the first .update()
+        # populates the cards/rec rows which grow the panel beyond
+        # its empty reqheight. Subsequent updates can also change
+        # required height (e.g. opponent line appears, longer rec
+        # text). _resize is a no-op when reqheight is unchanged.
+        self._resize()
 
     def remove_table(self, tid):
         if tid in self.panels:
@@ -376,14 +382,22 @@ class OverlayApp:
             self._resize()
 
     def _resize(self):
-        """Resize the window based on number of tables."""
-        n = max(1, len(self.panels))
-        # Top bar ~40px, container padding ~16px, each panel ~210px
-        # (header 22 + cards 28 + equity 22 + context 18 + opponent 18 +
-        #  rec 32 + status 18 + frame padding 14 + border 2 + spacing 16).
-        # Old value was 150 which clipped the bottom rows including rec.
-        h = 60 + n * 210
-        self.root.geometry(f"500x{h}")
+        """Resize the window based on number of tables.
+
+        Use Tk's own layout-required height instead of a hand-tuned
+        pixel guess — guessed values clipped the bottom rows when
+        font metrics or panel content grew (e.g. opponent line wrap).
+        Add a small safety pad for window chrome / DPI rounding.
+        """
+        try:
+            self.root.update_idletasks()
+            req_h = self.root.winfo_reqheight()
+            # Defensive floor + small pad so the bottom row never clips.
+            h = max(req_h + 8, 200)
+            self.root.geometry(f"500x{h}")
+        except Exception:
+            n = max(1, len(self.panels))
+            self.root.geometry(f"500x{60 + n * 240}")
 
     def handle_message(self, msg):
         """Dispatch a message based on its type."""
