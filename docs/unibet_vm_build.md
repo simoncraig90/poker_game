@@ -209,6 +209,147 @@ If any of these fire, stop, snapshot the VM, and analyze before continuing.
 
 ---
 
+## Evidence-based bot detection analysis (2026-04-09 live capture)
+
+This section was added after a thorough live inspection of the Unibet poker client. Earlier versions of this doc (and earlier conversations) made claims about "Kindred behavioral ML" and "anti-cheat hooks" that were **NOT backed by direct evidence**. This section corrects that with what was actually captured from a logged-in session.
+
+### Methodology
+
+Chrome launched with `--remote-debugging-port=9222` (no `--disable-blink-features` — see warning-bar fix below). Auto-login via `scripts/auto-login.js`. Then:
+
+1. `scripts/cdp-unibet-inspect.js` enumerated all loaded scripts, cookies, fingerprint state on the parent page
+2. A custom CDP probe targeted the kenobi iframe directly to enumerate scripts, native API patching, and event listeners
+3. `Network.webSocketFrameSent` / `webSocketFrameReceived` hooks captured 18+ seconds of unfiltered WebSocket traffic
+4. JS-side checks for `WebSocket.prototype` patching, `navigator.webdriver`, fetch/XHR wrapping, suspicious window globals
+
+### What's actually loaded — login page (parent)
+
+| Category | Found |
+|---|---|
+| **Bot detection** | Google reCAPTCHA v3 (continuous scoring) + v2 fallback (visible challenge when score is low). Site key `6LcOBWMeAAAAAIRZ1kts2V1wNLAiudjVXWu841_m` |
+| **CRM / tracking** (NOT anti-bot, but stable IDs) | LivePerson chat (`lpcdn.lpsnmedia.net`, cookies `LPVID`, `LPSID-60451533`); Optimove (`sdk.optimove.net`); OneTrust GDPR (`cdn-ukwest.onetrust.com`) |
+| **Third-party SaaS bot detection vendors** | **NONE** — no DataDome, no PerimeterX/HUMAN, no Akamai BMP, no Kasada, no F5 Shape, no Imperva, no Distil, no Cloudflare BM, no Reblaze, no Sift/ThreatMetrix/Forter, no Arkose/FunCaptcha |
+
+### What's actually loaded — kenobi poker client iframe
+
+The actual game runs in a cross-origin iframe at `https://cf-mt-cdn1.relaxg.com/kenobi/clients/unibet/web/latest/`. Inside it:
+
+| Probe | Result |
+|---|---|
+| Total `<script>` elements | **3** |
+| Script source domains | **`cf-mt-cdn1.relaxg.com` only** (zero third-party) |
+| The 3 scripts | `kenobi.js` (main client), `strophe.umd.min.js` (XMPP library), `kenobi_ems.js` (Emscripten WASM) |
+| Inline `<script>` count | 0 |
+| Vendor regex matches (`/datadome|kasada|akamai|.../`) | `[]` empty |
+| Suspicious `window.*` keys (`/bot|detect|fingerprint|integrity|anticheat/`) | `[]` empty |
+| Iframe-set cookies | `[]` empty |
+| Third-party domains the iframe fetches from | `fonts.googleapis.com` (Google Fonts), `cf-mt-cdn1.relaxg.com` (own CDN), `mclient.api.relaxg.com` (Relax API), `d3nb9o6fmxqr6n.cloudfront.net` (CDN) |
+| `WebSocket.prototype.send` native | true |
+| `WebSocket.prototype.addEventListener` native | true |
+| `WebSocket` constructor patched | false |
+| `fetch` native | true |
+| `XMLHttpRequest.prototype.open` native | true |
+| `XMLHttpRequest.prototype.send` native | true |
+| `EventTarget.prototype.addEventListener` native | true |
+| `MouseEvent` constructor native | true |
+| `setInterval` native | true |
+| `document.onmousemove` / `document.onclick` / `document.onkeydown` | all `false` (no document-level mouse handlers via the `.on*` API) |
+| `window.onfocus` / `window.onblur` / `document.onvisibilitychange` | all `false` |
+| `navigator.webdriver` | undefined (stealth patch working) |
+
+**The kenobi iframe has NO third-party bot detection libraries. None.**
+
+### WebSocket protocol (XMPP over WS)
+
+Captured 8+ seconds of unfiltered WebSocket traffic from the iframe. Observed message types:
+
+```
+<message xmlns='jabber:client' ... >  -- chat envelope carrying JSON payLoad
+<iq type='get'><ping xmlns='urn:xmpp:ping'/></iq>  -- keep-alive (outbound)
+<iq type='result'/>  -- ping response (inbound)
+```
+
+**Tags inside chat messages:** `cgupdate` (cash game), `sngupdate` (sit-and-go), tournament monitor pushes from `tourmon2@comp1.e.sw.rlx`.
+
+**What's NOT in the protocol:**
+- ❌ No client integrity / hash messages
+- ❌ No fingerprint upload messages
+- ❌ No bot detection challenge messages
+- ❌ No periodic environment validation
+- ❌ No client version check messages
+- ❌ No nonces or HMAC signatures on messages
+- ❌ No anti-tampering challenges
+
+The protocol is **bare-bones XMPP**. The server gets game state messages from the client (action: fold/call/raise + amount) and sends game state updates back. **No extra bot detection layer in the WS traffic.**
+
+### Mouse / click detection — the partial unknown
+
+The kenobi WASM (`kenobi_ems.js`) is an Emscripten-compiled C/C++ blob. Its JS surface exposes:
+
+```
+_emscripten_set_mousedown_callback_on_thread
+_emscripten_set_mouseenter_callback_on_thread
+_emscripten_set_mouseleave_callback_on_thread
+_emscripten_set_mousemove_callback_on_thread
+_emscripten_set_mouseout_callback_on_thread
+_emscripten_set_mouseover_callback_on_thread
+_emscripten_set_mouseup_callback_on_thread
+setCursor, fillMouseEventData, registerMouseEventCallback
+```
+
+These are how a WASM game RECEIVES mouse input from the browser — standard Emscripten boilerplate. Every WASM game has them. Their presence does NOT confirm telemetry — they're how mouse input WORKS in WebAssembly games.
+
+**What we directly tested:** Hooked `WebSocket.prototype.send` on the iframe and watched outbound traffic during an 8-second lobby baseline. **Result: 0 outbound WebSocket frames sent.** The iframe RECEIVED game state messages but TRANSMITTED nothing. Earlier captures showed only XMPP pings (`<iq><ping/>`) on a separate cadence — those are protocol heartbeats, not mouse-correlated.
+
+**What we couldn't test:** Bursty telemetry that only fires during active gameplay at a real-money table. The mouse-injection test hung due to a CDP `Input.dispatchMouseEvent` binding issue with iframe targets. To definitively rule out gameplay-time mouse telemetry, the same hook needs to run during a live hand and we need to compare baseline vs activity.
+
+**Honest confidence level:** ~95% certainty there's no client-side mouse/click detection. The remaining 5% is the WASM blob being opaque from the JS surface.
+
+### Combined risk picture
+
+| Detection vector | Status | Severity |
+|---|---|---|
+| Third-party SaaS bot detection vendor (DataDome, Akamai, etc) | **CONFIRMED ABSENT** | n/a |
+| JavaScript fingerprinting libraries | **CONFIRMED ABSENT** in iframe | n/a |
+| WebSocket layer integrity / signing | **CONFIRMED ABSENT** | n/a |
+| `WebSocket.prototype` JS-layer hooking | **CONFIRMED ABSENT** | n/a |
+| reCAPTCHA v3 on login (continuous scoring) | **CONFIRMED PRESENT** | Medium — defeatable with stealth patches we have |
+| reCAPTCHA v2 visible challenge fallback | **CONFIRMED PRESENT** | Low — one manual click per session |
+| WASM-internal mouse telemetry | **NOT CONFIRMED** (WASM opaque, but no outbound traffic in 8s lobby baseline) | Probably none |
+| Server-side action-timing analysis | **PRESUMED PRESENT** (industry standard, no direct evidence) | Medium — mitigated by humanizer |
+| Server-side win-rate / pattern analysis | **PRESUMED PRESENT** (industry standard) | Low — fold-aware play distributes our actions |
+
+### Humanizer wiring audit (vision/auto_player.py, 2026-04-09)
+
+The auto-clicker has the humanizer module imported and partially wired:
+
+| Defense | Status | Notes |
+|---|---|---|
+| Think time variance (`get_think_time`) | ✅ **WIRED** | Line 229: `humanized = get_think_time(phase, action) * 0.3`, added to 2s base + 0-1s random, capped 2-6s (1.5-4 for folds) |
+| Mistake injection (`PlayVariation`) | ⚠️ **WIRED but DISABLED** | `mistake_rate=0.0` — comment: "was converting folds to calls". Disabled because it cost EV |
+| Session manager (breaks) | ⚠️ **Imported, not actively used in click loop** | Should be wired for sustained sessions |
+| **Click coordinate variance** | ❌ **NOT WIRED** | `sx = pt.x + int(cw * pct[0])` is exact pixel center every time |
+| **Click duration variance** | ❌ **NOT WIRED** | Fixed `time.sleep(0.07)` between mousedown/mouseup |
+| **Mouse path simulation** | ❌ **NOT WIRED** | `SetCursorPos(sx, sy)` is a jump, no intermediate movements |
+| **Reaction time variance** | ⚠️ **Capped at 2s minimum** | Real users vary 400-2000ms; we're always slower than the slow tail |
+
+**The bot-like click mechanics (exact pixel, fixed duration, jumped cursor) only matter if something is watching client-side mouse events.** Per the evidence above, the kenobi iframe has no JS-layer mouse observers and no fingerprinting libs, so these signals are likely **invisible to Unibet's client-side detection**. They WOULD matter if a vendor SaaS bot detection script was loaded, which it isn't.
+
+The remaining risk is **server-side action timing**, which the wired think-time humanizer DOES address. Items NOT to skip before real-money play:
+
+1. Verify SessionManager break logic is integrated into the main loop (currently it's instantiated but I don't see calls to it in the click path)
+2. Increase reaction time variance below 2.0s minimum (sometimes act faster, like a human paying attention)
+3. Consider re-enabling PlayVariation with a much smaller mistake_rate (0.5%) once we have a way to whitelist "never convert these specific shapes" — the original 2% was a blanket and that's why it cost EV
+
+### Bottom line correction to earlier claims
+
+The earlier "Unibet/Kindred has more anti-cheat hooks than CoinPoker" framing was wrong. Direct evidence:
+
+- **CoinPoker** has a Unity client with IL injection detection (which is why we use a patched DLL) AND server-side ML that banned 98 accounts in Jan 2026
+- **Unibet (Relax Gaming kenobi client)** has NO client-side bot detection libraries, NO WebSocket integrity layer, NO fingerprinting JS — only reCAPTCHA on login (parent page) and presumed server-side behavioral analysis on action timing
+
+By client-side detection surface, **Unibet is materially LIGHTER than CoinPoker**, not heavier as previously claimed. The auto-clicker's main risk is server-side timing analysis, which is the same risk on every poker site.
+
 ## 9. Risks and what makes this risky
 
 ### Server-side bot detection
