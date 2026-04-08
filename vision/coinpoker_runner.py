@@ -413,9 +413,19 @@ class _CoinPokerTrackerAdapter:
     must NOT mutate it — all conversion happens at the boundary.
     """
 
-    def __init__(self, inner_tracker, hero_user_id: int):
+    def __init__(self, inner_tracker, hero_user_id: int,
+                 bb_cents_provider=None, hud_loader=None):
         self._inner = inner_tracker
         self._hero_user_id = int(hero_user_id)
+        # Callable that returns the current bb in scaled chip units.
+        # Set to a closure pointing at session.bb_cents so the tracker
+        # reads the real BB amount and not the Unibet NL2 default of 4.
+        self._bb_cents_provider = bb_cents_provider
+        # Optional CoinPokerHudLoader. If provided AND it has data for
+        # the active villain, classify_villain prefers the HUD result
+        # over the tracker's. This is the "HUD-first" behavior — HUD
+        # is the server-side ground truth, tracker is the fallback.
+        self._hud_loader = hud_loader
 
     def _convert(self, state: dict) -> dict:
         """Translate a CoinPoker snapshot to Unibet tracker format.
@@ -433,11 +443,23 @@ class _CoinPokerTrackerAdapter:
             if p.get('user_id') == self._hero_user_id:
                 hero_idx = i
                 break
-        # Shallow copy + override the three fields the tracker reads
+        # Shallow copy + override the four fields the tracker reads.
+        # bb_amt MUST be passed through — without it the tracker uses
+        # its Unibet NL2 default of 4, which is way smaller than any
+        # CoinPoker bet, marking every player as VPIP every hand and
+        # corrupting the persistent HandDB stats. Discovered 2026-04-09
+        # by side-by-side comparison vs CoinPoker's HUD ground truth.
         out = dict(state)
         out['players'] = names
         out['bets'] = bets
         out['hero_seat'] = hero_idx
+        # Surface the BB amount (in scaled chip units) so the tracker's
+        # VPIP threshold matches the actual table BB.
+        if 'bb_amt' not in out and self._bb_cents_provider is not None:
+            try:
+                out['bb_amt'] = self._bb_cents_provider()
+            except Exception:
+                pass
         return out
 
     def update(self, state: dict) -> None:
@@ -447,6 +469,29 @@ class _CoinPokerTrackerAdapter:
             print(f"[tracker] update failed: {type(e).__name__}: {e}")
 
     def classify_villain(self, state: dict) -> str:
+        # Prefer the HUD ground truth when available. The tracker is
+        # the fallback because it can be corrupted by the bb_amt-mismatch
+        # bug discovered 2026-04-09 (corruption persists in HandDB across
+        # sessions even after the bug is fixed). HUD has clean
+        # server-side stats and instant convergence.
+        if self._hud_loader is not None and state:
+            cp_players = state.get('players') or []
+            if cp_players and isinstance(cp_players[0], dict):
+                hero_seat = state.get('hero_seat')
+                best_uid = None
+                best_b = -1
+                for p in cp_players:
+                    if p.get('seat') == hero_seat:
+                        continue
+                    b = p.get('bet', 0) or 0
+                    if b > best_b:
+                        best_b = b
+                        best_uid = p.get('user_id')
+                if best_uid is not None:
+                    hud_class = self._hud_loader.classify(best_uid)
+                    if hud_class and hud_class != "UNKNOWN":
+                        return hud_class
+        # Fallback: existing OpponentTracker (potentially corrupted)
         try:
             return self._inner.classify_villain(self._convert(state)) or "UNKNOWN"
         except Exception:
@@ -516,30 +561,13 @@ def make_advisor_callback(session: CoinPokerSession,
     base = BaseAdvisor(use_overlay=False, terminal=False, debug=False, unibet=True)
     print("[runner]   base Advisor loaded")
 
-    # Opponent tracker — wraps the shared OpponentTracker with a CoinPoker
-    # adapter that converts dict-format snapshots to the Unibet name-list
-    # format the tracker expects. Persistent across sessions via HandDB.
-    tracker = None
-    try:
-        from opponent_tracker import OpponentTracker
-        from hand_db import HandDB
-        db = HandDB()
-        inner_tracker = OpponentTracker(db=db)
-        tracker = _CoinPokerTrackerAdapter(
-            inner_tracker, hero_user_id=session.builder.hero_user_id)
-        print(f"[runner]   OpponentTracker loaded "
-              f"({len(inner_tracker.players)} known players)")
-    except Exception as e:
-        print(f"[runner]   OpponentTracker SKIPPED: {type(e).__name__}: {e}")
-        tracker = None
-
-    # CoinPoker server-side HUD stats loader. This runs ALONGSIDE
-    # OpponentTracker — both sources are active in parallel. The SM
-    # still drives decisions from the OpponentTracker (no behavioral
-    # change, no risk), but every recommendation log line shows BOTH
-    # classifications side-by-side so we can compare accuracy in
-    # post-session analysis. Loader gracefully degrades to UNKNOWN
-    # if the sniffer hasn't captured anything yet.
+    # CoinPoker server-side HUD stats loader. Constructed FIRST so the
+    # tracker adapter can wrap it. The SM prefers HUD classification
+    # over the tracker when HUD has data; tracker is fallback only.
+    # 2026-04-09: discovered that the tracker's HandDB had corrupted
+    # VPIP counts (>100%) due to a bb_amt mismatch with CoinPoker's
+    # chip scale. HUD ground truth is now the preferred source until
+    # the tracker corruption is cleaned and re-validated.
     hud_loader = None
     try:
         from coinpoker_hud_loader import CoinPokerHudLoader
@@ -548,11 +576,34 @@ def make_advisor_callback(session: CoinPokerSession,
             print(f"[runner]   CoinPokerHudLoader loaded "
                   f"({len(hud_loader)} ground-truth player profiles)")
         else:
-            print(f"[runner]   CoinPokerHudLoader empty — "
+            print(f"[runner]   CoinPokerHudLoader empty -- "
                   f"run tools/coinpoker_stats_sniffer.py to capture")
     except Exception as e:
         print(f"[runner]   CoinPokerHudLoader SKIPPED: {type(e).__name__}: {e}")
         hud_loader = None
+
+    # Opponent tracker -- wraps the shared OpponentTracker with a CoinPoker
+    # adapter that converts dict-format snapshots to the Unibet name-list
+    # format the tracker expects. Persistent across sessions via HandDB.
+    # Now also wraps the HUD loader so classify_villain prefers HUD when
+    # available, falls back to the (potentially-corrupted) tracker stats.
+    tracker = None
+    try:
+        from opponent_tracker import OpponentTracker
+        from hand_db import HandDB
+        db = HandDB()
+        inner_tracker = OpponentTracker(db=db)
+        tracker = _CoinPokerTrackerAdapter(
+            inner_tracker,
+            hero_user_id=session.builder.hero_user_id,
+            bb_cents_provider=lambda: session.bb_cents,
+            hud_loader=hud_loader,
+        )
+        print(f"[runner]   OpponentTracker loaded "
+              f"({len(inner_tracker.players)} known players)")
+    except Exception as e:
+        print(f"[runner]   OpponentTracker SKIPPED: {type(e).__name__}: {e}")
+        tracker = None
 
     sm = AdvisorStateMachine(
         base_advisor=base,
@@ -614,30 +665,54 @@ def make_advisor_callback(session: CoinPokerSession,
         if out is not None and out.action:
             hero = " ".join(snap["hero_cards"]) or "??"
             board = " ".join(snap["board_cards"]) or "-"
-            # Show villain classification from BOTH sources side-by-side:
-            #   - "trk:TYPE" — our OpponentTracker (computed from observed
-            #     actions during this session, slow-converging but always
-            #     available once we've seen enough hands)
-            #   - "hud:TYPE" — CoinPoker server-side ground truth (instant
-            #     classification, requires the stats sniffer to have
-            #     captured the player at some point)
-            # The SM still uses the tracker for decisions; HUD is for
-            # comparison only. If they disagree (e.g. trk:TAG vs hud:NIT)
-            # that's a flag to investigate.
-            tag_parts = []
+            # Show villain classification source breakdown:
+            #   - "v:TYPE" — the classification the SM actually used
+            #   - "src:hud" or "src:trk" — which source provided it
+            #     (HUD is preferred when it has data; tracker is fallback)
+            #   - if the two sources DISAGREE, show "(trk:OTHER)" so we
+            #     can spot disagreements without losing the comparison
+            sm_class = ""  # what the SM saw via tracker.classify_villain
             if tracker is not None:
                 try:
-                    vt = (tracker.classify_villain(snap) or "").upper()
-                    if vt and vt != "UNKNOWN":
-                        tag_parts.append(f"trk:{vt}")
+                    sm_class = (tracker.classify_villain(snap) or "").upper()
                 except Exception:
-                    pass
+                    sm_class = ""
+
+            # Direct lookup in HUD and underlying tracker (bypassing
+            # the prefer-HUD logic) so we can show both sides
+            hud_class_raw = ""
+            trk_class_raw = ""
             if hud_loader is not None:
                 hud_uid = _last_aggressor_user_id(snap)
                 if hud_uid is not None:
-                    hud_cls = hud_loader.classify(hud_uid)
-                    if hud_cls and hud_cls != "UNKNOWN":
-                        tag_parts.append(f"hud:{hud_cls}")
+                    hud_class_raw = (hud_loader.classify(hud_uid) or "").upper()
+            if tracker is not None and hasattr(tracker, "_inner"):
+                try:
+                    converted = tracker._convert(snap)
+                    trk_class_raw = (tracker._inner.classify_villain(converted) or "").upper()
+                except Exception:
+                    trk_class_raw = ""
+
+            # Source label
+            src = ""
+            if sm_class and hud_class_raw == sm_class:
+                src = "hud"
+            elif sm_class and trk_class_raw == sm_class:
+                src = "trk"
+
+            tag_parts = []
+            if sm_class and sm_class != "UNKNOWN":
+                tag_parts.append(f"v:{sm_class}")
+            if src:
+                tag_parts.append(f"src:{src}")
+            # Show the OTHER source's answer if it disagrees (for analysis)
+            if (hud_class_raw and trk_class_raw
+                    and hud_class_raw != trk_class_raw
+                    and hud_class_raw != "UNKNOWN"
+                    and trk_class_raw != "UNKNOWN"):
+                other = trk_class_raw if src == "hud" else hud_class_raw
+                other_label = "trk" if src == "hud" else "hud"
+                tag_parts.append(f"({other_label}:{other})")
             opp_tag = (" " + " ".join(tag_parts)) if tag_parts else ""
             print(f"*** [{out.phase:7}] {hero:5}  board={board:14}  "
                   f"pos={snap['position']:3}  eq={out.equity:.0%}  "

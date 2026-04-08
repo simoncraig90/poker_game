@@ -122,7 +122,22 @@ class OpponentTracker:
 
         # Track who's putting money in (VPIP)
         if phase == 'PREFLOP' and bets:
-            bb_amt = 4  # 0.04 cents
+            # bb_amt is the threshold for "voluntarily put money in pot"
+            # — anything more than the BB (so we don't count blinds-only
+            # posts as VPIP). Reads from state['bb_amt'] if present
+            # (CoinPoker passes this via _CoinPokerTrackerAdapter so the
+            # threshold matches the actual chip scale at the table) and
+            # falls back to the Unibet NL2 default (4 = 0.04 EUR) for
+            # backwards compatibility.
+            #
+            # 2026-04-09: this default was the seed of a bad bug —
+            # CoinPoker uses scaled chip units (CHIP_SCALE=100), so a
+            # NL10 BB is 10000, not 4. Every player's blind post was
+            # trivially > 4, marking EVERYONE as VPIP every hand and
+            # corrupting the HandDB-persistent stats. Compared against
+            # the HUD ground-truth endpoint and the disagreement led
+            # back to this single hardcoded constant.
+            bb_amt = state.get('bb_amt', 4)
             for i, bet in enumerate(bets):
                 if i >= len(players):
                     break
