@@ -250,6 +250,49 @@ class ReplayReport:
             )
         return rooms
 
+    def range_equity_gate_summary(self) -> dict:
+        """
+        Compute the THEORETICAL EV of the range-equity gate across the
+        corpus. For each decision where the gate fired (source contains
+        'range_eq_gate'), compute:
+
+          EV(call)   = range_eq * (pot + call) - call   (in chip cents)
+          EV(fold)   = 0
+          gate_save  = -EV(call) when EV(call) < 0
+
+        Sum across all gate fires (deduped by hand_id — once you fold
+        on the flop, the turn/river decisions don't happen). Convert to
+        BB using each hand's bb_cents.
+
+        Returns dict with: fires, theoretical_savings_bb, hands.
+        Theoretical savings is the right metric — historical outcome
+        is too noisy because folding eliminates "miracle wins" from
+        variance and biases the chip-delta measurement against folds.
+        """
+        fires_by_hand: dict[str, Decision] = {}
+        for h in self.hands:
+            for d in h.decisions:
+                if "range_eq_gate" not in (d.advisor_source or ""):
+                    continue
+                # First fire per hand wins (chronological order is
+                # preserved by walking decisions in append order)
+                if d.hand_id not in fires_by_hand:
+                    fires_by_hand[d.hand_id] = (d, h)
+
+        total_savings_bb = 0.0
+        for d, h in fires_by_hand.values():
+            re = d.range_equity
+            if re is None or h.bb_cents <= 0:
+                continue
+            ev_call_chips = re * (d.pot + d.call_amount) - d.call_amount
+            ev_call_bb = ev_call_chips / h.bb_cents
+            total_savings_bb += -ev_call_bb  # gate folds, so it saves the negative
+        return {
+            "fires": len(fires_by_hand),
+            "theoretical_savings_bb": total_savings_bb,
+            "savings_bb_per_100": (total_savings_bb / max(1, len(self.hands))) * 100.0,
+        }
+
     def shape_breakdown(self, disagreements_only: bool = True) -> list[dict]:
         """
         Aggregate per-shape stats across all decisions.
@@ -813,6 +856,14 @@ def main(argv=None):
     if args.last_hands > 0:
         report = report.last_n_hands(args.last_hands)
         print(f"LAST {args.last_hands} HANDS:  " + report.summary())
+    # Gate summary AFTER filtering so the savings number reflects the
+    # same scope as the bb/100 number above it.
+    if args.range_equity:
+        gate = report.range_equity_gate_summary()
+        if gate["fires"] > 0:
+            print(f"Range-equity gate: {gate['fires']} fires, "
+                  f"theoretical savings {gate['theoretical_savings_bb']:+.2f} BB "
+                  f"({gate['savings_bb_per_100']:+.2f} BB/100)")
     if args.by_room:
         rooms = report.per_room_breakdown()
         print(f"\nPer-room breakdown ({len(rooms)} rooms):")

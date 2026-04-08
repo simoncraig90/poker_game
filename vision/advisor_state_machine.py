@@ -572,21 +572,44 @@ class AdvisorStateMachine:
             action = new_action
             source = f"{source}+danger_override"
 
+        # Phase 2: compute range-aware equity BEFORE final action
+        # assignment so the range-equity gate (below) can override
+        # CALL → FOLD when the call is clearly -EV vs the narrowed
+        # range. Only computes when the flag is on AND we're facing
+        # a real bet (otherwise no aggressor to model).
+        if self.enable_range_equity and facing and call_amt > 0:
+            self._compute_shadow_range_equity(out, state, hero, board)
+
+        # ── Range-equity pot-odds gate (Phase 2 decision-driving) ──
+        # When the new range_equity is computed and is clearly below
+        # the pot odds needed for the call, override CALL → FOLD.
+        # Pure stop-loss — never turns a fold into a call.
+        #
+        # Margin (5%) absorbs Monte Carlo noise so borderline-correct
+        # calls don't flip due to sampling variance. Smaller margin
+        # would catch more leaks but also generate more false-positive
+        # folds; 5% is the conservative starting point.
+        if (self.enable_range_equity
+                and out.range_equity is not None
+                and facing and call_amt > 0 and pot_cents > 0
+                and "CALL" in action.upper()
+                and "FOLD" not in action.upper()
+                and "RAISE" not in action.upper()):
+            pot_odds_needed = call_amt / (pot_cents + call_amt)
+            if out.range_equity < pot_odds_needed - 0.05:
+                print(f"[range-equity-gate] {phase} {hero_str} on {board_str}: "
+                      f"{action!r} -> FOLD (range_eq={out.range_equity:.0%} "
+                      f"< pot_odds={pot_odds_needed:.0%}, "
+                      f"combos={out.range_combos})")
+                action = "FOLD"
+                source = f"{source}+range_eq_gate"
+
         out.action = action
         out.info = info
         out.rec_bg = rec_bg
         out.source = source
         adj_str = f" adj:{adjusted_eq:.0%}" if facing and adjusted_eq < eq else ""
         out.log_line = f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%}{adj_str} | {action}"
-
-        # Phase 2 shadow-mode: compute range-aware equity alongside the
-        # legacy hot-cold equity. Doesn't change the decision; attaches
-        # to AdvisorOutput.range_equity for the harness to compare.
-        # Only computes when the flag is on AND we're facing a real bet
-        # (otherwise there's no aggressor to model and equity vs random
-        # is the right number anyway).
-        if self.enable_range_equity and facing and call_amt > 0:
-            self._compute_shadow_range_equity(out, state, hero, board)
 
     def _compute_shadow_range_equity(self, out, state, hero, board):
         """
