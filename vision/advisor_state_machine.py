@@ -530,6 +530,68 @@ class AdvisorStateMachine:
         return any(v >= 3 for v in suits.values())
 
     @classmethod
+    def _board_is_paired(cls, board):
+        """True if any rank appears 2+ times on the board."""
+        if len(board) < 2:
+            return False
+        ranks = [cls._card_rank(c) for c in board if cls._card_rank(c)]
+        return len(set(ranks)) < len(ranks)
+
+    @classmethod
+    def _hero_has_flush(cls, hero, board):
+        """
+        True if hero participates in a 5+ same-suit combo across hole +
+        board. Pure board-flush (4-flush + hero blank) does not count
+        because hero doesn't actually have the flush in hand.
+        """
+        if len(hero) != 2:
+            return False
+        suits = {}
+        for c in list(hero) + list(board):
+            s = cls._card_suit(c)
+            if s:
+                suits[s] = suits.get(s, 0) + 1
+        for suit, count in suits.items():
+            if count >= 5:
+                hero_has_suit = any(cls._card_suit(c) == suit for c in hero)
+                if hero_has_suit:
+                    return True
+        return False
+
+    @classmethod
+    def _hero_can_have_boat(cls, hero, board):
+        """
+        True if hero's hand class could include trips or full house given
+        the visible board.
+
+        Used to gate flush-fold filters: if hero might have a boat or
+        better, the filter should NOT fold the recommendation. Three
+        ways to have trips+ at this point:
+          (a) Pocket pair → set on the flop, full house if board pairs
+              another rank later.
+          (b) Hero card matches a paired board rank → trips, possibly
+              full house if hero pair+matching board.
+          (c) Hero card matches a tripled board rank → quads.
+        """
+        if len(hero) != 2:
+            return False
+        r1 = cls._card_rank(hero[0])
+        r2 = cls._card_rank(hero[1])
+        if r1 is None or r2 is None:
+            return False
+        if r1 == r2:
+            return True  # pocket pair → at least a set if board has matching
+        rank_counts = {}
+        for c in board:
+            r = cls._card_rank(c)
+            if r is not None:
+                rank_counts[r] = rank_counts.get(r, 0) + 1
+        for hr in (r1, r2):
+            if rank_counts.get(hr, 0) >= 2:
+                return True  # trips or boat via matched paired board
+        return False
+
+    @classmethod
     def _hero_has_overpair(cls, hero, board):
         """
         True if hero has a pocket pair larger than every board card.
@@ -595,6 +657,32 @@ class AdvisorStateMachine:
                 and self._board_has_4card_flush(board)
                 and bet_ratio >= 0.20):
             return ("FOLD", f"overpair on 4-flush board facing {bet_ratio:.0%}-pot")
+
+        # ── Filter 4: Flush on a paired board with no boat possibility ──
+        # Seed hand 2379447781 (Unibet replay test, 2026-04-08): QcJc BTN
+        # on Kc Th Td 3c 8c. Hero has K-high flush (own QcJc + board's
+        # Kc 3c 8c = 5 clubs, K high). Board is paired (Th Td). Villain
+        # raised river to 281 cents into a 129-cent pot — a 218% pot bet.
+        # That action sequence + paired-board texture + 2x pot raise =
+        # villain's range is heavily weighted toward boats and trips.
+        # Hero has neither a T nor a pocket pair, so hero CANNOT have a
+        # boat. Best case is just a flush, which loses to every full
+        # house in villain's range. Equity model overestimates because
+        # it doesn't condition on the action.
+        #
+        # Filter only fires when:
+        #   - Hero actually has a flush (not blank on a 4-flush board)
+        #   - Board is paired (boats are reachable for villain)
+        #   - Hero CANNOT have a boat (so we don't fold a boat by mistake)
+        #   - Facing meaningful sizing (>= 30% pot)
+        if (phase in ("TURN", "RIVER")
+                and self._hero_has_flush(hero, board)
+                and self._board_is_paired(board)
+                and not self._hero_can_have_boat(hero, board)
+                and bet_ratio >= 0.30):
+            return ("FOLD",
+                    f"flush on paired board, no boat possibility, "
+                    f"facing {bet_ratio:.0%}-pot")
 
         # ── Filter 3: Overpair on 3-flush board facing LARGE aggression ──
         # Seed hand 2379414698 (Unibet replay test, 2026-04-08): KK on

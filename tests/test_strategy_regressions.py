@@ -145,6 +145,46 @@ class TestStrategyRegressions(unittest.TestCase):
         self.assertIn("FOLD", out.action.upper(),
                       f"KK on 3-flush board facing 9x pot bet should FOLD, got {out.action!r}")
 
+    def test_2379447781_QJ_flush_on_paired_board_should_fold(self):
+        """
+        Hand 2379447781, Unibet NL2.
+
+        Hero in BTN with Qc Jc on river board Kc Th Td 3c 8c. Hero has
+        K-high flush (own QcJc + board's Kc 3c 8c). The board is PAIRED
+        (Th Td). Villain raised the river to 281 cents into a 129-cent
+        pot — a 218%-pot bet that screams "I have a full house."
+
+        Hero has neither a T nor a pocket pair → hero CANNOT have a boat.
+        Best case is K-high flush, which loses to every full house in
+        villain's range (KT, JT, T-anything matched up, KK/JJ/QQ/etc).
+        Equity model overestimates because it doesn't condition on the
+        2x-pot river raise.
+
+        Discovered 2026-04-08 via Unibet replay test against captured
+        hands. Same equity-vs-action-range leak class as the KK river
+        and KK 3-flush cases.
+
+        FIXED 2026-04-08 (session 13) by Filter 4 in `_apply_danger_overrides`:
+        flush on paired board with no boat possibility facing >=30% pot
+        bet → FOLD.
+        """
+        state = {
+            "hero_cards":   ["Qc", "Jc"],
+            "board_cards":  ["Kc", "Th", "Td", "3c", "8c"],
+            "hand_id":      "2379447781",
+            "facing_bet":   True,
+            "call_amount":  281,    # 218% pot bet
+            "pot":          129,
+            "phase":        "RIVER",
+            "num_opponents": 1,
+            "hero_stack":   500,
+            "position":     "BTN",
+        }
+        out = self.sm.process_state(state)
+        self.assertIsNotNone(out, "advisor returned None for QJ paired-board decision")
+        self.assertIn("FOLD", out.action.upper(),
+                      f"QJ flush on paired board facing 2x pot raise should FOLD, got {out.action!r}")
+
     def test_2460830707_KK_river_facing_raise_on_4straight_should_fold(self):
         """
         Hand 2460830707, NL10, 4-handed.
@@ -224,6 +264,39 @@ class TestDangerHelpers(unittest.TestCase):
 
     def test_no_4card_flush_with_3_diamonds(self):
         self.assertFalse(self.SM._board_has_4card_flush(["5d", "9d", "7d", "Kc"]))
+
+    def test_board_paired(self):
+        # Th Td → paired
+        self.assertTrue(self.SM._board_is_paired(["Kc", "Th", "Td"]))
+        self.assertTrue(self.SM._board_is_paired(["Kc", "Th", "Td", "3c", "8c"]))
+        # All distinct
+        self.assertFalse(self.SM._board_is_paired(["Kc", "Th", "9d"]))
+        self.assertFalse(self.SM._board_is_paired(["Kc", "Th", "9d", "3c", "8c"]))
+
+    def test_hero_has_flush(self):
+        # QcJc on Kc Th Td 3c 8c → 5 clubs incl. hero participates
+        self.assertTrue(self.SM._hero_has_flush(
+            ["Qc", "Jc"], ["Kc", "Th", "Td", "3c", "8c"]))
+        # Hero blank, board has 4 of one suit → NO flush for hero
+        self.assertFalse(self.SM._hero_has_flush(
+            ["Qd", "Jh"], ["Kc", "Th", "Tc", "3c", "8c"]))
+        # Only 4 same-suit total — not yet a flush
+        self.assertFalse(self.SM._hero_has_flush(
+            ["Qc", "Jc"], ["Kc", "Th", "Td", "3d", "8d"]))
+
+    def test_hero_can_have_boat(self):
+        # Pocket pair → set possible
+        self.assertTrue(self.SM._hero_can_have_boat(
+            ["Ks", "Kh"], ["9h", "6h", "2h"]))
+        # Hero matches paired board → trips/boat
+        self.assertTrue(self.SM._hero_can_have_boat(
+            ["Tc", "9d"], ["Kc", "Th", "Td"]))
+        # Q J on a T-T paired board, no Q or J on board → no boat possible
+        self.assertFalse(self.SM._hero_can_have_boat(
+            ["Qc", "Jc"], ["Kc", "Th", "Td", "3c", "8c"]))
+        # Unpaired hero, unpaired board → no boat possible
+        self.assertFalse(self.SM._hero_can_have_boat(
+            ["As", "Kh"], ["Qd", "Jh", "9c"]))
 
     def test_3card_flush(self):
         # The KK 3-flush case from hand 2379414698
