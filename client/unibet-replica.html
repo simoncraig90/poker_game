@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relax Poker - Unibet Replica</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+  #app {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #1a1a1a;
+  }
+  /* Top bar like Unibet */
+  #top-bar {
+    background: #0a0a0a;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 12px;
+    color: #888;
+  }
+  #top-bar .hand-id { color: #aaa; }
+  #top-bar .right { margin-left: auto; color: #aaa; }
+
+  /* Main canvas area mimics kenobiCanvas */
+  #table-container {
+    flex: 1;
+    position: relative;
+    background: #0a0a0a;
+    overflow: hidden;
+  }
+  #kenobiCanvas {
+    width: 100%;
+    height: 100%;
+    background: #0a0a0a;
+    display: block;
+  }
+
+  /* UNIBET-EXACT LAYOUT — positions match real client */
+  /* Action elements absolute-positioned to match Unibet */
+
+  #slider-row {
+    position: absolute;
+    left: 33%; /* slider area starts ~33% */
+    width: 32%; /* slider span */
+    bottom: 6%;
+    height: 5%;
+    display: flex;
+    gap: 1px;
+  }
+  .preset {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #444;
+    flex: 1;
+    cursor: pointer;
+    font-size: 11px;
+    text-align: center;
+  }
+  .preset:hover { background: #444; }
+
+  #bet-input-group {
+    position: absolute;
+    left: 56%;
+    bottom: 6%;
+    width: 9%;
+    height: 5%;
+    display: flex;
+    background: #fff;
+  }
+  #bet-input-group .pm {
+    background: #333;
+    color: #fff;
+    border: none;
+    width: 25%;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  #bet-input {
+    background: #fff;
+    color: #000;
+    border: none;
+    width: 50%;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  /* Buttons positioned to match Unibet exact percentages
+     FOLD: 0.397 x, 0.943 y of full window
+     CALL: 0.498 x, 0.943 y
+     RAISE: 0.600 x, 0.936 y
+  */
+  .action-btn {
+    position: absolute;
+    width: 9%;
+    height: 5%;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  #fold-btn {
+    background: #c4262e;
+    left: calc(39.7% - 4.5%);
+    bottom: calc(100% - 94.3% - 2.5%);
+  }
+  #call-btn {
+    background: #b8941f;
+    left: calc(49.8% - 4.5%);
+    bottom: calc(100% - 94.3% - 2.5%);
+  }
+  #raise-btn {
+    background: #2ea843;
+    left: calc(60.0% - 4.5%);
+    bottom: calc(100% - 93.6% - 2.5%);
+  }
+  .call-amount { display: block; font-size: 9px; font-weight: normal; }
+
+  /* FOLD TO ANY BET checkbox at left */
+  #fold-any-bet {
+    position: absolute;
+    left: 17%;
+    bottom: 7%;
+    background: #2a2a2a;
+    color: #fff;
+    border: 1px solid #555;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  /* PLAY button (when sitting out) */
+  #play-btn {
+    position: absolute;
+    left: calc(50% - 60px);
+    bottom: 6%;
+    width: 120px;
+    height: 5%;
+    background: #2ea843;
+    color: #fff;
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    display: none;
+  }
+  #play-btn.visible { display: block; }
+
+  /* Verification panel */
+  #verify-panel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid #444;
+    padding: 10px;
+    width: 320px;
+    max-height: 90vh;
+    overflow-y: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    z-index: 1000;
+  }
+  #verify-panel h3 {
+    color: #0f0;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  #verify-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  #verify-stats span { color: #ccc; }
+  #verify-stats .val { color: #0f0; font-weight: bold; }
+  #click-log {
+    max-height: 50vh;
+    overflow-y: auto;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  #click-log .ok { color: #0f0; }
+  #click-log .miss { color: #f44; }
+  #click-log .info { color: #888; }
+  #control-row { display: flex; gap: 4px; margin-bottom: 8px; }
+  #control-row button { background: #333; color: #fff; border: 1px solid #555; padding: 4px 8px; cursor: pointer; font-size: 10px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="top-bar">
+    <span class="hand-id">Hand: #2379999999</span>
+    <span class="right">Texas Hold'em &nbsp; 01:00 GMT/BST</span>
+  </div>
+
+  <div id="table-container">
+    <canvas id="kenobiCanvas" width="1899" height="700"></canvas>
+  </div>
+
+  <div id="action-bar">
+    <div id="slider-row">
+      <button class="preset" data-pct="25">25%</button>
+      <button class="preset" data-pct="50">50%</button>
+      <button class="preset" data-pct="80">80%</button>
+      <button class="preset" data-pct="100">All-in</button>
+      <div id="bet-input-group">
+        <button class="pm" id="minus">−</button>
+        <input id="bet-input" type="text" value="0.10">
+        <button class="pm" id="plus">+</button>
+      </div>
+    </div>
+    <div id="buttons-row">
+      <button class="action-btn" id="fold-btn">FOLD</button>
+      <button class="action-btn" id="call-btn">CALL <span class="call-amount">€0.04</span></button>
+      <button class="action-btn" id="raise-btn">RAISE</button>
+    </div>
+  </div>
+</div>
+
+<div id="verify-panel">
+  <h3>CLICK VERIFICATION</h3>
+  <div id="verify-stats">
+    <span>Total clicks:</span><span class="val" id="total-clicks">0</span>
+    <span>Successes:</span><span class="val" id="successes">0</span>
+    <span>Misses:</span><span class="val" id="misses">0</span>
+    <span>Last action:</span><span class="val" id="last-action">none</span>
+    <span>Last button:</span><span class="val" id="last-button">none</span>
+    <span>Last amount:</span><span class="val" id="last-amount">—</span>
+  </div>
+  <div id="control-row">
+    <button onclick="resetStats()">Reset</button>
+    <button onclick="exportLog()">Export Log</button>
+  </div>
+  <div id="click-log"></div>
+</div>
+
+<script>
+let stats = { total: 0, success: 0, miss: 0 };
+const clickLog = document.getElementById('click-log');
+const trustedLog = [];
+
+function updateStats() {
+  document.getElementById('total-clicks').textContent = stats.total;
+  document.getElementById('successes').textContent = stats.success;
+  document.getElementById('misses').textContent = stats.miss;
+}
+
+function logClick(action, detail, isTrusted, x, y) {
+  const time = new Date().toISOString().slice(11, 23);
+  const div = document.createElement('div');
+  div.className = isTrusted ? 'ok' : 'miss';
+  const tag = isTrusted ? 'TRUSTED' : 'SYNTH';
+  div.textContent = `[${time}] ${tag} ${action} ${detail} @(${x},${y})`;
+  clickLog.insertBefore(div, clickLog.firstChild);
+
+  trustedLog.push({ time, action, detail, isTrusted, x, y });
+  stats.total++;
+  if (isTrusted) stats.success++;
+  else stats.miss++;
+  updateStats();
+
+  document.getElementById('last-action').textContent = action;
+  document.getElementById('last-button').textContent = detail;
+  if (action === 'RAISE') {
+    document.getElementById('last-amount').textContent = '€' + document.getElementById('bet-input').value;
+  }
+}
+
+// Action button handlers
+document.getElementById('fold-btn').addEventListener('click', (e) => {
+  logClick('FOLD', 'fold-btn', e.isTrusted, e.clientX, e.clientY);
+});
+document.getElementById('call-btn').addEventListener('click', (e) => {
+  logClick('CALL', 'call-btn', e.isTrusted, e.clientX, e.clientY);
+});
+document.getElementById('raise-btn').addEventListener('click', (e) => {
+  const amt = document.getElementById('bet-input').value;
+  logClick('RAISE', 'raise-btn €' + amt, e.isTrusted, e.clientX, e.clientY);
+});
+
+// Slider preset handlers
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    const pct = parseInt(btn.dataset.pct);
+    const newAmt = (0.04 * (pct / 25)).toFixed(2);
+    document.getElementById('bet-input').value = newAmt;
+    logClick('SLIDER', pct + '%', e.isTrusted, e.clientX, e.clientY);
+  });
+});
+
+document.getElementById('plus').addEventListener('click', (e) => {
+  const inp = document.getElementById('bet-input');
+  inp.value = (parseFloat(inp.value) + 0.02).toFixed(2);
+  logClick('PLUS', '+0.02', e.isTrusted, e.clientX, e.clientY);
+});
+document.getElementById('minus').addEventListener('click', (e) => {
+  const inp = document.getElementById('bet-input');
+  inp.value = Math.max(0.04, parseFloat(inp.value) - 0.02).toFixed(2);
+  logClick('MINUS', '-0.02', e.isTrusted, e.clientX, e.clientY);
+});
+
+document.getElementById('bet-input').addEventListener('input', (e) => {
+  logClick('INPUT', 'typed: ' + e.target.value, e.isTrusted, 0, 0);
+});
+
+// Canvas click logger (for spurious clicks landing on the canvas)
+document.getElementById('kenobiCanvas').addEventListener('click', (e) => {
+  const rect = e.target.getBoundingClientRect();
+  logClick('CANVAS', 'spurious click', e.isTrusted, Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top));
+});
+
+// Helper: log all positions to console
+window.logPositions = function() {
+  const items = ['fold-btn', 'call-btn', 'raise-btn', 'minus', 'plus', 'bet-input'];
+  const result = {};
+  for (const id of items) {
+    const el = document.getElementById(id);
+    const r = el.getBoundingClientRect();
+    result[id] = {
+      client: { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) },
+      pct: { x: ((r.x + r.width/2) / window.innerWidth).toFixed(3), y: ((r.y + r.height/2) / window.innerHeight).toFixed(3) }
+    };
+  }
+  // Slider presets
+  document.querySelectorAll('.preset').forEach((btn, i) => {
+    const r = btn.getBoundingClientRect();
+    result['preset-' + btn.dataset.pct] = {
+      client: { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) },
+      pct: { x: ((r.x + r.width/2) / window.innerWidth).toFixed(3), y: ((r.y + r.height/2) / window.innerHeight).toFixed(3) }
+    };
+  });
+  console.table(result);
+  return result;
+};
+
+window.resetStats = function() {
+  stats = { total: 0, success: 0, miss: 0 };
+  trustedLog.length = 0;
+  clickLog.innerHTML = '';
+  updateStats();
+};
+
+window.exportLog = function() {
+  const blob = new Blob([JSON.stringify(trustedLog, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'click-log.json';
+  a.click();
+};
+
+// Auto-print positions on load
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    console.log('Replica loaded. Positions:');
+    window.logPositions();
+  }, 200);
+});
+</script>
+
+</body>
+</html>

@@ -16,63 +16,142 @@ Positions detected from dealer button location:
 # Hands encoded as "AKs", "AKo", "AA", etc.
 # R = raise/open, C = call (vs raise), F = fold
 
-# ── Position ranges ────────────────────────────────────────────────────
+# ── Open-raise ranges ──────────────────────────────────────────────────
+#
+# Based on consensus published 6-max NL10 cash charts (Upswing,
+# JonathanLittle, RunItOnce, BlackRain79). The previous version was
+# hand-coded with multiple gaps (AQo SB flat instead of 3-bet, MP
+# extending EP with redundant pair entries, etc.) and lost real money
+# on a documented hand. This replacement is more comprehensive and
+# better-validated against published material.
+#
+# Each range is encoded explicitly (no inheritance via set union)
+# so the values are auditable in one place. Frequencies are
+# approximate — micros opener stats vary by site and time of day.
 
-# EP (UTG) — ~15% of hands
+# UTG / EP — ~16% of hands
 EP_RAISE = {
-    "AA", "KK", "QQ", "JJ", "TT", "99",
-    "AKs", "AQs", "AJs", "ATs",
-    "KQs", "KJs",
+    # Pairs (12)
+    "AA", "KK", "QQ", "JJ", "TT", "99", "88", "77", "66", "55", "44", "33", "22",
+    # Suited aces (5)
+    "AKs", "AQs", "AJs", "ATs", "A5s",  # A5s for blocker/connectivity
+    # Suited broadway (5)
+    "KQs", "KJs", "KTs", "QJs", "QTs", "JTs",
+    # Suited connectors (3)
+    "T9s", "98s", "87s",
+    # Offsuit broadway (2)
     "AKo", "AQo",
 }
 
 # MP — ~20% of hands
 MP_RAISE = EP_RAISE | {
-    "88", "77",
-    "A9s", "A8s",
-    "KTs", "QJs", "QTs", "JTs",
+    # More suited aces
+    "A9s", "A4s",
+    # More suited broadway
+    "K9s", "Q9s", "J9s",
+    # More suited connectors
+    "76s", "65s",
+    # Offsuit
     "AJo", "KQo",
 }
 
-# CO — ~27% of hands
+# CO — ~28% of hands
 CO_RAISE = MP_RAISE | {
-    "66", "55",
-    "A7s", "A6s", "A5s", "A4s", "A3s", "A2s",
-    "K9s", "Q9s", "J9s", "T9s", "98s", "87s", "76s",
-    "KJo", "QJo", "ATo",
+    # All suited aces
+    "A8s", "A7s", "A6s", "A3s", "A2s",
+    # Suited gappers
+    "K8s", "Q8s", "J8s", "T8s",
+    # Suited connectors
+    "97s", "86s", "75s", "54s",
+    # Offsuit broadway
+    "ATo", "KJo", "QJo", "JTo",
+    # Offsuit ace
+    "A9o",
 }
 
-# BTN — ~40% of hands
+# BTN — ~45% of hands
 BTN_RAISE = CO_RAISE | {
-    "44", "33", "22",
-    "K8s", "K7s", "K6s", "K5s",
-    "Q8s", "J8s", "T8s", "97s", "86s", "75s", "65s", "54s",
-    "KTo", "QTo", "JTo", "A9o", "A8o", "A7o", "A6o", "A5o",
+    # Wide suited K/Q/J/T
+    "K7s", "K6s", "K5s", "K4s", "K3s", "K2s",
+    "Q7s", "Q6s", "Q5s",
+    "J7s", "J6s",
+    "T7s", "T6s",
+    "96s", "85s", "74s", "64s", "53s", "43s",
+    # Wide offsuit
+    "A8o", "A7o", "A6o", "A5o", "A4o", "A3o", "A2o",
+    "KTo", "K9o", "K8o", "K7o",
+    "QTo", "Q9o", "Q8o",
+    "J9o", "J8o",
+    "T9o", "T8o",
+    "98o", "97o",
+    "87o", "86o",
+    "76o", "75o",
+    "65o",
 }
 
-# SB — ~30% open-raise, tighter 3-bet
+# SB (open-raise vs folded action) — ~32% of hands
+# Slightly tighter than BTN because SB is OOP postflop, but still
+# wide because the pot is small and only BB can defend.
 SB_RAISE = CO_RAISE | {
-    "44", "33",
-    "K8s", "Q8s", "J8s", "T8s", "97s", "86s", "75s",
-    "KTo", "A9o",
+    # Add more suited connectors / gappers
+    "K7s", "K6s", "K5s",
+    "Q7s", "Q6s",
+    "J7s",
+    "T7s",
+    "96s", "85s", "74s", "64s", "53s",
+    # Selective offsuit
+    "KTo", "K9o",
+    "QTo", "Q9o",
+    "J9o",
+    "T9o",
+    "98o", "87o",
+    "A8o", "A7o", "A5o",
 }
 
-# BB defend range vs single raise — ~40% call, ~10% 3-bet
+# ── BB defense range (vs single raise from any position) ───────────────
+#
+# BB defense is wider than SB open-raise because the BB has already
+# invested 1 BB and is getting better pot odds. Defends ~35-40% vs
+# typical opens.
+#
+# Note: this is a single average range. Properly, BB defense should
+# vary by opener position (tighter vs UTG, wider vs BTN), but we
+# don't currently know the opener position in the SM. The single
+# range is calibrated to "average opener" — slightly too loose vs
+# UTG, slightly too tight vs BTN, correct on average.
+
 BB_3BET = {
-    "AA", "KK", "QQ", "JJ", "AKs", "AKo", "AQs",
+    # Linear value
+    "AA", "KK", "QQ", "JJ", "TT",
+    "AKs", "AKo", "AQs", "AQo",
+    # Light value / merged
+    "KQs",
+    # Bluffs (suited blockers + suited connectors with playability)
+    "A5s", "A4s",
+    "76s", "65s",
 }
 BB_CALL = {
-    "TT", "99", "88", "77", "66", "55", "44", "33", "22",
-    "AJs", "ATs", "A9s", "A8s", "A7s", "A6s", "A5s", "A4s", "A3s", "A2s",
-    "KQs", "KJs", "KTs", "K9s", "K8s",
-    "QJs", "QTs", "Q9s",
-    "JTs", "J9s",
+    # Pairs (defend all small/medium pairs for set value)
+    "99", "88", "77", "66", "55", "44", "33", "22",
+    # Suited aces (defend most for showdown + flush draws)
+    "AJs", "ATs", "A9s", "A8s", "A7s", "A6s", "A3s", "A2s",
+    # Offsuit aces (defend only the better ones)
+    "AJo", "ATo",
+    # Suited broadway
+    "KJs", "KTs", "K9s", "K8s",
+    "QJs", "QTs", "Q9s", "Q8s",
+    "JTs", "J9s", "J8s",
     "T9s", "T8s",
-    "98s", "97s", "87s", "86s", "76s", "75s", "65s", "54s",
-    "AQo", "AJo", "ATo", "A9o",
+    # Offsuit broadway
     "KQo", "KJo", "KTo",
     "QJo", "QTo",
     "JTo",
+    # Suited connectors / 1-gappers
+    "98s", "97s", "87s", "86s", "75s", "54s",
+    # Suited K/Q with kicker for postflop playability
+    "K7s", "K6s", "K5s",
+    "Q7s",
+    "T7s",
 }
 
 
@@ -154,20 +233,124 @@ def preflop_advice(card1_str, card2_str, position="BTN", facing_raise=False):
                     "note": ""}
 
     if facing_raise:
-        # Facing a raise from other positions — tighten up
-        # 3-bet with premiums, call with strong hands, fold the rest
-        premiums = {"AA", "KK", "QQ", "AKs", "AKo"}
-        call_vs_raise = {
-            "JJ", "TT", "99", "88", "77",
-            "AQs", "AJs", "ATs", "KQs", "KJs", "QJs", "JTs",
-            "AQo",
+        # Facing a raise — per-position 3-bet / call / fold response.
+        # Range widths increase as hero's position is later (more
+        # opens come from before them, so the average opener has a
+        # wider/weaker range and we can attack more aggressively).
+        #
+        # The "opener position" isn't passed into preflop_advice at
+        # the moment, so we calibrate per-hero-position to the AVERAGE
+        # expected opener (e.g. SB averages "vs late position" because
+        # in 6-max most opens come from CO/BTN). When we eventually
+        # plumb opener_position through, this becomes a 2D table.
+        #
+        # Seed bug 2460830661 (AQo SB flat) → SB 3-bets AQo+ now.
+        # Verified by tests/test_strategy_regressions.py.
+
+        # Universal premium 3-bet range (every position, every opener)
+        UNIVERSAL_3BET = {
+            "AA", "KK", "QQ", "JJ", "AKs", "AKo",
         }
-        if hand_key in premiums:
+
+        # Per-hero-position 3-bet additions
+        EP_3BET_EXTRA = {
+            # Vs an opener earlier than us — must be UTG (very tight).
+            # Add only against value-heavy ranges. Almost nothing extra.
+            "AQs",
+        }
+        MP_3BET_EXTRA = {
+            "AQs", "TT",
+        }
+        CO_3BET_EXTRA = {
+            "AQs", "TT", "AQo",
+            # Mild bluffs in position
+            "A5s",
+        }
+        BTN_3BET_EXTRA = {
+            "TT", "99",
+            "AQs", "AQo", "AJs", "KQs",
+            # IP bluffs
+            "A5s", "A4s", "K9s",
+        }
+        # SB OOP vs (mostly) late-position openers — wide value + bluffs
+        SB_3BET_EXTRA = {
+            "TT", "99",
+            "AQs", "AQo", "AJs", "KQs", "KJs",
+            # Blocker bluffs
+            "A5s", "A4s", "A3s",
+            "65s", "54s",
+        }
+        # BB widest — best pot odds, vs typical opener BB defends ~35%
+        # The 3-bet sub-range here is the "value + bluff" portion
+        BB_3BET_EXTRA = {
+            "TT", "99",
+            "AQs", "AQo", "AJs", "KQs",
+            "A5s", "A4s",
+            "76s", "65s",
+        }
+
+        position_3bet_extra = {
+            "EP":  EP_3BET_EXTRA,
+            "UTG": EP_3BET_EXTRA,
+            "MP":  MP_3BET_EXTRA,
+            "CO":  CO_3BET_EXTRA,
+            "BTN": BTN_3BET_EXTRA,
+            "SB":  SB_3BET_EXTRA,
+            "BB":  BB_3BET_EXTRA,
+        }
+        threebet_range = UNIVERSAL_3BET | position_3bet_extra.get(position, set())
+
+        # Per-position call ranges (the rest of the defending range
+        # that doesn't 3-bet). Wider in position, narrower OOP.
+        EP_CALL_RANGE = {
+            # EP facing UTG: very tight cold-call (set-mining only)
+            "JJ", "TT", "99", "88", "77",
+            "AQs", "AJs", "KQs",
+        }
+        MP_CALL_RANGE = EP_CALL_RANGE | {
+            "66", "55",
+            "ATs", "KJs", "QJs", "JTs",
+            "AJo",
+        }
+        CO_CALL_RANGE = MP_CALL_RANGE | {
+            "44", "33", "22",
+            "A5s", "A4s",  # blocker calls
+            "KTs", "QTs", "T9s", "98s",
+            "AJo",  # already in MP
+        }
+        BTN_CALL_RANGE = CO_CALL_RANGE | {
+            # Widest cold-call range — IP, can realize equity
+            "ATs", "K9s", "Q9s", "J9s", "T9s",
+            "98s", "87s", "76s", "65s", "54s",
+            "ATo", "KQo", "KJo", "QJo",
+            "JTo",
+        }
+        SB_CALL_RANGE = {
+            # SB OOP cold-call is risky (BB can squeeze). Tight.
+            "88", "77", "66", "55",
+            "AJs", "ATs", "KQs", "KJs", "QJs", "JTs",
+            "T9s", "98s", "87s",
+            "AJo",
+        }
+        BB_CALL_RANGE = BB_CALL  # BB defense: use the comprehensive set
+
+        position_call_range = {
+            "EP":  EP_CALL_RANGE,
+            "UTG": EP_CALL_RANGE,
+            "MP":  MP_CALL_RANGE,
+            "CO":  CO_CALL_RANGE,
+            "BTN": BTN_CALL_RANGE,
+            "SB":  SB_CALL_RANGE,
+            "BB":  BB_CALL_RANGE,
+        }
+        call_range = position_call_range.get(position, MP_CALL_RANGE)
+
+        if hand_key in threebet_range:
             return {"action": "RAISE", "hand_key": hand_key, "in_range": True,
-                    "note": "3-bet"}
-        elif hand_key in call_vs_raise:
+                    "note": f"3-bet from {position}"}
+        elif hand_key in call_range:
             return {"action": "CALL", "hand_key": hand_key, "in_range": True,
-                    "note": "call raise"}
+                    "note": f"call raise from {position}"}
         else:
             return {"action": "FOLD", "hand_key": hand_key, "in_range": False,
                     "note": ""}

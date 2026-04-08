@@ -25,3 +25,17 @@ analysis/ps_client/*.exe
 
 # Generated screenshots (transient)
 screenshots/
+
+# Click adapter debug captures (transient)
+click_debug_*.png
+
+# Runtime logs (repo root)
+/*.log
+/coinpoker_dump.json
+/coinpoker_frames.jsonl
+/coinpoker_frames_tail.jsonl
+/coinpoker_hud_stats.jsonl
+/coinpoker_lobby_debug.png
+
+# Patcher / IL build artifacts (separate workspace)
+coinpoker_patcher/

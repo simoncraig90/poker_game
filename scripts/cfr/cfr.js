@@ -234,7 +234,9 @@ class CFRTrainer {
       // Traverse for each player with independent card samples
       for (let p = 0; p < numPlayers; p++) {
         const deal = this.game.dealForIteration();
-        const state = numPlayers === 2
+        const state = this.game.createInitialStateFull
+          ? this.game.createInitialStateFull(deal)
+          : numPlayers === 2
           ? this.game.createInitialState(deal.p0Cards, deal.p1Cards, deal.board)
           : this.game.createInitialState(deal.playerCards, deal.board);
         const reachProbs = new Array(numPlayers).fill(1.0);

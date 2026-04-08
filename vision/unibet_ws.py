@@ -35,15 +35,28 @@ class UnibetWSReader:
         self._running = False
         self._thread = None
         self._callbacks = []      # list of functions to call on state change
+        self._notify_timer = None
+        self._notify_lock = threading.Lock()
 
     def on_state_change(self, callback):
         """Register a callback for state changes."""
         self._callbacks.append(callback)
 
     def _notify(self):
+        """Debounced notify — waits 300ms after last message before calling callbacks.
+        This ensures all WS data for a game state has arrived before the advisor acts."""
+        with self._notify_lock:
+            if self._notify_timer:
+                self._notify_timer.cancel()
+            self._notify_timer = threading.Timer(0.3, self._do_notify)
+            self._notify_timer.daemon = True
+            self._notify_timer.start()
+
+    def _do_notify(self):
+        state = self.get_state()
         for cb in self._callbacks:
             try:
-                cb(self.get_state())
+                cb(state)
             except Exception:
                 pass
 
@@ -145,6 +158,27 @@ class UnibetWSReader:
                     if 'skurj' in name.lower() or 'uni41' in name.lower():
                         self.hero_seat = i
 
+            # Board cards — process BEFORE bets so phase is correct for facing detection
+            if len(c) > 7 and isinstance(c[7], str) and len(c[7]) >= 4:
+                board_str = c[7]
+                self.board_cards = self._parse_cards(board_str)
+                n = len(self.board_cards)
+                old_phase = self.phase
+                if n == 0:
+                    self.phase = "PREFLOP"
+                elif n == 3:
+                    self.phase = "FLOP"
+                elif n == 4:
+                    self.phase = "TURN"
+                elif n >= 5:
+                    self.phase = "RIVER"
+                # Reset facing_bet on new street ONLY if no bets in this message
+                if self.phase != old_phase:
+                    bets_in_msg = c[3] if isinstance(c[3], list) else []
+                    if not bets_in_msg or max(bets_in_msg) == 0:
+                        self.facing_bet = False
+                        self.call_amount = 0
+
             # Seat states: [0=empty, 1=active, 3=folded, 4=posted, etc]
             if isinstance(c[1], list):
                 seat_states = c[1]
@@ -200,23 +234,7 @@ class UnibetWSReader:
                     self.position = pos_map.get(dist, "MP")
                     self._position_locked = True
 
-            # Board cards
-            if len(c) > 7 and isinstance(c[7], str) and len(c[7]) >= 4:
-                board_str = c[7]
-                self.board_cards = self._parse_cards(board_str)
-                n = len(self.board_cards)
-                old_phase = self.phase
-                if n == 0:
-                    self.phase = "PREFLOP"
-                elif n == 3:
-                    self.phase = "FLOP"
-                elif n == 4:
-                    self.phase = "TURN"
-                elif n >= 5:
-                    self.phase = "RIVER"
-                # Reset facing_bet on new street
-                if self.phase != old_phase:
-                    self.facing_bet = False
+            # (Board cards processed above, before bets)
 
             # Stacks per seat
             if isinstance(c[2], list):

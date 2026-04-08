@@ -4,7 +4,7 @@ CFR strategy adapter for the WebSocket advisor.
 Maps the WS game state (hero cards, board, bets, position) to a CFR info set key,
 looks up the trained mixed strategy, and returns the recommended action with probabilities.
 
-Uses the 50-bucket 6-max CFR strategy (1.3M info sets, 138MB).
+Uses the 100-bucket 6-max CFR strategy (1.33M info sets, 10M iterations, 139MB).
 """
 
 import json
@@ -12,8 +12,8 @@ import os
 import math
 
 VISION_DIR = os.path.dirname(os.path.abspath(__file__))
-STRATEGY_PATH = os.path.join(VISION_DIR, "models", "cfr_strategy_50bucket.json")
-NUM_BUCKETS = 50
+STRATEGY_PATH = os.path.join(VISION_DIR, "models", "cfr_strategy_sixmax_100bucket.json")
+NUM_BUCKETS = 100
 
 # Rank mapping
 RANK_MAP = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,

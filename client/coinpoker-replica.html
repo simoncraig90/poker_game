@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CoinPoker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Arial, sans-serif; }
+  body { background: #0a0a0a; color: #fff; height: 100vh; overflow: hidden; }
+
+  /* Top header bar like CoinPoker */
+  #top-bar {
+    background: linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%);
+    height: 50px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 13px;
+  }
+  #top-bar .logo { color: #ffaa00; font-weight: bold; font-size: 16px; margin-right: 30px; }
+  #top-bar .nav { display: flex; gap: 20px; color: #ccc; }
+  #top-bar .nav span { cursor: pointer; }
+  #top-bar .nav span:hover { color: #fff; }
+  #top-bar .right { margin-left: auto; display: flex; gap: 15px; align-items: center; }
+  #top-bar .balance { color: #ffaa00; font-weight: bold; }
+  #top-bar .user { color: #aaa; }
+  #online-count { color: #4caf50; font-size: 11px; }
+
+  /* Main container */
+  #main {
+    display: flex;
+    height: calc(100vh - 50px);
+  }
+
+  /* Sidebar with filters */
+  #sidebar {
+    width: 200px;
+    background: #141414;
+    border-right: 1px solid #2a2a2a;
+    padding: 15px;
+  }
+  #sidebar h3 { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 10px; }
+  #sidebar .filter-group { margin-bottom: 20px; }
+  #sidebar .filter-btn {
+    display: block;
+    width: 100%;
+    background: #1f1f1f;
+    border: 1px solid #2a2a2a;
+    color: #ccc;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 12px;
+  }
+  #sidebar .filter-btn:hover { background: #2a2a2a; }
+  #sidebar .filter-btn.active { background: #ffaa00; color: #000; border-color: #ffaa00; }
+
+  /* Table list */
+  #table-list-container {
+    flex: 1;
+    background: #0f0f0f;
+    overflow-y: auto;
+  }
+  #table-list-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    padding: 10px 20px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+  }
+  .table-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    padding: 12px 20px;
+    border-bottom: 1px solid #1a1a1a;
+    cursor: pointer;
+    align-items: center;
+    font-size: 13px;
+  }
+  .table-row:hover { background: #1a1a1a; }
+  .table-row.selected { background: #2a1f0a; }
+  .table-row .quick-join {
+    background: #ffaa00;
+    color: #000;
+    border: none;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-radius: 2px;
+  }
+  .table-row .quick-join:hover { background: #ffb820; }
+
+  /* Game table view (when joined) */
+  #table-view {
+    display: none;
+    position: fixed;
+    top: 50px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #0a0a0a;
+    z-index: 100;
+  }
+  #table-view.active { display: flex; flex-direction: column; }
+
+  #table-felt {
+    flex: 1;
+    background: radial-gradient(ellipse at center, #1a4a1a 0%, #0a2a0a 60%, #051a05 100%);
+    position: relative;
+    margin: 20px;
+    border-radius: 200px;
+    border: 8px solid #1a1a1a;
+    box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+  }
+
+  /* Hero seat (bottom center) */
+  #hero-seat {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  .hero-cards {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+  .card {
+    width: 50px;
+    height: 70px;
+    background: #fff;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #000;
+    font-size: 18px;
+  }
+  .card.red { color: #c4262e; }
+  .hero-name { background: #1a1a1a; padding: 4px 12px; border-radius: 4px; font-size: 12px; }
+  .hero-stack { color: #ffaa00; font-size: 14px; font-weight: bold; }
+
+  /* Board */
+  #board {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+  }
+  #pot-display {
+    position: absolute;
+    top: 25%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 14px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 16px;
+    border-radius: 20px;
+  }
+
+  /* Action bar — DOM elements (not canvas!) */
+  #action-bar {
+    background: #1a1a1a;
+    padding: 12px 20px;
+    border-top: 1px solid #2a2a2a;
+    display: none;  /* hidden until hero's turn */
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  #action-bar.visible { display: flex; }
+
+  #slider-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .preset {
+    background: #2a2a2a;
+    color: #ccc;
+    border: 1px solid #3a3a3a;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 2px;
+  }
+  .preset:hover { background: #3a3a3a; }
+  #bet-input-group {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border-radius: 2px;
+    height: 32px;
+    margin: 0 8px;
+  }
+  #bet-input-group .pm {
+    background: #2a2a2a;
+    color: #fff;
+    border: none;
+    padding: 0 12px;
+    cursor: pointer;
+    height: 100%;
+    font-weight: bold;
+  }
+  #bet-input {
+    background: #fff;
+    color: #000;
+    border: none;
+    padding: 0 8px;
+    width: 80px;
+    height: 100%;
+    font-size: 13px;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  #buttons-row { display: flex; gap: 6px; margin-top: 4px; }
+  .action-btn {
+    padding: 14px 50px;
+    font-size: 13px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    color: #fff;
+    text-transform: uppercase;
+    border-radius: 2px;
+    min-width: 120px;
+  }
+  #fold-btn { background: #c4262e; }
+  #fold-btn:hover { background: #d63138; }
+  #call-btn { background: #b8941f; color: #000; }
+  #call-btn:hover { background: #d6a922; }
+  #raise-btn { background: #2ea843; }
+  #raise-btn:hover { background: #36c54f; }
+
+  /* Verification panel */
+  #verify-panel {
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    background: rgba(0,0,0,0.92);
+    border: 1px solid #ffaa00;
+    padding: 12px;
+    width: 340px;
+    max-height: 90vh;
+    overflow-y: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    z-index: 1000;
+    border-radius: 4px;
+  }
+  #verify-panel h3 { color: #ffaa00; font-size: 12px; margin-bottom: 8px; text-transform: uppercase; }
+  #verify-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; font-size: 11px; }
+  #verify-stats span { color: #ccc; }
+  #verify-stats .val { color: #4caf50; font-weight: bold; }
+  #click-log { max-height: 50vh; overflow-y: auto; font-size: 10px; line-height: 1.4; }
+  #click-log .ok { color: #4caf50; }
+  #click-log .miss { color: #f44; }
+  #click-log .info { color: #888; }
+  #click-log .ws { color: #29b6f6; }
+  .control-row { display: flex; gap: 4px; margin-bottom: 8px; }
+  .control-row button { background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 4px 10px; cursor: pointer; font-size: 10px; }
+
+  /* Mock auth iframe */
+  #auth-iframe-mock {
+    background: #0a0a0a;
+    color: #888;
+    padding: 8px;
+    font-size: 10px;
+    border-bottom: 1px solid #2a2a2a;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+
+<div id="auth-iframe-mock">
+  Mock JWT iframe: https://d2df0cv2coy003.cloudfront.net/?token=eyJhbGc... (replicates real CoinPoker auth iframe)
+</div>
+
+<div id="top-bar">
+  <span class="logo">COINPOKER</span>
+  <div class="nav">
+    <span>Poker</span>
+    <span>Casino</span>
+    <span>Live Casino</span>
+    <span>Sportsbook</span>
+  </div>
+  <div class="right">
+    <span id="online-count">2546 Online</span>
+    <span class="user" id="user-name">precious0864449</span>
+    <span class="balance">₮<span id="balance">10.00</span></span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div class="filter-group">
+      <h3>Game Type</h3>
+      <button class="filter-btn active" data-filter="cash">Cash Games</button>
+      <button class="filter-btn" data-filter="aof">All-In Or Fold</button>
+      <button class="filter-btn" data-filter="bomb">Bomb Pot</button>
+      <button class="filter-btn" data-filter="tournament">Tournaments</button>
+      <button class="filter-btn" data-filter="practice">Practice Games</button>
+    </div>
+    <div class="filter-group">
+      <h3>Format</h3>
+      <button class="filter-btn">NLH</button>
+      <button class="filter-btn">PLO</button>
+    </div>
+    <div class="filter-group">
+      <h3>Stakes</h3>
+      <button class="filter-btn">Micro</button>
+      <button class="filter-btn">Low</button>
+      <button class="filter-btn">Mid</button>
+      <button class="filter-btn">High</button>
+    </div>
+  </div>
+
+  <div id="table-list-container">
+    <div id="table-list-header">
+      <div>Game / Stakes</div>
+      <div>Players</div>
+      <div>Min Buy-in</div>
+      <div>Max Buy-in</div>
+      <div>Action</div>
+    </div>
+    <div id="table-list"></div>
+  </div>
+</div>
+
+<!-- Game table view -->
+<div id="table-view">
+  <div id="table-felt">
+    <div id="pot-display">Pot: ₮<span id="pot">0.00</span></div>
+    <div id="board"></div>
+    <div id="hero-seat">
+      <div class="hero-cards" id="hero-cards"></div>
+      <div class="hero-name" id="hero-display">Skurj_uni41</div>
+      <div class="hero-stack">₮<span id="hero-stack">10.00</span></div>
+    </div>
+  </div>
+
+  <div id="action-bar">
+    <div id="slider-row">
+      <button class="preset" data-pct="25">25%</button>
+      <button class="preset" data-pct="50">50%</button>
+      <button class="preset" data-pct="80">80%</button>
+      <button class="preset" data-pct="100">All-in</button>
+      <div id="bet-input-group">
+        <button class="pm" id="minus">−</button>
+        <input id="bet-input" type="text" value="0.04">
+        <button class="pm" id="plus">+</button>
+      </div>
+    </div>
+    <div id="buttons-row">
+      <button class="action-btn" id="fold-btn">FOLD</button>
+      <button class="action-btn" id="call-btn">CALL <span id="call-amt">₮0.02</span></button>
+      <button class="action-btn" id="raise-btn">RAISE</button>
+    </div>
+  </div>
+</div>
+
+<div id="verify-panel">
+  <h3>CoinPoker Replica — Verification</h3>
+  <div id="verify-stats">
+    <span>Total clicks:</span><span class="val" id="total-clicks">0</span>
+    <span>Hand #:</span><span class="val" id="hand-num">—</span>
+    <span>Last action:</span><span class="val" id="last-action">none</span>
+    <span>Last button:</span><span class="val" id="last-button">none</span>
+    <span>Game state:</span><span class="val" id="game-state">lobby</span>
+    <span>Phase:</span><span class="val" id="phase">—</span>
+  </div>
+  <div class="control-row">
+    <button onclick="window.replica.startHand()">Deal Hand</button>
+    <button onclick="window.replica.advanceStreet()">Next Street</button>
+    <button onclick="window.replica.simulateBetFromVillain()">Sim Bet</button>
+    <button onclick="window.replica.endHand()">End Hand</button>
+  </div>
+  <div class="control-row">
+    <button onclick="window.replica.reset()">Reset</button>
+    <button onclick="window.replica.exportLog()">Export</button>
+    <button onclick="window.replica.printPositions()">Positions</button>
+  </div>
+  <div id="click-log"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────
+// COINPOKER REPLICA — Functional test environment
+// Mimics CoinPoker's React/DOM-based UI for click verification + state mocking
+// ─────────────────────────────────────────────────────────────────────
+
+window.replica = (function() {
+  const state = {
+    clicks: 0,
+    handNum: 0,
+    inHand: false,
+    phase: null,
+    pot: 0,
+    heroStack: 1000, // cents
+    heroBet: 0,
+    heroCards: [],
+    board: [],
+    facingBet: false,
+    callAmount: 0,
+    log: []
+  };
+
+  // Mock table data (matches real CoinPoker REST response shape)
+  const mockTables = [
+    { roomName: "NL 0.01-0.02 EV-INRIT-(A) 238215", tableId: 238215, gameType: "Ring",
+      blinds: "₮0.01/₮0.02", players: 126, maxPlayers: 200, minBuyIn: "₮0.8", maxBuyIn: "₮2" },
+    { roomName: "NL 0.02-0.05 EV-INRIT-(B) 238216", tableId: 238216, gameType: "Ring",
+      blinds: "₮0.02/₮0.05", players: 121, maxPlayers: 200, minBuyIn: "₮2", maxBuyIn: "₮5" },
+    { roomName: "NL 0.05-0.10 (C) 238217", tableId: 238217, gameType: "Ring",
+      blinds: "₮0.05/₮0.10", players: 89, maxPlayers: 200, minBuyIn: "₮4", maxBuyIn: "₮10" },
+    { roomName: "NL 0.10-0.25 EV-INRIT (D) 238218", tableId: 238218, gameType: "Ring",
+      blinds: "₮0.10/₮0.25", players: 47, maxPlayers: 200, minBuyIn: "₮10", maxBuyIn: "₮25" },
+    { roomName: "NL 0.25-0.50 (E) 238219", tableId: 238219, gameType: "Ring",
+      blinds: "₮0.25/₮0.50", players: 32, maxPlayers: 200, minBuyIn: "₮20", maxBuyIn: "₮50" },
+    { roomName: "AOF 0.01-0.02 (F) 238220", tableId: 238220, gameType: "Allinfold",
+      blinds: "₮0.01/₮0.02", players: 18, maxPlayers: 100, minBuyIn: "₮0.20", maxBuyIn: "₮0.40" },
+    { roomName: "Bomb Pot 0.02-0.05 (G) 238221", tableId: 238221, gameType: "Bomb",
+      blinds: "₮0.02/₮0.05", players: 12, maxPlayers: 50, minBuyIn: "₮2", maxBuyIn: "₮5" },
+  ];
+
+  function logAction(action, detail, isTrusted) {
+    const time = new Date().toISOString().slice(11, 23);
+    state.clicks++;
+    state.log.push({ time, action, detail, isTrusted, state: {...state} });
+
+    const logEl = document.getElementById('click-log');
+    const div = document.createElement('div');
+    div.className = isTrusted ? 'ok' : 'miss';
+    const tag = isTrusted === false ? 'SYNTH' : isTrusted === true ? 'TRUSTED' : 'STATE';
+    div.textContent = `[${time}] ${tag} ${action} ${detail}`;
+    logEl.insertBefore(div, logEl.firstChild);
+    while (logEl.children.length > 50) logEl.removeChild(logEl.lastChild);
+
+    document.getElementById('total-clicks').textContent = state.clicks;
+    document.getElementById('last-action').textContent = action;
+    document.getElementById('last-button').textContent = detail;
+  }
+
+  function renderTableList() {
+    const container = document.getElementById('table-list');
+    container.innerHTML = '';
+    for (const t of mockTables) {
+      const row = document.createElement('div');
+      row.className = 'table-row';
+      row.dataset.tableId = t.tableId;
+      row.innerHTML = `
+        <div>${t.gameType === 'Ring' ? 'NLH ' : t.gameType + ' '}${t.blinds}</div>
+        <div>${t.players}/${t.maxPlayers}</div>
+        <div>${t.minBuyIn}</div>
+        <div>${t.maxBuyIn}</div>
+        <div><button class="quick-join" data-table-id="${t.tableId}">Quick Join</button></div>
+      `;
+      row.addEventListener('click', (e) => {
+        if (e.target.classList.contains('quick-join')) return;
+        document.querySelectorAll('.table-row').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        logAction('TABLE_SELECT', `tableId=${t.tableId}`, e.isTrusted);
+      });
+      container.appendChild(row);
+
+      row.querySelector('.quick-join').addEventListener('click', (e) => {
+        e.stopPropagation();
+        logAction('QUICK_JOIN', `tableId=${t.tableId}`, e.isTrusted);
+        joinTable(t);
+      });
+    }
+  }
+
+  function joinTable(t) {
+    state.inHand = true;
+    state.handNum = 1;
+    document.getElementById('table-view').classList.add('active');
+    document.getElementById('game-state').textContent = 'at table';
+    logAction('JOINED_TABLE', t.roomName, null);
+    setTimeout(startHand, 500);
+  }
+
+  function startHand() {
+    state.handNum++;
+    state.phase = 'PREFLOP';
+    state.pot = 6;  // SB + BB cents
+    state.heroBet = 4;  // BB
+    state.heroCards = randomCards(2);
+    state.board = [];
+    state.facingBet = false;
+    state.callAmount = 0;
+    document.getElementById('hand-num').textContent = state.handNum;
+    document.getElementById('phase').textContent = state.phase;
+    document.getElementById('pot').textContent = (state.pot / 100).toFixed(2);
+    document.getElementById('hero-stack').textContent = (state.heroStack / 100).toFixed(2);
+    renderHeroCards();
+    renderBoard();
+    showActionBar();
+    logAction('HAND_START', `#${state.handNum} ${state.heroCards.join(' ')}`, null);
+  }
+
+  function randomCards(n) {
+    const ranks = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
+    const suits = ['s','h','d','c'];
+    const cards = new Set();
+    while (cards.size < n) {
+      const r = ranks[Math.floor(Math.random() * 13)];
+      const s = suits[Math.floor(Math.random() * 4)];
+      cards.add(r + s);
+    }
+    return [...cards];
+  }
+
+  function renderHeroCards() {
+    const el = document.getElementById('hero-cards');
+    el.innerHTML = '';
+    for (const c of state.heroCards) {
+      const div = document.createElement('div');
+      div.className = 'card' + (c[1] === 'h' || c[1] === 'd' ? ' red' : '');
+      div.textContent = c;
+      el.appendChild(div);
+    }
+  }
+
+  function renderBoard() {
+    const el = document.getElementById('board');
+    el.innerHTML = '';
+    for (const c of state.board) {
+      const div = document.createElement('div');
+      div.className = 'card' + (c[1] === 'h' || c[1] === 'd' ? ' red' : '');
+      div.textContent = c;
+      el.appendChild(div);
+    }
+  }
+
+  function showActionBar() {
+    document.getElementById('action-bar').classList.add('visible');
+    if (state.facingBet) {
+      document.getElementById('call-btn').innerHTML = `CALL <span id="call-amt">₮${(state.callAmount/100).toFixed(2)}</span>`;
+      document.getElementById('call-btn').style.display = '';
+    } else {
+      document.getElementById('call-btn').innerHTML = `CHECK`;
+    }
+  }
+
+  function hideActionBar() {
+    document.getElementById('action-bar').classList.remove('visible');
+  }
+
+  function advanceStreet() {
+    if (state.phase === 'PREFLOP') {
+      state.phase = 'FLOP';
+      state.board = randomCards(3);
+    } else if (state.phase === 'FLOP') {
+      state.phase = 'TURN';
+      state.board.push(randomCards(1)[0]);
+    } else if (state.phase === 'TURN') {
+      state.phase = 'RIVER';
+      state.board.push(randomCards(1)[0]);
+    } else {
+      endHand();
+      return;
+    }
+    state.facingBet = false;
+    state.callAmount = 0;
+    document.getElementById('phase').textContent = state.phase;
+    renderBoard();
+    showActionBar();
+    logAction('STREET', state.phase, null);
+  }
+
+  function simulateBetFromVillain() {
+    const betAmt = Math.max(4, Math.floor(state.pot * 0.66));
+    state.facingBet = true;
+    state.callAmount = betAmt;
+    state.pot += betAmt;
+    document.getElementById('pot').textContent = (state.pot / 100).toFixed(2);
+    showActionBar();
+    logAction('VILLAIN_BET', `₮${(betAmt/100).toFixed(2)}`, null);
+  }
+
+  function endHand() {
+    hideActionBar();
+    logAction('HAND_END', `#${state.handNum}`, null);
+    state.phase = null;
+    document.getElementById('phase').textContent = '—';
+    setTimeout(startHand, 1000);
+  }
+
+  // Action button handlers
+  document.getElementById('fold-btn').addEventListener('click', (e) => {
+    logAction('FOLD', 'fold-btn', e.isTrusted);
+    hideActionBar();
+    setTimeout(endHand, 200);
+  });
+  document.getElementById('call-btn').addEventListener('click', (e) => {
+    if (state.facingBet) {
+      state.heroBet += state.callAmount;
+      state.heroStack -= state.callAmount;
+      logAction('CALL', `₮${(state.callAmount/100).toFixed(2)}`, e.isTrusted);
+    } else {
+      logAction('CHECK', 'check', e.isTrusted);
+    }
+    hideActionBar();
+    setTimeout(advanceStreet, 200);
+  });
+  document.getElementById('raise-btn').addEventListener('click', (e) => {
+    const amt = parseFloat(document.getElementById('bet-input').value) * 100;
+    state.heroBet += amt;
+    state.heroStack -= amt;
+    state.pot += amt;
+    document.getElementById('pot').textContent = (state.pot / 100).toFixed(2);
+    document.getElementById('hero-stack').textContent = (state.heroStack / 100).toFixed(2);
+    logAction('RAISE', `₮${(amt/100).toFixed(2)}`, e.isTrusted);
+    hideActionBar();
+    setTimeout(advanceStreet, 200);
+  });
+
+  // Slider preset handlers
+  document.querySelectorAll('.preset').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pct = parseInt(btn.dataset.pct);
+      // 25%/50%/80% of pot, all-in = stack
+      let newAmt;
+      if (pct === 100) newAmt = state.heroStack / 100;
+      else newAmt = (state.pot * (pct / 100)) / 100;
+      document.getElementById('bet-input').value = newAmt.toFixed(2);
+      logAction('SLIDER', `${pct}% → ₮${newAmt.toFixed(2)}`, e.isTrusted);
+    });
+  });
+
+  document.getElementById('plus').addEventListener('click', (e) => {
+    const inp = document.getElementById('bet-input');
+    inp.value = (parseFloat(inp.value) + 0.02).toFixed(2);
+    logAction('PLUS', `₮${inp.value}`, e.isTrusted);
+  });
+  document.getElementById('minus').addEventListener('click', (e) => {
+    const inp = document.getElementById('bet-input');
+    inp.value = Math.max(0.04, parseFloat(inp.value) - 0.02).toFixed(2);
+    logAction('MINUS', `₮${inp.value}`, e.isTrusted);
+  });
+
+  document.getElementById('bet-input').addEventListener('input', (e) => {
+    logAction('INPUT', `₮${e.target.value}`, e.isTrusted);
+  });
+
+  // Filter buttons
+  document.querySelectorAll('#sidebar .filter-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      logAction('FILTER', btn.textContent, e.isTrusted);
+    });
+  });
+
+  // Mock REST endpoint hooks (so the bot can intercept these like real CoinPoker)
+  // Bot can call: window.replica.fetchTableList() to get the list
+  function fetchTableList() {
+    logAction('REST', 'POST /get-cash-table-list', null);
+    return { api_version: "3.2.5-rc1", api_code: 0, status: "ok", data: { list: mockTables } };
+  }
+
+  function fetchLobbyList() {
+    logAction('REST', 'POST /get-cash-lobby-list', null);
+    return { api_version: "3.2.5-rc1", api_code: 0, status: "ok", data: { count: mockTables.length } };
+  }
+
+  // Mock Firestore subscription stub
+  // Replicates the behavior of subscribing to global_data/game_engine
+  const firestoreListeners = {};
+  function subscribeFirestore(path, callback) {
+    firestoreListeners[path] = callback;
+    logAction('FIRESTORE', `subscribe ${path}`, null);
+    // Push initial state
+    setTimeout(() => callback({ status: 'ok', maintenance: false }), 100);
+    return () => { delete firestoreListeners[path]; };
+  }
+
+  function reset() {
+    // Clear any pending timers
+    for (let i = 1; i < 10000; i++) clearTimeout(i);
+    state.clicks = 0;
+    state.handNum = 0;
+    state.log = [];
+    state.inHand = false;
+    state.phase = null;
+    state.heroStack = 1000;
+    state.heroCards = [];
+    state.board = [];
+    state.facingBet = false;
+    state.callAmount = 0;
+    state.pot = 0;
+    document.getElementById('total-clicks').textContent = 0;
+    document.getElementById('hand-num').textContent = '—';
+    document.getElementById('last-action').textContent = 'none';
+    document.getElementById('last-button').textContent = 'none';
+    document.getElementById('phase').textContent = '—';
+    document.getElementById('game-state').textContent = 'lobby';
+    document.getElementById('click-log').innerHTML = '';
+    document.getElementById('table-view').classList.remove('active');
+    document.getElementById('hero-cards').innerHTML = '';
+    document.getElementById('board').innerHTML = '';
+    document.getElementById('pot').textContent = '0.00';
+    hideActionBar();
+  }
+
+  function exportLog() {
+    const blob = new Blob([JSON.stringify(state.log, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'coinpoker-replica-log.json';
+    a.click();
+  }
+
+  function printPositions() {
+    const ids = ['fold-btn','call-btn','raise-btn','minus','plus','bet-input',
+                 'hero-cards','hero-stack','pot','board'];
+    const result = {};
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        result[id] = {
+          x: Math.round(r.x + r.width/2),
+          y: Math.round(r.y + r.height/2),
+          pct_x: ((r.x + r.width/2) / window.innerWidth).toFixed(3),
+          pct_y: ((r.y + r.height/2) / window.innerHeight).toFixed(3),
+        };
+      }
+    }
+    document.querySelectorAll('.preset').forEach(b => {
+      const r = b.getBoundingClientRect();
+      result[`preset-${b.dataset.pct}`] = {
+        x: Math.round(r.x + r.width/2),
+        y: Math.round(r.y + r.height/2),
+      };
+    });
+    document.querySelectorAll('.table-row').forEach((row, i) => {
+      const r = row.getBoundingClientRect();
+      result[`table-row-${i}`] = {
+        x: Math.round(r.x + r.width/2),
+        y: Math.round(r.y + r.height/2),
+      };
+    });
+    console.log('Positions:', result);
+    return result;
+  }
+
+  // Init
+  renderTableList();
+  document.getElementById('balance').textContent = '10.00';
+
+  // Public API
+  return {
+    state,
+    startHand,
+    advanceStreet,
+    simulateBetFromVillain,
+    endHand,
+    reset,
+    exportLog,
+    printPositions,
+    fetchTableList,
+    fetchLobbyList,
+    subscribeFirestore,
+    getStats: () => ({ clicks: state.clicks, handNum: state.handNum, log: state.log }),
+  };
+})();
+
+console.log('CoinPoker replica loaded. window.replica is the test API.');
+console.log('Key methods:');
+console.log('  replica.startHand()  - deal a new hand');
+console.log('  replica.advanceStreet()  - flop/turn/river');
+console.log('  replica.simulateBetFromVillain()  - opponent bets');
+console.log('  replica.printPositions()  - log all element positions');
+console.log('  replica.fetchTableList()  - mock REST table list');
+</script>
+
+</body>
+</html>

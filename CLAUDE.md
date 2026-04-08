@@ -4,6 +4,120 @@
 
 Poker research platform with two goals: (1) real-time play assistance via CFR strategy + vision pipeline, and (2) **anti-bot detection research** — building realistic bots and detection systems to test against each other. Combines a deterministic Node.js game engine with a Python vision/ML pipeline, PokerStars-like browser client (91.8% visual match), screen-reading bots, and multi-dimensional detection/humanness scoring.
 
+## CoinPoker pipeline (2026-04-08, sessions 5-11)
+
+The "stop chasing auto-click" decision was reversed. CoinPoker turned out to be the **easiest** auto-play target via IL-patched managed DLL. Status:
+
+- **Game state capture LIVE**: patched `PBClient.dll` (`C:\Program Files\CoinPoker\...\Managed\PBClient.dll`) mirrors every cmd_bean event to `C:\Users\Simon\coinpoker_frames.jsonl`. Plaintext JSON. No encryption.
+- **Advisor pipeline LIVE**: `vision/coinpoker_runner.py --follow` tails the JSONL, drives `AdvisorStateMachine`, renders to the existing Tk overlay.
+- **Click adapter Phase 2 (dry-run) LIVE**: 50/50 round-trips verified via `tools/phase2_gauntlet.py`.
+- **Click adapter Phase 3 IL BUILT, NOT DEPLOYED**: `C:\Users\Simon\coinpoker_patcher\PBClient.phase3.dll`. Calls `_PROJECT_NEW.Scripts.TableEventHandlers.UserActionHandler.UserAction(ActionId, Nullable<float>)` via inlined IL. Gated on operator-supervised single-hand live test.
+
+Read `HANDOFF.md` and the `project_coinpoker_unity.md` auto-memory for the full session-by-session history.
+
+Key files:
+- `vision/coinpoker_adapter.py` (39 tests), `vision/coinpoker_runner.py` (36 tests), `vision/coinpoker_clicker.py` (20 tests)
+- `tools/phase2_gauntlet.py` — round-trip reliability gauntlet
+- `tests/fixtures/coinpoker_session.jsonl` — 200-frame test fixture
+- Patcher + deploy at `C:\Users\Simon\coinpoker_patcher\` (NOT in this repo)
+
+## Pre-flight validation gate (2026-04-08 — `tools/check_ready_for_live.py`)
+
+**ALWAYS run this before any session where real money is at stake.** Single
+command, ~12 seconds, exit 0 = safe to start the advisor. Bundles four gates:
+
+  1. Full test suite green (currently 125 tests)
+  2. Strategy regression suite green, no @expectedFailure on named loss spots
+  3. Named danger overrides fire on EXACTLY the expected hands across captured
+     replay (currently 3 hands: 2379414698, 2379447781, 2460830707)
+  4. `scripts/replay_whatif.py` baseline within tolerance vs all variants
+
+```bash
+python tools/check_ready_for_live.py
+# Exit 0 = GO, exit non-zero = NO-GO with specific failure
+```
+
+This gate exists because **passing unit tests is not validation**. The user
+lost two real-money buy-ins on 2026-04-08 with passing unit tests because
+the strategy itself had unvalidated leaks. See memory entry
+`feedback_passing_tests_not_validation.md`. The four named loss spots from
+that session are now permanent regression tests in
+`tests/test_strategy_regressions.py` — never delete or weaken those.
+
+## Strategy fixes shipped 2026-04-08 (branch `coinpoker-strategy-fixes-20260408`)
+
+Four named real-money loss spots fixed and locked in as regression tests:
+
+  - **Hand 2460830661** AQo SB flat-call vs 2.5x open at 4-handed
+    → fixed by per-position 3-bet ranges in `vision/preflop_chart.py`
+  - **Hand 2460830707** KK BB river call-off on 5d-9s-7d-4c-8c (4-card straight)
+    → fixed by Filter 1 of `_apply_danger_overrides`
+  - **Hand 2379414698** KK SB call-off on 9h-6h-2h flop facing 9x pot bet (3-flush)
+    → fixed by Filter 3 of `_apply_danger_overrides`
+  - **Hand 2379447781** QcJc BTN call-off on Kc-Th-Td-3c-8c river (flush on paired
+    board, no boat possibility) → fixed by Filter 4
+
+Plus a 5th synthetic-only filter:
+  - **Filter 5**: one-pair-or-less on COORDINATED river facing ≥75% pot bet → FOLD
+    (no real seed hand in captured data — coordination requirement is 4-card
+    straight OR 3-card flush on the board, prevents false-positiving TPTK on dry
+    boards)
+
+Plus:
+  - **Hand class evaluator** `AdvisorStateMachine._evaluate_hand_class` —
+    classifies hero's best 5-card hand into 9 standard categories incl. wheel
+    straights and wheel straight flushes. 21 unit tests. Foundation for Filter 5
+    and future filters.
+  - Action-history accumulator (v0 of equity-vs-action-range) in `AdvisorStateMachine`
+    — diffs villain `last_action` across snapshots, computes per-hand discount
+    based on raise sequence + river bets + 3-street barreling. Plumbed correctly
+    with 12 unit tests but A/B comparison shows 0 action-flips on tonight's data
+    (defense-in-depth for future hands matching the patterns).
+  - Default unknown villains to NIT at micro stakes (validated +EUR 0.22 in
+    replay against 733 captured hands, then folded into baseline)
+  - Position derivation fix in `vision/coinpoker_adapter.py` (was always returning MP)
+  - `tools/coinpoker_frames_to_session.py` converter so `replay_whatif.py` can
+    run on CoinPoker frame logs alongside Unibet sessions
+  - `tools/check_ready_for_live.py` validation gate (above)
+  - Recommendation log lines now show `vs <TYPE>` tag from `OpponentTracker.classify_villain`
+
+## CoinPoker HUD stats endpoint (discovered 2026-04-08)
+
+CoinPoker maintains server-side player stats and serves them to the client via
+a REST endpoint. Discovered live by running `tools/coinpoker_stats_sniffer.py`
+against an active CoinPoker session and observing the network traffic:
+
+```
+GET https://nxtgenapi.thecloudinfra.com/pbshots/v2/stats/cash?user_id=N1,N2,N3,...
+```
+
+Returns one entry per `user_id` with `ratios[]` containing:
+
+```
+vpip, pfr, 3bet, cbet, check_raise, fold_to_3bet, fold_to_cbet,
+steal, wsd, wtsd, allin, fta, fold
+```
+
+This is the **server-side ground truth** that our `OpponentTracker` approximates
+by accumulating actions over a session. We can import these directly as opponent
+profiles instead of building our own slower-to-converge stats. 11 unique players
+were captured from the 2026-04-08 session including hero (precious0864449,
+user_id 1571120, classified as NIT with VPIP 11.8%, PFR 5.9%).
+
+Tools:
+  - `tools/coinpoker_stats_sniffer.py` — CDP-attached, captures `/v2/stats/`
+    responses to `C:\Users\Simon\coinpoker_hud_stats.jsonl` (gitignored).
+    Run alongside the live runner to collect data passively while playing.
+  - `tools/coinpoker_hud_stats_dump.py` — parses captured JSONL, prints a
+    per-player table with our same FISH/NIT/TAG/LAG/WHALE classification.
+
+**Strategic note from the captured data:** at the NL10 table observed, 8 of
+11 players classified as TAG (VPIP 20-35%, PFR 16-21%). This contradicts the
+common assumption that "micros are FISH-heavy" — the population may be much
+more reg-leaning at certain time-of-day windows. The `nit_assume` default
+(treating unknowns as nits at micro stakes) may be too conservative for this
+table type. Test scheduled for next session — see NEXT_SESSION.md kanban.
+
 ## Current State
 
 - Engine phases 1-8 complete (692 tests passing)
