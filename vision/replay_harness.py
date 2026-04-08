@@ -252,44 +252,69 @@ class ReplayReport:
 
     def range_equity_gate_summary(self) -> dict:
         """
-        Compute the THEORETICAL EV of the range-equity gate across the
-        corpus. For each decision where the gate fired (source contains
-        'range_eq_gate'), compute:
+        Compute the THEORETICAL EV of the range-equity gates across
+        the corpus. Two gates exist:
 
-          EV(call)   = range_eq * (pot + call) - call   (in chip cents)
-          EV(fold)   = 0
-          gate_save  = -EV(call) when EV(call) < 0
+          CALL→FOLD gate (`range_eq_gate`):
+            EV(call) = range_eq * (pot + call) - call
+            saved_bb = -EV(call) when negative
 
-        Sum across all gate fires (deduped by hand_id — once you fold
-        on the flop, the turn/river decisions don't happen). Convert to
-        BB using each hand's bb_cents.
+          BET→CHECK gate (`range_eq_bet_gate`):
+            Hard to score precisely without modeling villain's
+            calling range and fold equity. v0 approximation: assume
+            our intended bet would have been called and we'd have
+            won range_eq fraction of the resulting pot. The gate
+            saves us from putting more money in as a -EV bet.
+            saved_bb = -EV(bet) where bet size ≈ pot * 0.66
 
-        Returns dict with: fires, theoretical_savings_bb, hands.
-        Theoretical savings is the right metric — historical outcome
-        is too noisy because folding eliminates "miracle wins" from
-        variance and biases the chip-delta measurement against folds.
+        Returns dict with the per-gate breakdown and a combined total.
+        Deduped by hand_id — once you fold or check, no further
+        decisions on the hand happen.
         """
-        fires_by_hand: dict[str, Decision] = {}
+        call_fires: dict[str, tuple] = {}
+        bet_fires: dict[str, tuple] = {}
         for h in self.hands:
             for d in h.decisions:
-                if "range_eq_gate" not in (d.advisor_source or ""):
-                    continue
-                # First fire per hand wins (chronological order is
-                # preserved by walking decisions in append order)
-                if d.hand_id not in fires_by_hand:
-                    fires_by_hand[d.hand_id] = (d, h)
+                src = d.advisor_source or ""
+                if "range_eq_bet_gate" in src:
+                    if d.hand_id not in bet_fires:
+                        bet_fires[d.hand_id] = (d, h)
+                elif "range_eq_gate" in src:
+                    if d.hand_id not in call_fires:
+                        call_fires[d.hand_id] = (d, h)
 
-        total_savings_bb = 0.0
-        for d, h in fires_by_hand.values():
+        call_savings_bb = 0.0
+        for d, h in call_fires.values():
             re = d.range_equity
             if re is None or h.bb_cents <= 0:
                 continue
             ev_call_chips = re * (d.pot + d.call_amount) - d.call_amount
-            ev_call_bb = ev_call_chips / h.bb_cents
-            total_savings_bb += -ev_call_bb  # gate folds, so it saves the negative
+            call_savings_bb += -(ev_call_chips / h.bb_cents)
+
+        bet_savings_bb = 0.0
+        for d, h in bet_fires.values():
+            re = d.range_equity
+            if re is None or h.bb_cents <= 0 or d.pot <= 0:
+                continue
+            # Approximate: assume we'd have bet ~66% pot and gotten
+            # called by hands that already crush our PAIR-class hand
+            # (since the gate only fires on PAIR-or-less and re < 40%).
+            # If called and we win re fraction of the new pot:
+            #   EV(bet) ≈ re * (pot + 2*bet) - bet
+            # where bet = 0.66 * pot.
+            bet_size = int(d.pot * 0.66)
+            ev_bet_chips = re * (d.pot + 2 * bet_size) - bet_size
+            bet_savings_bb += -(ev_bet_chips / h.bb_cents)
+
+        total_fires = len(call_fires) + len(bet_fires)
+        total_savings_bb = call_savings_bb + bet_savings_bb
         return {
-            "fires": len(fires_by_hand),
+            "fires": total_fires,
+            "call_fires": len(call_fires),
+            "bet_fires": len(bet_fires),
             "theoretical_savings_bb": total_savings_bb,
+            "call_savings_bb": call_savings_bb,
+            "bet_savings_bb": bet_savings_bb,
             "savings_bb_per_100": (total_savings_bb / max(1, len(self.hands))) * 100.0,
         }
 
@@ -861,9 +886,13 @@ def main(argv=None):
     if args.range_equity:
         gate = report.range_equity_gate_summary()
         if gate["fires"] > 0:
-            print(f"Range-equity gate: {gate['fires']} fires, "
+            print(f"Range-equity gates: {gate['fires']} total fires "
+                  f"({gate['call_fires']} CALL→FOLD + "
+                  f"{gate['bet_fires']} BET→CHECK), "
                   f"theoretical savings {gate['theoretical_savings_bb']:+.2f} BB "
                   f"({gate['savings_bb_per_100']:+.2f} BB/100)")
+            print(f"  CALL→FOLD: {gate['call_savings_bb']:+.2f} BB")
+            print(f"  BET→CHECK: {gate['bet_savings_bb']:+.2f} BB")
     if args.by_room:
         rooms = report.per_room_breakdown()
         print(f"\nPer-room breakdown ({len(rooms)} rooms):")

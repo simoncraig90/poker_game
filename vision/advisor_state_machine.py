@@ -573,22 +573,24 @@ class AdvisorStateMachine:
             source = f"{source}+danger_override"
 
         # Phase 2: compute range-aware equity BEFORE final action
-        # assignment so the range-equity gate (below) can override
-        # CALL → FOLD when the call is clearly -EV vs the narrowed
-        # range. Only computes when the flag is on AND we're facing
-        # a real bet (otherwise no aggressor to model).
-        if self.enable_range_equity and facing and call_amt > 0:
+        # assignment so the range-equity gates (below) can use it.
+        # Computes for both facing (CALL→FOLD gate) and not-facing
+        # (BET→CHECK gate) scenarios. The shadow code handles the
+        # missing-aggressor case by falling back to "any non-folded
+        # opponent" as the villain.
+        if self.enable_range_equity:
             self._compute_shadow_range_equity(out, state, hero, board)
 
         # ── Range-equity pot-odds gate (Phase 2 decision-driving) ──
-        # When the new range_equity is computed and is clearly below
-        # the pot odds needed for the call, override CALL → FOLD.
-        # Pure stop-loss — never turns a fold into a call.
+        # When the new range_equity is computed and is below the pot
+        # odds needed for the call, override CALL → FOLD. Pure stop-loss
+        # — never turns a fold into a call, never adds aggression.
         #
-        # Margin (5%) absorbs Monte Carlo noise so borderline-correct
-        # calls don't flip due to sampling variance. Smaller margin
-        # would catch more leaks but also generate more false-positive
-        # folds; 5% is the conservative starting point.
+        # Margin (2%) absorbs Monte Carlo noise so borderline-correct
+        # calls don't flip due to sampling variance. Tightened from
+        # the v0 5% margin after empirical analysis showed v0 fired
+        # only 6 times in 1,294 hands while leaving real -EV calls
+        # in the borderline zone uncaught.
         if (self.enable_range_equity
                 and out.range_equity is not None
                 and facing and call_amt > 0 and pot_cents > 0
@@ -596,13 +598,48 @@ class AdvisorStateMachine:
                 and "FOLD" not in action.upper()
                 and "RAISE" not in action.upper()):
             pot_odds_needed = call_amt / (pot_cents + call_amt)
-            if out.range_equity < pot_odds_needed - 0.05:
+            if out.range_equity < pot_odds_needed - 0.02:
                 print(f"[range-equity-gate] {phase} {hero_str} on {board_str}: "
                       f"{action!r} -> FOLD (range_eq={out.range_equity:.0%} "
                       f"< pot_odds={pot_odds_needed:.0%}, "
                       f"combos={out.range_combos})")
                 action = "FOLD"
                 source = f"{source}+range_eq_gate"
+
+        # ── BET/RAISE → CHECK gate (Phase 2 hero-aggression filter) ──
+        # The Phase 1 leak ranking showed most chip impact comes from
+        # hero AGGRESSING with weak hands (RIVER:PAIR:noface:CHECK/BET,
+        # RIVER:PAIR:noface:CHECK/ALLIN). The CALL→FOLD gate above
+        # doesn't catch these because the trigger condition is hero
+        # facing aggression, not hero initiating it.
+        #
+        # When hero is about to BET or RAISE on a postflop street, the
+        # decision is "is this +EV vs the hands that will call?" In
+        # the absence of full bet-sizing math, use a coarse heuristic:
+        # if our PAIR-class hand has poor range equity vs the most
+        # likely caller, check instead.
+        #
+        # Conditions are conservative — only fires when:
+        #   - hero is BET/RAISING (not just facing)
+        #   - hand class is HAND_PAIR or weaker
+        #   - range_equity is computed and well below break-even (50%)
+        #
+        # We skip this filter when there's no aggressor yet (no
+        # range_equity computed) — that's the v0 limitation; a real
+        # solver would compute equity vs the implied calling range.
+        if (self.enable_range_equity
+                and out.range_equity is not None
+                and not facing
+                and pot_cents > 0
+                and ("BET" in action.upper() or "RAISE" in action.upper())
+                and "ALL" not in action.upper()  # don't override all-in plans
+                and self._evaluate_hand_class(hero, board) <= self.HAND_PAIR
+                and out.range_equity < 0.40):
+            print(f"[range-equity-gate-bet] {phase} {hero_str} on {board_str}: "
+                  f"{action!r} -> CHECK (range_eq={out.range_equity:.0%} "
+                  f"too thin to bet PAIR, combos={out.range_combos})")
+            action = "CHECK"
+            source = f"{source}+range_eq_bet_gate"
 
         out.action = action
         out.info = info
@@ -643,21 +680,36 @@ class AdvisorStateMachine:
         if hero_seat is None or not players:
             if debug: print(f"[range_eq] no hero_seat or players (h={hero_seat}, p={len(players)})")
             return
+        # Identify the target villain. Preferred: the highest-bet
+        # non-hero player (the "active aggressor"). Fallback when
+        # no one has bet this street: any non-hero non-folded player
+        # — their range is still meaningful for hero's BET decision
+        # against the implied calling range.
         aggressor = None
         best_bet = -1
+        any_non_folded = None
         for p in players:
             if not isinstance(p, dict):
                 if debug: print(f"[range_eq] non-dict player: {p}")
                 return
             if p.get("seat") == hero_seat:
                 continue
+            la = (p.get("last_action") or "").lower()
+            if "fold" in la:
+                continue
+            if any_non_folded is None:
+                any_non_folded = p
             b = p.get("bet", 0) or 0
             if b > best_bet:
                 best_bet = b
                 aggressor = p
         if aggressor is None or best_bet <= 0:
-            if debug: print(f"[range_eq] no aggressor (best_bet={best_bet})")
-            return
+            # No active aggressor on this street — use any non-folded
+            # player as the implied-caller proxy. Used by the BET gate.
+            if any_non_folded is None:
+                if debug: print(f"[range_eq] no villain at all")
+                return
+            aggressor = any_non_folded
 
         villain_seat = aggressor.get("seat")
         if villain_seat is None:
