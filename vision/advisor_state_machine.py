@@ -317,6 +317,15 @@ class AdvisorStateMachine:
             opp_type = (self.tracker.classify_villain(state)
                         if self.tracker and hasattr(self.tracker, 'classify_villain')
                         else 'UNKNOWN')
+            # Default unknown villains to NIT at micro stakes. Replay
+            # validation against 733 captured hands (2026-04-08) showed
+            # `nit_assume` was the only +EV variant tested (+EUR 0.22)
+            # vs the production baseline. Micros (NL2-NL10) are
+            # population-tighter than the UNKNOWN profile assumes —
+            # treating unknowns as nits avoids overcalling river bets.
+            # Threshold: bb_cents <= 1000 (i.e. NL10 and below).
+            if opp_type == 'UNKNOWN' and self.bb_cents <= 1000:
+                opp_type = 'NIT'
             try:
                 postflop_result = self.postflop.get_action(
                     hero, board, pos, facing, call_amt,
