@@ -57,6 +57,7 @@ from unibet_ws import UnibetWSReader
 from advisor_state_machine import AdvisorStateMachine
 from humanizer import (
     get_think_time, SessionManager, PlayVariation,
+    human_mouse_path,
     get_cursor_pos, click_mouse,
 )
 
@@ -126,7 +127,12 @@ def main():
     )
 
     session = SessionManager()
-    variation = PlayVariation(mistake_rate=0.0)  # disabled — was converting folds to calls
+    # Re-enabled at 0.5% (was 2% which converted folds to calls too often).
+    # The PlayVariation._make_mistake guard requires equity > 0.35 before
+    # converting a fold to a call, so the cost-bound is small. 0.5% is
+    # below the human-mistake range minimum and just enough to break
+    # perfect-play patterns without leaking measurable EV.
+    variation = PlayVariation(mistake_rate=0.005)
     print(f"[Auto] Session length: {session.session_length/60:.0f} min")
 
     print("[Auto] Using SendInput with focus save/restore")
@@ -224,16 +230,27 @@ def main():
             print(f"[Auto] VARIATION: {out.action} -> {action}")
 
         # Unibet timer is ~10s. Stay under 6s to have 4s safety buffer.
+        # Reaction time variance:
+        #   - Snap-act ~12% of the time (humans pre-decide on clear hands)
+        #   - Otherwise normal think with humanized variance
+        # The pure-fixed-floor approach (always >= 2.0s) was a bot tell
+        # because real human reaction time distributions have a long tail
+        # AND a snap-decision peak — they're bimodal. Capping below 2s
+        # eliminated the snap peak entirely.
         import random as _r
-        base = 2.0
-        humanized = get_think_time(phase, action) * 0.3
-        think = base + humanized + _r.uniform(0, 1.0)
-        # Folds can be slightly faster
-        if "FOLD" in action.upper():
-            think = max(1.5, min(think, 4.0))
+        snap_act = _r.random() < 0.12 and "FOLD" in action.upper() or _r.random() < 0.05
+        if snap_act:
+            think = _r.uniform(0.4, 1.1)
         else:
-            think = max(2.0, min(think, 6.0))
-        print(f"[Auto] Thinking {think:.1f}s for {action}...")
+            base = 2.0
+            humanized = get_think_time(phase, action) * 0.3
+            think = base + humanized + _r.uniform(0, 1.0)
+            if "FOLD" in action.upper():
+                think = max(1.5, min(think, 4.0))
+            else:
+                think = max(2.0, min(think, 6.0))
+        print(f"[Auto] Thinking {think:.1f}s for {action}{' (snap)' if snap_act else ''}...")
+
 
         # Wait in chunks for cancellation (also poll pause flag mid-think)
         elapsed = 0
@@ -417,11 +434,9 @@ def main():
                                 ("ii", _INPUT_UNION),
                             ]
 
-                        # Convert to absolute coords (0-65535)
+                        # Screen dimensions (for absolute coord conversion)
                         sw = _ctypes.windll.user32.GetSystemMetrics(0)
                         sh = _ctypes.windll.user32.GetSystemMetrics(1)
-                        ax = int(sx * 65535 / sw)
-                        ay = int(sy * 65535 / sh)
 
                         MOUSEEVENTF_MOVE = 0x0001
                         MOUSEEVENTF_ABSOLUTE = 0x8000
@@ -429,7 +444,9 @@ def main():
                         MOUSEEVENTF_LEFTUP = 0x0004
                         INPUT_MOUSE = 0
 
-                        def make_input(flags):
+                        def make_input_at(px, py, flags):
+                            ax = int(px * 65535 / sw)
+                            ay = int(py * 65535 / sh)
                             inp = _INPUT()
                             inp.type = INPUT_MOUSE
                             inp.ii.mi.dx = ax
@@ -440,19 +457,68 @@ def main():
                             inp.ii.mi.dwExtraInfo = _ctypes.pointer(_ctypes.c_ulong(0))
                             return inp
 
-                        # Move
-                        move = make_input(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
-                        _ctypes.windll.user32.SendInput(1, _ctypes.byref(move), _ctypes.sizeof(_INPUT))
-                        time.sleep(0.05)
+                        # ── Click coordinate variance ──
+                        # Add Gaussian offset around the button center.
+                        # Stdev 5px x / 4px y is well within button bounds
+                        # (~80px wide). Real users don't click exact centers.
+                        import random as _r2
+                        offset_x = int(_r2.gauss(0, 5))
+                        offset_y = int(_r2.gauss(0, 4))
+                        # Clamp to a 12px box from center to keep clicks
+                        # safely on the button
+                        offset_x = max(-12, min(12, offset_x))
+                        offset_y = max(-12, min(12, offset_y))
+                        click_x = sx + offset_x
+                        click_y = sy + offset_y
+
+                        # ── Mouse path simulation ──
+                        # Walk a Bezier path from the saved cursor position
+                        # to the click target instead of jumping. Falls back
+                        # to a single jump on the retry path so retry latency
+                        # stays low.
+                        if retry_n == 0:
+                            try:
+                                start_pt = (saved_cursor.x, saved_cursor.y)
+                                target_pt = (click_x, click_y)
+                                path = human_mouse_path(start_pt, target_pt)
+                                # Walk the path with small variable delays
+                                for px, py in path[:-1]:
+                                    move = make_input_at(px, py, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
+                                    _ctypes.windll.user32.SendInput(1, _ctypes.byref(move), _ctypes.sizeof(_INPUT))
+                                    time.sleep(_r2.uniform(0.005, 0.015))
+                                # Final move to the actual click point
+                                final_px, final_py = path[-1]
+                                click_x, click_y = final_px, final_py
+                                move = make_input_at(click_x, click_y, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
+                                _ctypes.windll.user32.SendInput(1, _ctypes.byref(move), _ctypes.sizeof(_INPUT))
+                            except Exception as e:
+                                # If the path simulation errors, fall back
+                                # to single-jump (don't lose the click)
+                                print(f"[Auto] path sim err: {e}")
+                                move = make_input_at(click_x, click_y, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
+                                _ctypes.windll.user32.SendInput(1, _ctypes.byref(move), _ctypes.sizeof(_INPUT))
+                        else:
+                            # Retry: just jump straight there
+                            move = make_input_at(click_x, click_y, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
+                            _ctypes.windll.user32.SendInput(1, _ctypes.byref(move), _ctypes.sizeof(_INPUT))
+
+                        # Pre-click settling delay
+                        time.sleep(_r2.uniform(0.03, 0.07))
+
                         # Down
-                        down = make_input(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE)
+                        down = make_input_at(click_x, click_y, MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE)
                         _ctypes.windll.user32.SendInput(1, _ctypes.byref(down), _ctypes.sizeof(_INPUT))
-                        time.sleep(0.08)
+
+                        # ── Click duration variance ──
+                        # Real human mousedown→mouseup ranges 40-150ms with
+                        # a fat tail. Fixed 80ms was a tell.
+                        time.sleep(_r2.uniform(0.04, 0.14))
+
                         # Up
-                        up = make_input(MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE)
+                        up = make_input_at(click_x, click_y, MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE)
                         _ctypes.windll.user32.SendInput(1, _ctypes.byref(up), _ctypes.sizeof(_INPUT))
                         if retry_n > 0:
-                            print(f"[Auto] {cmd} retry #{retry_n} via SendInput at ({sx},{sy})")
+                            print(f"[Auto] {cmd} retry #{retry_n} via SendInput at ({click_x},{click_y})")
 
                     click_button(0)
 
@@ -509,12 +575,38 @@ def main():
         tracker.update(state)
         logger.update(state)
 
-        # Detect new hand → notify collusion detector
+        # Detect new hand → notify collusion detector + record for SessionManager
         hand_id = state.get('hand_id')
         if hand_id and hand_id != getattr(on_state, '_last_hand', None):
             seated = [p for p in state.get('players', []) if p]
             collusion.hand_started(hand_id, seated)
             on_state._last_hand = hand_id
+            session.record_hand()
+            # Between-hand break check. The natural moment to step away
+            # is when a hand just ended and the next is being dealt.
+            # SessionManager.start_break() returns 2-15 minutes; that's
+            # too long to do during a single hand but fine between hands.
+            # We sit out by setting the pause flag so auto_player doesn't
+            # click anything until the break is over.
+            if session.should_take_break() and not is_paused():
+                break_secs = session.start_break()
+                print(f"[Auto] *** TAKING BREAK *** {break_secs/60:.1f} minutes "
+                      f"({session.total_hands} hands played, "
+                      f"{session.hands_since_break} since last break)")
+                # Set pause flag so any in-flight click thread bails out
+                try:
+                    open(PAUSE_FLAG, "w").write("session-break\n")
+                except Exception:
+                    pass
+                time.sleep(break_secs)
+                # Clear pause flag and resume
+                try:
+                    if os.path.exists(PAUSE_FLAG):
+                        os.unlink(PAUSE_FLAG)
+                except Exception:
+                    pass
+                session.end_break()
+                print(f"[Auto] *** RESUMED ***")
 
         # Infer per-player actions from state diff and feed both detectors
         actions = action_inf.update(state)
