@@ -280,8 +280,9 @@ This file is the source of truth for the rebuild. Edit it as scope shifts. Each 
 | Phase | Exit date | Harness BB/100 | Notes |
 |---|---|---|---|
 | Phase 0 | 2026-04-08 | n/a | Plan approved, branch created. |
-| Phase 1 — partial | 2026-04-08 | +8.7 (NL10 corpus, all-time, no advisor scoring) | Action history accumulator + replay harness skeleton landed. 22 tests passing. Open calibration items below before formal Phase 1 exit. |
-| Phase 1 — exit | — | — | |
+| Phase 1 — partial | 2026-04-08 | +8.7 BB/100 (NL10 corpus, all-time, no advisor scoring) | Action history accumulator + replay harness skeleton landed. 22 tests passing. Open calibration items below before formal Phase 1 exit. |
+| Phase 1 — wired | 2026-04-08 | last-50: -37.4 BB/100 / corpus: +8.7 BB/100 | Live SM wired into harness end-to-end. All three of today's named loss spots (KK on 4-straight, AhJs on 4c Jh 5d, 6s6c on QA8KT) reproduce deterministically and the matching danger-override filters fire in replay. JSON-per-decision output added (`--output`, `--filters-only`). Boundary stack tracking + last-N-hands slicing in. |
+| Phase 1 — exit | — | — | Awaiting rebuy detection + reproducibility check. |
 | Phase 2 | — | — | |
 | Phase 3 | — | — | |
 | Phase 4 | — | — | |

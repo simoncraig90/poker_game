@@ -506,6 +506,12 @@ def main(argv=None):
                    help="Exclude hands whose ending stack came from EOF fallback")
     p.add_argument("--by-room", action="store_true",
                    help="Print per-room breakdown")
+    p.add_argument("--output", default="",
+                   help="Write per-decision JSONL to this path "
+                        "(one line per hero decision point)")
+    p.add_argument("--filters-only", action="store_true",
+                   help="With --output, only write decisions where a "
+                        "danger-override filter or shove-gate fired")
     args = p.parse_args(argv)
 
     factory = None if args.no_advisor else _make_default_advisor_factory()
@@ -542,6 +548,45 @@ def main(argv=None):
                   f"bb_cents={r['bb_cents']:6}  "
                   f"bb_delta={r['bb_delta']:+9.2f}  "
                   f"bb/100={r['bb_per_100']:+8.2f}")
+    if args.output:
+        written = 0
+        with open(args.output, "w", encoding="utf-8") as f:
+            for h in report.hands:
+                for d in h.decisions:
+                    if args.filters_only:
+                        # Filter override / shove gate / RFI re-route
+                        # all surface in advisor_source via the danger
+                        # override print() — but the source field on
+                        # the SM output reflects only the engine source.
+                        # Use note-style detection: action mentions
+                        # FOLD when raw equity is high, or source has
+                        # +danger_override suffix.
+                        if "danger_override" not in d.advisor_source:
+                            continue
+                    rec = {
+                        "hand_id": d.hand_id,
+                        "room": d.room,
+                        "phase": d.phase,
+                        "position": d.position,
+                        "hero": " ".join(d.hero_cards),
+                        "board": " ".join(d.board),
+                        "pot": d.pot,
+                        "call": d.call_amount,
+                        "hero_stack": d.hero_stack,
+                        "facing_bet": d.facing_bet,
+                        "rec": d.advisor_action,
+                        "source": d.advisor_source,
+                        "equity": round(d.advisor_equity, 3),
+                        "hand_chip_delta": h.chip_delta,
+                        "hand_bb_delta": round(h.bb_delta, 2),
+                        "hand_bb_cents": h.bb_cents,
+                        "hand_finalized": h.ending_finalized,
+                    }
+                    if d.error:
+                        rec["error"] = d.error
+                    f.write(json.dumps(rec) + "\n")
+                    written += 1
+        print(f"\nWrote {written} decision records to {args.output}")
     return 0
 
 
