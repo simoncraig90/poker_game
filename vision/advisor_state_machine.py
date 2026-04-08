@@ -572,6 +572,27 @@ class AdvisorStateMachine:
         produces no discount (just BET, not RAISE), but a flop bet
         followed by a turn check-raise produces ~0.64 (= 0.75 × 0.85)
         — significant but not catastrophic.
+
+        IMPORTANT 2026-04-08 finding: A/B comparison against tonight's
+        CoinPoker dataset (3026 snapshots, 102 hero-turn decisions)
+        showed this v0 produces ZERO action-category divergences vs
+        the same code with the discount disabled. The multiplier fires
+        on 16% of hero turns but doesn't push any decision across a
+        threshold because:
+          (a) The existing bet-ratio discount in `_process_postflop`
+              already moves equity in the same direction.
+          (b) The danger filters already catch the catastrophic
+              river-raise spots before they reach the postflop engine.
+          (c) Most postflop hero turns are either folds-anyway or
+              strong-hand calls that don't approach the boundary.
+
+        The v0 is plumbed correctly and provides defense-in-depth that
+        WILL activate on future hands with multi-raise patterns the
+        danger filters don't cover. But on tonight's data it's a no-op
+        in terms of recommended actions. The proper fix (range-vs-range
+        equity computation, kanban P0) is still required for spots
+        that are common but not catastrophic — top-pair calldowns,
+        marginal-made-hand calls, etc.
         """
         if not self.action_history:
             return 1.0
