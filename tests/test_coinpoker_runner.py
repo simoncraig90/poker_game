@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'vision'))
 
 from coinpoker_runner import (
     CoinPokerSession,
+    MultiTableCoinPokerSession,
     OverlayClient,
     follow_iter,
     make_console_printer,
@@ -821,6 +822,211 @@ class TestEndToEndAdvisorReplay(unittest.TestCase):
         # street, since the fixture reaches the FLOP.
         phases = {a[1] for a in actions}
         self.assertIn("PREFLOP", phases)
+
+
+class TestMultiTableCoinPokerSession(unittest.TestCase):
+    """
+    Tests for MultiTableCoinPokerSession — the per-room dispatcher that
+    enables 4+ simultaneous tables for the £10/hr grind plan.
+
+    Each test uses synthetic frames with explicit room_name fields. We
+    don't load any real CoinPoker data here — that's covered by the
+    existing single-table fixture tests + the live replay smoke tests.
+    """
+
+    HERO = 1571120
+
+    def _wrap(self, room: str, hand_id: str, cmd: str, bean: dict) -> dict:
+        return {
+            "cmd_bean": {
+                "Cmd": cmd,
+                "BeanData": json.dumps(bean),
+                "RoomName": room,
+            },
+            "room_name": room,
+        }
+
+    def _seed_hand(self, sess, room, hand_id, hero_seat=2):
+        """Push enough frames into a session that the room's builder
+        produces a snapshot with hero seated."""
+        sess.feed_frame(self._wrap(room, hand_id, "game.pre_hand_start_info", {
+            "gameHandId": hand_id, "dealerSeatId": 1,
+            "bbAmount": 100.0, "sbAmount": 50.0, "anteAmount": 0.0,
+        }))
+        sess.feed_frame(self._wrap(room, hand_id, "game.seatInfo", {
+            "gameHandId": hand_id,
+            "seatResponseDataList": [
+                {"seatId": s, "userId": (self.HERO if s == hero_seat else 100 + s),
+                 "userName": ("hero" if s == hero_seat else f"v{s}"),
+                 "userChips": 10000.0, "betAmout": 0.0, "isPlaying": True}
+                for s in range(1, 4)
+            ],
+        }))
+        sess.feed_frame(self._wrap(room, hand_id, "game.hole_cards", {
+            "holeCards": [{"suit": "CLUBS", "value": "ACE"},
+                          {"suit": "HEARTS", "value": "KING"}],
+        }))
+
+    def test_empty_session_state(self):
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=lambda s: None)
+        self.assertEqual(len(sess), 0)
+        self.assertEqual(sess.builders, {})
+        self.assertIsNone(sess.builder)
+        # Default bb falls back to practice-table value
+        self.assertEqual(sess.bb_cents(), 100 * 100)
+
+    def test_dispatches_per_room(self):
+        seen = []
+        sess = MultiTableCoinPokerSession(
+            hero_user_id=self.HERO,
+            on_snapshot=lambda s: seen.append((s.get("room_name"), s.get("hand_id"))),
+        )
+        self._seed_hand(sess, "room_A", "H1")
+        self._seed_hand(sess, "room_B", "H2")
+        # Both rooms should have generated snapshots, with different room_names
+        rooms = set(r for r, _ in seen)
+        self.assertEqual(rooms, {"room_A", "room_B"})
+        # Both rooms have their own builder
+        self.assertEqual(len(sess), 2)
+        self.assertIn("room_A", sess.builders)
+        self.assertIn("room_B", sess.builders)
+
+    def test_state_isolated_between_rooms(self):
+        """Critical: a hand_id in room_A must not contaminate room_B's
+        state. This was the whole reason for the multi-table refactor."""
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=lambda s: None)
+        self._seed_hand(sess, "room_A", "H1")
+        self._seed_hand(sess, "room_B", "H2")
+        # Each room's builder should hold its own hand_id
+        self.assertEqual(sess.get_builder("room_A").hand_id, "H1")
+        self.assertEqual(sess.get_builder("room_B").hand_id, "H2")
+        # And they shouldn't have leaked across
+        self.assertNotEqual(sess.get_builder("room_A").hand_id,
+                            sess.get_builder("room_B").hand_id)
+
+    def test_snapshot_carries_room_name(self):
+        """Every dispatched snapshot must have room_name populated so
+        the callback can route per-room state."""
+        snapshots = []
+        sess = MultiTableCoinPokerSession(
+            hero_user_id=self.HERO,
+            on_snapshot=lambda s: snapshots.append(s),
+        )
+        self._seed_hand(sess, "PR-NL 50-100 (A) 246361", "H1")
+        # All snapshots from this seed should have the room name
+        for snap in snapshots:
+            self.assertEqual(snap.get("room_name"), "PR-NL 50-100 (A) 246361")
+
+    def test_dedup_per_room(self):
+        """Re-feeding the same frame for the same room shouldn't
+        re-dispatch (signature-based dedup)."""
+        count = [0]
+        sess = MultiTableCoinPokerSession(
+            hero_user_id=self.HERO,
+            on_snapshot=lambda s: count.__setitem__(0, count[0] + 1),
+        )
+        # Seed twice — second seed should produce zero new dispatches
+        self._seed_hand(sess, "room_A", "H1")
+        first_count = count[0]
+        # Re-feed the EXACT same hole_cards frame
+        sess.feed_frame(self._wrap("room_A", "H1", "game.hole_cards", {
+            "holeCards": [{"suit": "CLUBS", "value": "ACE"},
+                          {"suit": "HEARTS", "value": "KING"}],
+        }))
+        # No new snapshot — state didn't change
+        self.assertEqual(count[0], first_count)
+
+    def test_dedup_independent_between_rooms(self):
+        """The dedup signature is per-room — a duplicate state in
+        room_A shouldn't suppress a real change in room_B."""
+        seen = []
+        sess = MultiTableCoinPokerSession(
+            hero_user_id=self.HERO,
+            on_snapshot=lambda s: seen.append((s.get("room_name"), s.get("hand_id"))),
+        )
+        self._seed_hand(sess, "room_A", "H1")
+        # Re-seed room_A with same hand → no new dispatches in room_A
+        before = len(seen)
+        self._seed_hand(sess, "room_A", "H1")
+        # But room_B should still get its own snapshots
+        self._seed_hand(sess, "room_B", "H2")
+        after = len(seen)
+        # Verify room_B's snapshots came through
+        self.assertTrue(any(r == "room_B" for r, _ in seen[before:]))
+
+    def test_bb_cents_per_room(self):
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=lambda s: None)
+        # NL10 table
+        sess.feed_frame(self._wrap("nl10", "H1", "game.pre_hand_start_info", {
+            "gameHandId": "H1", "bbAmount": 100.0, "sbAmount": 50.0,
+            "dealerSeatId": 1,
+        }))
+        # NL50 table
+        sess.feed_frame(self._wrap("nl50", "H2", "game.pre_hand_start_info", {
+            "gameHandId": "H2", "bbAmount": 500.0, "sbAmount": 250.0,
+            "dealerSeatId": 1,
+        }))
+        self.assertEqual(sess.bb_cents("nl10"), 100 * 100)
+        self.assertEqual(sess.bb_cents("nl50"), 500 * 100)
+        # Default (no room arg) returns the most recently active room
+        self.assertEqual(sess.bb_cents(), 500 * 100)
+
+    def test_bb_cents_override(self):
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=lambda s: None,
+                                          bb_chips=200)
+        # Override should win regardless of frame data
+        sess.feed_frame(self._wrap("any_room", "H1", "game.pre_hand_start_info", {
+            "gameHandId": "H1", "bbAmount": 100.0, "sbAmount": 50.0,
+            "dealerSeatId": 1,
+        }))
+        self.assertEqual(sess.bb_cents("any_room"), 200 * 100)
+        self.assertEqual(sess.bb_cents(), 200 * 100)
+
+    def test_frames_missing_room_dropped(self):
+        seen = []
+        sess = MultiTableCoinPokerSession(
+            hero_user_id=self.HERO,
+            on_snapshot=lambda s: seen.append(s),
+        )
+        # Frame with no room_name field — should be dropped silently
+        bad = {"cmd_bean": {"Cmd": "game.pre_hand_start_info",
+                            "BeanData": json.dumps({"gameHandId": "H1"})}}
+        result = sess.feed_frame(bad)
+        self.assertIsNone(result)
+        self.assertEqual(len(sess), 0)
+        self.assertEqual(seen, [])
+
+    def test_callback_exception_does_not_crash_session(self):
+        """A buggy callback in one snapshot shouldn't kill the session
+        — print + continue, same as the single-table version."""
+        def boom(_snap):
+            raise RuntimeError("strategy crash")
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=boom)
+        # Should NOT raise
+        try:
+            self._seed_hand(sess, "room_A", "H1")
+        except RuntimeError:
+            self.fail("MultiTableCoinPokerSession let a callback exception escape")
+
+    def test_builder_property_returns_most_recent(self):
+        """Backwards-compat shim: .builder returns the most recently
+        active room's builder so single-table callers work transparently."""
+        sess = MultiTableCoinPokerSession(hero_user_id=self.HERO,
+                                          on_snapshot=lambda s: None)
+        self._seed_hand(sess, "room_A", "H1")
+        a_builder = sess.builder
+        self.assertIsNotNone(a_builder)
+        self.assertEqual(a_builder.hand_id, "H1")
+        self._seed_hand(sess, "room_B", "H2")
+        b_builder = sess.builder
+        self.assertEqual(b_builder.hand_id, "H2")  # most recent
+        # And it's a different object than room_A's builder
+        self.assertIsNot(a_builder, b_builder)
 
 
 if __name__ == "__main__":

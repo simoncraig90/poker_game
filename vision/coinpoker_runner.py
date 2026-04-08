@@ -125,6 +125,11 @@ class CoinPokerSession:
         self.snapshots_dispatched = 0
 
     @property
+    def hero_user_id(self) -> int:
+        """Convenience accessor mirroring MultiTableCoinPokerSession's API."""
+        return self.builder.hero_user_id
+
+    @property
     def bb_cents(self) -> int:
         """
         Big blind in scaled chip units, suitable for AdvisorStateMachine's
@@ -136,6 +141,14 @@ class CoinPokerSession:
         if self.builder.bb_amount > 0:
             return self.builder.bb_amount
         return 100 * CHIP_SCALE  # safe default for the practice table
+
+    def bb_cents_for_room(self, room_name: Optional[str] = None) -> int:
+        """
+        Cross-class API: callers that want to support both single- and
+        multi-table sessions should use this method instead of the
+        no-arg ``bb_cents`` property. Single-table ignores the room arg.
+        """
+        return self.bb_cents
 
     def feed_line(self, line: str) -> Optional[dict]:
         """
@@ -185,6 +198,157 @@ class CoinPokerSession:
     def run(self, lines: Iterable[str]) -> None:
         for line in lines:
             self.feed_line(line)
+
+
+# ── multi-table session ───────────────────────────────────────────────────────
+
+class MultiTableCoinPokerSession:
+    """
+    Multi-table version of CoinPokerSession. Maintains a separate
+    CoinPokerStateBuilder per `room_name` so 4+ tables can be played
+    simultaneously without state cross-contamination.
+
+    Why this exists: the user's £10/hour grind plan needs 4+ simultaneous
+    tables to be viable on a 2hr/day budget at micro stakes. The single-
+    table CoinPokerSession can only handle one room at a time — if frames
+    from different tables interleave (which they DO in the live frame
+    log), the single builder gets confused about which hand is current.
+
+    The multi-table session:
+      - Spawns one CoinPokerStateBuilder per room_name on demand
+      - Routes each frame to the right builder by `frame['room_name']`
+      - Injects `room_name` into every dispatched snapshot so the
+        callback can keep per-room state (caches, SMs, overlays)
+      - Coalesces no-op frames per-room (separate signature dict per room)
+      - Tracks `bb_cents` per-room — the active table's BB drives the
+        SM's threshold for that room
+
+    The on_snapshot callback signature is unchanged: it receives a single
+    snapshot dict, but with `snapshot['room_name']` populated. The callback
+    is responsible for keying its own per-room state by that field.
+    """
+
+    _CHANGE_KEYS = CoinPokerSession._CHANGE_KEYS
+
+    def __init__(self, hero_user_id: int,
+                 on_snapshot: Callable[[dict], Any],
+                 bb_chips: Optional[int] = None):
+        self.hero_user_id = int(hero_user_id)
+        self.on_snapshot = on_snapshot
+        self._override_bb = bb_chips
+        self._builders: dict[str, CoinPokerStateBuilder] = {}
+        self._last_signatures: dict[str, tuple] = {}
+        self.frames_seen = 0
+        self.snapshots_dispatched = 0
+        # Track room order so we can return a deterministic "active" room
+        # for bb_cents queries when no specific room is requested.
+        self._most_recent_room: Optional[str] = None
+
+    @property
+    def builders(self) -> dict[str, CoinPokerStateBuilder]:
+        """Read-only access to the per-room builder map."""
+        return dict(self._builders)
+
+    @property
+    def builder(self) -> Optional[CoinPokerStateBuilder]:
+        """
+        Backwards-compat shim: returns the most recently active room's
+        builder, or None if no rooms seen yet. Single-table callers can
+        use this just like CoinPokerSession.builder.
+        """
+        if self._most_recent_room and self._most_recent_room in self._builders:
+            return self._builders[self._most_recent_room]
+        if self._builders:
+            return next(iter(self._builders.values()))
+        return None
+
+    def get_builder(self, room_name: str) -> Optional[CoinPokerStateBuilder]:
+        """Lookup the builder for a specific room. Returns None if absent."""
+        return self._builders.get(room_name)
+
+    def bb_cents(self, room_name: Optional[str] = None) -> int:
+        """
+        Big blind in scaled chip units for a specific room. If room_name
+        is None, returns the BB for the most recently active room
+        (fallback for callers that aren't yet room-aware).
+        Falls back to the practice-table default (100 chips × CHIP_SCALE)
+        if we haven't seen any hand yet.
+        """
+        if self._override_bb is not None:
+            return self._override_bb * CHIP_SCALE
+        target_room = room_name or self._most_recent_room
+        if target_room and target_room in self._builders:
+            b = self._builders[target_room]
+            if b.bb_amount > 0:
+                return b.bb_amount
+        return 100 * CHIP_SCALE
+
+    def bb_cents_for_room(self, room_name: Optional[str] = None) -> int:
+        """
+        Cross-class API mirroring CoinPokerSession.bb_cents_for_room.
+        Uses room_name if provided, else falls back to the most recent
+        room. Both session classes implement this method so the runner
+        can call it transparently regardless of which session type
+        is active.
+        """
+        return self.bb_cents(room_name)
+
+    def feed_line(self, line: str) -> Optional[dict]:
+        if not line:
+            return None
+        try:
+            frame = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        return self.feed_frame(frame)
+
+    def feed_frame(self, frame: dict) -> Optional[dict]:
+        """
+        Route a frame to its room's builder. Frames missing room_name
+        are silently dropped — the patched DLL always populates this
+        field, so a missing one means corrupt input.
+        """
+        self.frames_seen += 1
+        room = frame.get("room_name") or ""
+        if not room:
+            return None
+        builder = self._builders.get(room)
+        if builder is None:
+            builder = CoinPokerStateBuilder(self.hero_user_id)
+            self._builders[room] = builder
+        builder.ingest(frame)
+        # Track most-recent room on EVERY frame, not just on dispatch.
+        # bb_cents() and other room-aware queries need to know which
+        # table is "current" even before snapshots start firing
+        # (snapshot() returns None until hero seat is known, which can
+        # take many frames at hand start).
+        self._most_recent_room = room
+        snap = builder.snapshot()
+        if snap is None:
+            return None
+        # Inject room metadata so callbacks can key their per-room state
+        snap = dict(snap)
+        snap["room_name"] = room
+        sig = tuple(CoinPokerSession._sig_value(snap[k]) for k in self._CHANGE_KEYS)
+        if sig == self._last_signatures.get(room):
+            return None
+        self._last_signatures[room] = sig
+        self.snapshots_dispatched += 1
+        try:
+            self.on_snapshot(snap)
+        except Exception as e:
+            import traceback
+            print(f"[on_snapshot ERROR] room={room} {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            traceback.print_exc()
+        return snap
+
+    def run(self, lines: Iterable[str]) -> None:
+        for line in lines:
+            self.feed_line(line)
+
+    def __len__(self) -> int:
+        return len(self._builders)
 
 
 # ── overlay client ────────────────────────────────────────────────────────────
@@ -595,8 +759,8 @@ def make_advisor_callback(session: CoinPokerSession,
         inner_tracker = OpponentTracker(db=db)
         tracker = _CoinPokerTrackerAdapter(
             inner_tracker,
-            hero_user_id=session.builder.hero_user_id,
-            bb_cents_provider=lambda: session.bb_cents,
+            hero_user_id=session.hero_user_id,
+            bb_cents_provider=lambda: session.bb_cents_for_room(),
             hud_loader=hud_loader,
         )
         print(f"[runner]   OpponentTracker loaded "
@@ -605,15 +769,37 @@ def make_advisor_callback(session: CoinPokerSession,
         print(f"[runner]   OpponentTracker SKIPPED: {type(e).__name__}: {e}")
         tracker = None
 
-    sm = AdvisorStateMachine(
-        base_advisor=base,
-        preflop_advice_fn=preflop_advice,
-        postflop_engine=postflop,
-        assess_board_danger_fn=assess_board_danger,
-        tracker=tracker,
-        bb_cents=session.bb_cents,
-    )
-    print(f"[runner]   AdvisorStateMachine ready (bb_cents={session.bb_cents})")
+    # Per-room state machines + caches. For single-table mode, only the
+    # empty-string key "" is ever used. For multi-table mode, each
+    # room_name gets its own SM with isolated action history etc.
+    # The base Advisor and PostflopEngine are SHARED across SMs (heavy
+    # to load, immutable in operation), so per-room SMs are cheap.
+    sms: dict[str, "AdvisorStateMachine"] = {}
+    caches: dict[str, dict] = {}
+
+    def get_sm_for_room(room: str) -> "AdvisorStateMachine":
+        if room in sms:
+            return sms[room]
+        new_sm = AdvisorStateMachine(
+            base_advisor=base,
+            preflop_advice_fn=preflop_advice,
+            postflop_engine=postflop,
+            assess_board_danger_fn=assess_board_danger,
+            tracker=tracker,
+            bb_cents=session.bb_cents_for_room(room or None),
+        )
+        sms[room] = new_sm
+        if room:
+            print(f"[runner]   AdvisorStateMachine ready for room={room!r} "
+                  f"(bb_cents={new_sm.bb_cents})")
+        else:
+            print(f"[runner]   AdvisorStateMachine ready (bb_cents={new_sm.bb_cents})")
+        return new_sm
+
+    # Eagerly create the single-table SM so the existing log line still
+    # appears even if no snapshot has fired yet (matches the old runner
+    # output for tests / smoke checks).
+    get_sm_for_room("")
 
     # Register flush on shutdown so any in-session VPIP/PFR updates land
     # in HandDB. Safe even if tracker is None.
@@ -621,20 +807,23 @@ def make_advisor_callback(session: CoinPokerSession,
         import atexit
         atexit.register(tracker.flush)
 
-    # Sticky cache: the most recent advisor recommendation for the
-    # current hand. We only call the advisor when it's hero's turn,
-    # because between hero's action and the next user_turn the snapshot
-    # has stale facing/call values from the perspective of "what should
-    # hero do" — hero just acted, not deciding right now. Caching the
-    # last actionable rec lets the overlay keep displaying it until the
-    # next decision point.
-    cache: dict = {"hand": None, "out": None}
-
     def on_snapshot(snap: dict) -> None:
+        # Multi-table dispatch: each room has its own SM + cache so
+        # action history and last-rec state don't cross-contaminate.
+        # In single-table mode, room is "" and behavior is identical
+        # to the pre-refactor flow.
+        room = snap.get("room_name", "") or ""
+        sm = get_sm_for_room(room)
+        if room not in caches:
+            caches[room] = {"hand": None, "out": None}
+        cache = caches[room]
+
         # Refresh bb_cents in case the table BB changed (e.g. user
-        # switched practice → real money mid-session).
-        if sm.bb_cents != session.bb_cents:
-            sm.bb_cents = session.bb_cents
+        # switched practice → real money mid-session, or because we
+        # only just learned the BB for this room).
+        room_bb = session.bb_cents_for_room(room or None)
+        if sm.bb_cents != room_bb:
+            sm.bb_cents = room_bb
 
         # Feed the opponent tracker on every snapshot — VPIP/PFR/AF
         # accumulate from preflop bet patterns, so we need to see the
@@ -754,6 +943,12 @@ def main(argv=None) -> int:
     p.add_argument("--no-overlay", action="store_true",
                    help="Don't spawn the Tk overlay (default: spawn in --follow, "
                         "skip in --replay/--print-only)")
+    p.add_argument("--multi-table", action="store_true",
+                   help="Multi-table mode: maintain separate state per "
+                        "room_name. Use this when playing 2+ tables "
+                        "simultaneously. Each table gets its own SM, "
+                        "action history, and rec cache. Single-table is "
+                        "the default for backwards compat.")
     args = p.parse_args(argv)
 
     if not args.follow and not args.replay:
@@ -770,12 +965,18 @@ def main(argv=None) -> int:
         overlay = OverlayClient.spawn()
 
     # Build session with a placeholder that's swapped after we know bb_cents.
+    # MultiTableCoinPokerSession is structurally interchangeable with
+    # CoinPokerSession (same API surface) so make_advisor_callback works
+    # against either without modification.
     callback_holder: list = [None]
-    session = CoinPokerSession(
+    session_cls = MultiTableCoinPokerSession if args.multi_table else CoinPokerSession
+    session = session_cls(
         hero_user_id=args.hero_id,
         on_snapshot=lambda snap: callback_holder[0](snap) if callback_holder[0] else None,
         bb_chips=args.bb_chips,
     )
+    if args.multi_table:
+        print("[runner] MULTI-TABLE mode enabled — per-room state isolation")
 
     if args.print_only:
         callback_holder[0] = make_console_printer()
