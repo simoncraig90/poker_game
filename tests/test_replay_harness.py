@@ -87,7 +87,10 @@ def _snap(hand_id, room="r1", phase="PREFLOP", hero_stack=1000,
 # ── basic recording ───────────────────────────────────────────────────
 
 def test_no_advisor_records_hands_and_decisions():
-    """Without an advisor, the harness still records every decision point."""
+    """
+    Without an advisor, the harness still records every decision point.
+    Single hand at EOF — ending_stack falls back to last-seen.
+    """
     snaps = [
         _snap("h1", hero_stack=1000),
         _snap("h1", hero_turn=True, hero_stack=1000),
@@ -96,11 +99,16 @@ def test_no_advisor_records_hands_and_decisions():
     report = _harness_with_snapshots(snaps)
     assert report.total_hands == 1
     assert report.total_decisions == 1
+    # Last hand of the corpus → ending uses last-seen-stack fallback (950)
     assert report.hands[0].chip_delta == -50
+    assert report.hands[0].ending_finalized is False
 
 
-def test_chip_delta_uses_starting_and_ending_stack():
-    """starting_stack from first snap, ending_stack from last."""
+def test_chip_delta_eof_fallback():
+    """
+    Single-hand corpus: ending_stack uses last-seen-stack fallback
+    (not finalized via boundary).
+    """
     snaps = [
         _snap("h1", hero_stack=2000),
         _snap("h1", hero_stack=1900),
@@ -111,26 +119,39 @@ def test_chip_delta_uses_starting_and_ending_stack():
     assert report.hands[0].starting_stack == 2000
     assert report.hands[0].ending_stack == 1750
     assert report.hands[0].chip_delta == -250
+    assert report.hands[0].ending_finalized is False
 
 
 def test_hand_transitions_create_separate_records():
-    """A new hand_id finalizes the previous hand and starts a fresh one."""
+    """
+    A new hand_id finalizes the previous hand using the new hand's
+    first-snapshot stack as the boundary value.
+
+    h1 starts at 1000. h2 starts at 900 → h1.ending_stack=900,
+    h1.chip_delta = -100. h1 IS finalized via boundary.
+    h2 starts at 900, last-seen 1100 (EOF fallback) → chip_delta = +200.
+    """
     snaps = [
         _snap("h1", hero_stack=1000),
-        _snap("h1", hero_stack=900),
-        _snap("h2", hero_stack=900),
-        _snap("h2", hero_stack=1100),
+        _snap("h1", hero_stack=950),   # within-hand snapshot, ignored for stack
+        _snap("h2", hero_stack=900),   # boundary: h1 ends at 900
+        _snap("h2", hero_stack=1100),  # within-hand h2; EOF fallback uses 1100
     ]
     report = _harness_with_snapshots(snaps)
     assert report.total_hands == 2
     assert report.hands[0].hand_id == "h1"
     assert report.hands[0].chip_delta == -100
+    assert report.hands[0].ending_finalized is True
     assert report.hands[1].hand_id == "h2"
     assert report.hands[1].chip_delta == 200
+    assert report.hands[1].ending_finalized is False  # EOF fallback
 
 
 def test_multi_room_isolation():
-    """Two interleaved rooms produce two independent hand records."""
+    """
+    Two interleaved rooms produce two independent hand records.
+    Both are EOF-fallback (no successor hand at either room).
+    """
     snaps = [
         _snap("h1", room="r1", hero_stack=1000),
         _snap("h2", room="r2", hero_stack=2000),
@@ -140,8 +161,8 @@ def test_multi_room_isolation():
     report = _harness_with_snapshots(snaps)
     assert report.total_hands == 2
     by_room = {h.room: h for h in report.hands}
-    assert by_room["r1"].chip_delta == -50
-    assert by_room["r2"].chip_delta == 200
+    assert by_room["r1"].chip_delta == -50  # 1000 → 950 fallback
+    assert by_room["r2"].chip_delta == 200  # 2000 → 2200 fallback
 
 
 def test_decisions_only_recorded_when_hero_turn_and_has_cards():
@@ -208,6 +229,52 @@ def test_advisor_error_does_not_crash_harness():
 
 
 # ── aggregates ───────────────────────────────────────────────────────
+
+def test_boundary_finalization_excludes_within_hand_volatility():
+    """
+    Within-hand stack values do NOT affect chip_delta. Only the
+    next-hand boundary does. Wild within-hand swings should be ignored.
+    """
+    snaps = [
+        _snap("h1", hero_stack=1000),
+        _snap("h1", hero_stack=200),    # mid-hand bet committed
+        _snap("h1", hero_stack=1500),   # mid-hand pot scoop
+        _snap("h2", hero_stack=1100),   # boundary: h1 ends at 1100
+        _snap("h2", hero_stack=1100),
+    ]
+    report = _harness_with_snapshots(snaps)
+    h1 = next(h for h in report.hands if h.hand_id == "h1")
+    assert h1.starting_stack == 1000
+    assert h1.ending_stack == 1100  # NOT 1500 — uses boundary, not in-hand max
+    assert h1.chip_delta == 100
+    assert h1.ending_finalized is True
+
+
+def test_finalized_only_filter():
+    """finalized_only() drops EOF-fallback hands."""
+    snaps = [
+        _snap("h1", hero_stack=1000),
+        _snap("h2", hero_stack=950),  # boundary: h1 ends at 950
+        _snap("h2", hero_stack=900),  # h2 EOF fallback to 900
+    ]
+    report = _harness_with_snapshots(snaps)
+    assert report.total_hands == 2
+    finalized = report.finalized_only()
+    assert finalized.total_hands == 1
+    assert finalized.hands[0].hand_id == "h1"
+
+
+def test_last_n_hands_slice():
+    """last_n_hands(N) returns the most recent N hands."""
+    snaps = []
+    for i in range(5):
+        snaps.append(_snap(f"h{i}", hero_stack=1000 + i * 10))
+    report = _harness_with_snapshots(snaps)
+    assert report.total_hands == 5
+    last3 = report.last_n_hands(3)
+    assert last3.total_hands == 3
+    assert [h.hand_id for h in last3.hands] == ["h2", "h3", "h4"]
+
 
 def test_bb_per_100_aggregate():
     """BB/100 = (sum of bb deltas / num hands) * 100."""

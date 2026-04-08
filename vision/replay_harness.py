@@ -79,13 +79,43 @@ class Decision:
 
 @dataclass
 class HandRecord:
-    """One completed hand with all hero decision points captured."""
+    """One completed hand with all hero decision points captured.
+
+    Stack accounting model
+    ----------------------
+
+    A hand's chip_delta is computed from two boundary snapshots:
+
+      - ``starting_stack``: hero_stack from the FIRST snapshot of this
+        hand. Represents "stack going into this hand", with whatever
+        blinds may already have been posted included.
+
+      - ``ending_stack``: hero_stack from the FIRST snapshot of the
+        NEXT hand at the same room. Represents "stack going into the
+        next hand", which is the same vantage point as starting_stack
+        — both points are taken from "the first snapshot of a hand."
+        Using a fixed vantage point eliminates the within-hand
+        ambiguity (mid-hand snapshots can show partial bets, partial
+        payouts, etc).
+
+    For the very last hand of the corpus, there is no successor hand
+    to take the ending_stack from. We fall back to the last seen
+    snapshot's hero_stack — which is approximate but the best
+    available data.
+
+    A flag ``ending_finalized`` indicates whether ending_stack was
+    set from a real next-hand boundary (True) or from the
+    last-snapshot fallback (False). The harness's BB/100 calculation
+    can optionally exclude un-finalized hands to keep aggregates
+    clean.
+    """
     hand_id: str
     room: str
     starting_stack: int
     ending_stack: int
     bb_cents: int            # the BB scale for this room (chips per BB)
     decisions: list[Decision] = field(default_factory=list)
+    ending_finalized: bool = False
 
     @property
     def chip_delta(self) -> int:
@@ -177,6 +207,41 @@ class ReplayReport:
         new.hands = [h for h in self.hands if 0 < h.bb_cents <= 1000]
         return new
 
+    def last_n_hands(self, n: int) -> "ReplayReport":
+        """
+        Return a new report containing only the most recent N hands
+        across all rooms (preserves frame order). Used to scope to a
+        single session — pass approximately the number of hands the
+        session played.
+        """
+        if n <= 0 or n >= len(self.hands):
+            new = ReplayReport()
+            new.runtime_seconds = self.runtime_seconds
+            new.frames_processed = self.frames_processed
+            new.sm_errors = self.sm_errors
+            new.hands = list(self.hands)
+            return new
+        new = ReplayReport()
+        new.runtime_seconds = self.runtime_seconds
+        new.frames_processed = self.frames_processed
+        new.sm_errors = self.sm_errors
+        new.hands = list(self.hands)[-n:]
+        return new
+
+    def finalized_only(self) -> "ReplayReport":
+        """
+        Return a new report containing only hands whose ending_stack
+        was set from a real next-hand boundary. Excludes the last
+        hand of the corpus (whose ending stack is the
+        last-snapshot fallback) and any hands cut by mid-stream EOF.
+        """
+        new = ReplayReport()
+        new.runtime_seconds = self.runtime_seconds
+        new.frames_processed = self.frames_processed
+        new.sm_errors = self.sm_errors
+        new.hands = [h for h in self.hands if h.ending_finalized]
+        return new
+
 
 # ── harness ───────────────────────────────────────────────────────────
 
@@ -240,6 +305,7 @@ class ReplayHarness:
     def _reset(self):
         self._advisors = {}
         self._hand_state = {}
+        self._last_seen_stack: dict[str, int] = {}
         self._report = ReplayReport()
         self._session = MultiTableCoinPokerSession(
             hero_user_id=self.hero_user_id,
@@ -265,27 +331,36 @@ class ReplayHarness:
             return
 
         # Hand transition: finalize previous hand for this room, start new.
-        # Note: bb_cents is intentionally NOT captured here — at the
-        # first snapshot of a hand the room's builder has barely
-        # processed any frames and bb_amount may still be the default.
-        # We finalize bb_cents in `_finalize` once the hand is complete
-        # and the builder has had time to learn the real BB.
+        # The new hand's starting hero_stack is also the previous hand's
+        # *ending* hero_stack — both are captured from "first snapshot of
+        # a hand" so the boundary is symmetric and within-hand ambiguity
+        # (partial bets, payouts not yet settled) doesn't pollute the delta.
         prev = self._hand_state.get(room)
+        starting_stack = int(snap.get("hero_stack", 0) or 0)
         if prev is None or prev.hand_id != hand_id:
             if prev is not None:
+                # Finalize previous hand using THIS snapshot's stack as
+                # the ending — that's "stack between hands" measured at
+                # the start of the next hand.
+                prev.ending_stack = starting_stack
+                prev.ending_finalized = True
                 self._finalize(room)
             self._hand_state[room] = HandRecord(
                 hand_id=str(hand_id),
                 room=room,
-                starting_stack=int(snap.get("hero_stack", 0) or 0),
-                ending_stack=int(snap.get("hero_stack", 0) or 0),
+                starting_stack=starting_stack,
+                ending_stack=starting_stack,
                 bb_cents=0,  # filled in at finalize
+                ending_finalized=False,
             )
 
         hr = self._hand_state[room]
+        # Track the most recent within-hand stack as a fallback ending
+        # value, used only if this hand is the LAST one in the corpus
+        # (no successor hand to provide the proper boundary).
         hero_stack = snap.get("hero_stack")
         if hero_stack is not None:
-            hr.ending_stack = int(hero_stack)
+            self._last_seen_stack[room] = int(hero_stack)
 
         # Decision point: hero_turn AND hero has cards
         if not snap.get("hero_turn"):
@@ -367,6 +442,14 @@ class ReplayHarness:
         except Exception:
             bb = 100 * CHIP_SCALE
         hr.bb_cents = int(bb) if bb > 0 else 100 * CHIP_SCALE
+        # If ending_stack hasn't been finalized by a next-hand boundary
+        # (this is the last hand of the corpus, or the corpus was cut
+        # mid-stream), fall back to the last seen within-hand stack.
+        # Approximate but the best we can do.
+        if not hr.ending_finalized:
+            fallback = self._last_seen_stack.get(room)
+            if fallback is not None:
+                hr.ending_stack = fallback
         self._report.hands.append(hr)
         self._hand_state[room] = None
 
@@ -417,6 +500,10 @@ def main(argv=None):
                    help="Stop after processing N frames (0 = all)")
     p.add_argument("--real-money-only", action="store_true",
                    help="Filter out practice-table hands (bb_cents > 1000)")
+    p.add_argument("--last-hands", type=int, default=0,
+                   help="Slice to most recent N hands (session scoping)")
+    p.add_argument("--finalized-only", action="store_true",
+                   help="Exclude hands whose ending stack came from EOF fallback")
     p.add_argument("--by-room", action="store_true",
                    help="Print per-room breakdown")
     args = p.parse_args(argv)
@@ -437,9 +524,15 @@ def main(argv=None):
         report = harness.run_path(args.file)
 
     print(report.summary())
+    if args.finalized_only:
+        report = report.finalized_only()
+        print("FINALIZED ONLY:  " + report.summary())
     if args.real_money_only:
-        rm = report.filter_real_money()
-        print("REAL-MONEY ONLY: " + rm.summary())
+        report = report.filter_real_money()
+        print("REAL-MONEY ONLY: " + report.summary())
+    if args.last_hands > 0:
+        report = report.last_n_hands(args.last_hands)
+        print(f"LAST {args.last_hands} HANDS:  " + report.summary())
     if args.by_room:
         rooms = report.per_room_breakdown()
         print(f"\nPer-room breakdown ({len(rooms)} rooms):")
