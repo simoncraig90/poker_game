@@ -443,10 +443,43 @@ def parse_room_stake(room_name: str) -> str:
     """
     if not room_name:
         return ""
-    m = re.search(r"(\d+)\s*[-/]\s*(\d+)", room_name)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*[-/]\s*(\d+(?:\.\d+)?)", room_name)
     if m:
         return f"{m.group(1)}/{m.group(2)}"
     return room_name[:30]
+
+
+def room_to_table_id(room_name: str, fallback: str = "coinpoker_t1") -> str:
+    """
+    Map a CoinPoker room name to a stable, short table_id suitable for
+    the overlay's per-table panel routing.
+
+    The overlay uses table_id as a dict key to maintain a TablePanel
+    per table. Same room → same table_id → same panel updated in place.
+    Different rooms → different table_ids → separate panels rendered
+    side-by-side.
+
+    Format: "stake#tableNum", e.g. "0.05-0.10#246083" or "50/100#246519".
+    Falls back to a sanitized truncation of the room name if the
+    pattern doesn't match. Falls back to ``fallback`` if room is empty
+    (single-table mode).
+    """
+    if not room_name:
+        return fallback
+    # Stake range
+    m_stake = re.search(r"(\d+(?:\.\d+)?)\s*[-/]\s*(\d+(?:\.\d+)?)", room_name)
+    stake = f"{m_stake.group(1)}-{m_stake.group(2)}" if m_stake else ""
+    # Table number (last numeric chunk in the room name)
+    m_table = re.findall(r"\b(\d{3,})\b", room_name)
+    table_num = m_table[-1] if m_table else ""
+    if stake and table_num:
+        return f"{stake}#{table_num}"
+    if stake:
+        return stake
+    if table_num:
+        return f"t#{table_num}"
+    # Final fallback: sanitize the room name
+    return re.sub(r"[^A-Za-z0-9_-]", "_", room_name)[:30] or fallback
 
 
 def snapshot_to_overlay_msg(snap: dict, advisor_out, table_id: str,
@@ -909,12 +942,20 @@ def make_advisor_callback(session: CoinPokerSession,
 
         # Overlay update — fire on every state change so the HUD reflects
         # current cards/board/phase even when the advisor has no fresh rec.
+        # Per-table routing: each room gets its own table_id, which makes
+        # the overlay render a separate TablePanel per table side-by-side.
+        # Multi-table mode shows N panels; single-table mode shows 1.
         if overlay is not None:
             try:
+                snap_room = snap.get("room_name") or ""
+                table_id_for_panel = (
+                    room_to_table_id(snap_room, fallback=overlay.table_id)
+                    if snap_room else overlay.table_id
+                )
                 msg = snapshot_to_overlay_msg(
                     snap, display_out,
-                    table_id=overlay.table_id,
-                    room_name=room_name,
+                    table_id=table_id_for_panel,
+                    room_name=snap_room or room_name,
                 )
                 overlay.send(msg)
             except Exception as e:

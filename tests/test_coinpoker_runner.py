@@ -26,6 +26,7 @@ from coinpoker_runner import (
     make_console_printer,
     parse_room_stake,
     replay_iter,
+    room_to_table_id,
     snapshot_to_overlay_msg,
 )
 
@@ -822,6 +823,53 @@ class TestEndToEndAdvisorReplay(unittest.TestCase):
         # street, since the fixture reaches the FLOP.
         phases = {a[1] for a in actions}
         self.assertIn("PREFLOP", phases)
+
+
+class TestRoomToTableId(unittest.TestCase):
+    """
+    Tests for room_to_table_id — the function that maps a CoinPoker
+    room name to a stable table_id for the overlay's per-table routing.
+    Different rooms must map to different ids; the same room name must
+    always produce the same id.
+    """
+
+    def test_real_money_nl10(self):
+        # Real-money table from the user's session
+        rid = room_to_table_id("31st NL 0.05-0.10 EV-INRIT-(A) 246083")
+        self.assertEqual(rid, "0.05-0.10#246083")
+
+    def test_practice_table(self):
+        rid = room_to_table_id("PR-NL 50-100 EV-INRIT-ANTE (A) 246519")
+        self.assertEqual(rid, "50-100#246519")
+
+    def test_stable_for_same_room(self):
+        room = "31st NL 0.05-0.10 EV-INRIT-(A) 246083"
+        self.assertEqual(room_to_table_id(room), room_to_table_id(room))
+
+    def test_different_rooms_different_ids(self):
+        a = room_to_table_id("31st NL 0.05-0.10 EV-INRIT-(A) 246083")
+        b = room_to_table_id("31st NL 0.05-0.10 EV-INRIT-(A) 246731")
+        self.assertNotEqual(a, b)
+
+    def test_different_stakes_different_ids(self):
+        a = room_to_table_id("31st NL 0.05-0.10 EV-INRIT-(A) 246083")
+        b = room_to_table_id("31st NL 0.10-0.25 EV-INRIT-(A) 246083")
+        self.assertNotEqual(a, b)
+
+    def test_empty_room_uses_fallback(self):
+        self.assertEqual(room_to_table_id(""), "coinpoker_t1")
+        self.assertEqual(room_to_table_id("", fallback="custom"), "custom")
+
+    def test_no_stake_pattern(self):
+        # Room name without recognizable stake — falls back to table#
+        rid = room_to_table_id("Table 246083")
+        self.assertEqual(rid, "t#246083")
+
+    def test_no_stake_no_table_num(self):
+        # Truly unparseable — sanitized truncation
+        rid = room_to_table_id("Random Practice Lobby")
+        self.assertTrue(len(rid) <= 30)
+        self.assertTrue(rid)  # not empty
 
 
 class TestMultiTableCoinPokerSession(unittest.TestCase):
