@@ -104,6 +104,47 @@ class TestStrategyRegressions(unittest.TestCase):
         self.assertIn("RAISE", out.action.upper(),
                       f"AQo SB facing open at 4-max should 3-BET, got {out.action!r}")
 
+    def test_2379414698_KK_on_3flush_facing_overbet_should_fold(self):
+        """
+        Hand 2379414698, Unibet NL2 (BB=4 cents).
+
+        Hero in SB with Ks Kd on flop 9h 6h 2h. Hero holds K-of-hearts as
+        a 1-card flush blocker, but the board is monotone hearts and
+        villain has bet ~9x pot. The equity model treats KK vs random as
+        ~70%, but villain's action sequence (huge overbet on a flush-
+        completing board) narrows their range to flushes and sets, where
+        KK has maybe 10-15% equity.
+
+        The OLD recommendation was BET 0.27 (suggesting hero acts first),
+        but on the SECOND snapshot of the same street the hero faces a
+        752-cent call into an 82-cent pot — that's the "facing huge
+        bet" decision point, where the NEW advisor (without the 3-flush
+        filter) recommends CALL 7.52, losing the rest of the stack.
+
+        Discovered 2026-04-08 via Unibet replay test against captured
+        hands. Same equity-vs-action-range leak class as the KK 4-straight
+        case.
+
+        FIXED 2026-04-08 (session 13) by Filter 3 in `_apply_danger_overrides`:
+        overpair on 3-flush board facing >=50% pot bet → FOLD.
+        """
+        state = {
+            "hero_cards":   ["Ks", "Kd"],
+            "board_cards":  ["9h", "6h", "2h"],
+            "hand_id":      "2379414698",
+            "facing_bet":   True,
+            "call_amount":  752,    # ~9x pot bet (in chip cents)
+            "pot":          82,
+            "phase":        "FLOP",
+            "num_opponents": 1,
+            "hero_stack":   752,    # all-in or close
+            "position":     "SB",
+        }
+        out = self.sm.process_state(state)
+        self.assertIsNotNone(out, "advisor returned None for KK 3-flush decision")
+        self.assertIn("FOLD", out.action.upper(),
+                      f"KK on 3-flush board facing 9x pot bet should FOLD, got {out.action!r}")
+
     def test_2460830707_KK_river_facing_raise_on_4straight_should_fold(self):
         """
         Hand 2460830707, NL10, 4-handed.
@@ -183,6 +224,16 @@ class TestDangerHelpers(unittest.TestCase):
 
     def test_no_4card_flush_with_3_diamonds(self):
         self.assertFalse(self.SM._board_has_4card_flush(["5d", "9d", "7d", "Kc"]))
+
+    def test_3card_flush(self):
+        # The KK 3-flush case from hand 2379414698
+        self.assertTrue(self.SM._board_has_3card_flush(["9h", "6h", "2h"]))
+        # 3 hearts + non-heart turn — still 3-flush
+        self.assertTrue(self.SM._board_has_3card_flush(["9h", "6h", "2h", "Qc"]))
+        # Mixed flop, no 3-flush
+        self.assertFalse(self.SM._board_has_3card_flush(["9h", "6c", "2d"]))
+        # Need 3+ board cards to even check
+        self.assertFalse(self.SM._board_has_3card_flush(["9h", "6h"]))
 
     def test_overpair_kk_on_low_board(self):
         # KK on 5-9-7 — overpair

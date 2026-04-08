@@ -513,6 +513,23 @@ class AdvisorStateMachine:
         return any(v >= 4 for v in suits.values())
 
     @classmethod
+    def _board_has_3card_flush(cls, board):
+        """
+        True if 3+ board cards share a suit (a flush is reachable with just
+        2 cards of the right suit in villain's hand). Weaker danger signal
+        than _board_has_4card_flush, so callers should pair with a higher
+        bet-ratio threshold.
+        """
+        if len(board) < 3:
+            return False
+        suits = {}
+        for c in board:
+            s = cls._card_suit(c)
+            if s:
+                suits[s] = suits.get(s, 0) + 1
+        return any(v >= 3 for v in suits.values())
+
+    @classmethod
     def _hero_has_overpair(cls, hero, board):
         """
         True if hero has a pocket pair larger than every board card.
@@ -549,9 +566,6 @@ class AdvisorStateMachine:
         # Don't override an already-folded action
         if not current_action or "FOLD" in current_action.upper():
             return None
-        # Only relevant on turn/river — flops can't have a 4-card straight
-        if phase not in ("TURN", "RIVER"):
-            return None
         # Must be facing aggression with a meaningful sizing
         if not facing or call_amt <= 0 or pot_cents <= 0:
             return None
@@ -564,7 +578,9 @@ class AdvisorStateMachine:
         # facing a non-trivial bet/raise, an overpair has terrible
         # equity vs the action-narrowed range — usually 10-20% rather
         # than the equity model's hand-vs-random estimate.
-        if (self._hero_has_overpair(hero, board)
+        # Only fires on TURN/RIVER — flops can't have a 4-card straight.
+        if (phase in ("TURN", "RIVER")
+                and self._hero_has_overpair(hero, board)
                 and self._board_has_4card_straight(board)
                 and bet_ratio >= 0.20):
             return ("FOLD", f"overpair on 4-straight board facing {bet_ratio:.0%}-pot")
@@ -573,10 +589,34 @@ class AdvisorStateMachine:
         # No specific seed hand yet, but the same equity-vs-action-range
         # gap applies. KK on a 4-flush facing a raise has worse equity
         # than the model thinks. Conservative same-shape filter.
-        if (self._hero_has_overpair(hero, board)
+        # Fires only on TURN/RIVER (a flop can't have 4 of one suit).
+        if (phase in ("TURN", "RIVER")
+                and self._hero_has_overpair(hero, board)
                 and self._board_has_4card_flush(board)
                 and bet_ratio >= 0.20):
             return ("FOLD", f"overpair on 4-flush board facing {bet_ratio:.0%}-pot")
+
+        # ── Filter 3: Overpair on 3-flush board facing LARGE aggression ──
+        # Seed hand 2379414698 (Unibet replay test, 2026-04-08): KK on
+        # 9h 6h 2h flop with hero holding Kh (1 blocker), facing a
+        # 9x-pot bet. Equity model said ~70% (KK vs random); in reality
+        # villain's huge overbet on a flush-completing board narrows
+        # their range to flushes/sets where KK has 10-15%.
+        #
+        # 3-flush is a WEAKER danger signal than 4-flush — flush is only
+        # made if villain has 2 cards of that suit (~5% of random
+        # hands). Threshold compensates by requiring much bigger sizing:
+        #   - flop:        >= 150% pot (clear overbet, screams "I have it")
+        #   - turn/river:  >= 50% pot (more committed action)
+        # Won't fire on normal c-bets at any street.
+        if (self._hero_has_overpair(hero, board)
+                and self._board_has_3card_flush(board)
+                and not self._board_has_4card_flush(board)):  # caught above
+            min_ratio = 1.50 if phase == "FLOP" else 0.50
+            if bet_ratio >= min_ratio:
+                return ("FOLD",
+                        f"overpair on 3-flush board ({phase.lower()}) "
+                        f"facing {bet_ratio:.0%}-pot")
 
         return None
 
