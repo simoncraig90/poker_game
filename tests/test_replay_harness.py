@@ -296,6 +296,70 @@ def test_bb_per_100_aggregate():
     assert abs(report.bb_per_100() - (-100.0)) < 1e-9
 
 
+def test_shape_tag_format():
+    """Shape tag follows STREET:HANDCLASS:facing|noface:adv/hero format."""
+    from replay_harness import ReplayHarness, Decision
+    d = Decision(
+        hand_id="h1", room="r1", phase="RIVER",
+        pot=100, hero_stack=500, call_amount=50, facing_bet=True,
+        hero_cards=["6s", "6c"],
+        board=["Qd", "As", "8h", "Kh", "Ts"],
+        position="BTN",
+        advisor_action="FOLD",
+        advisor_source="rules+danger_override",
+        advisor_equity=0.30,
+        hero_actual_action="CALL",
+        agreement="DISAGREE",
+    )
+    tag = ReplayHarness._shape_tag(d)
+    # 6s6c on Q/A/8/K/T → pair (board has only the 6 hero matches)
+    assert tag == "RIVER:PAIR:facing:FOLD/CALL"
+
+
+def test_shape_tag_preflop_uses_PREFLOP_class():
+    from replay_harness import ReplayHarness, Decision
+    d = Decision(
+        hand_id="h1", room="r1", phase="PREFLOP",
+        pot=15, hero_stack=1000, call_amount=10, facing_bet=True,
+        hero_cards=["Ah", "Ks"], board=[], position="BTN",
+        advisor_action="RAISE to 0.30",
+        advisor_source="preflop_chart",
+        advisor_equity=0.66,
+        hero_actual_action="CALL",
+        agreement="DISAGREE",
+    )
+    tag = ReplayHarness._shape_tag(d)
+    assert tag == "PREFLOP:PREFLOP:facing:RAISE/CALL"
+
+
+def test_shape_breakdown_aggregates_disagreements_only():
+    """shape_breakdown(disagreements_only=True) skips AGREE decisions."""
+    from replay_harness import ReplayReport, HandRecord, Decision
+    r = ReplayReport()
+    h = HandRecord(hand_id="h1", room="r", starting_stack=1000,
+                   ending_stack=900, bb_cents=10, ending_finalized=True)
+    h.decisions.append(Decision(
+        hand_id="h1", room="r", phase="RIVER", pot=0, hero_stack=0,
+        call_amount=0, facing_bet=False, hero_cards=[], board=[],
+        position="", advisor_action="FOLD", advisor_source="",
+        advisor_equity=0.0, agreement="DISAGREE",
+        shape_tag="RIVER:PAIR:facing:FOLD/CALL",
+    ))
+    h.decisions.append(Decision(
+        hand_id="h1", room="r", phase="PREFLOP", pot=0, hero_stack=0,
+        call_amount=0, facing_bet=False, hero_cards=[], board=[],
+        position="", advisor_action="RAISE", advisor_source="",
+        advisor_equity=0.0, agreement="AGREE",
+        shape_tag="PREFLOP:PREFLOP:noface:RAISE/RAISE",
+    ))
+    r.hands.append(h)
+    shapes = r.shape_breakdown(disagreements_only=True)
+    assert len(shapes) == 1
+    assert shapes[0]["shape"] == "RIVER:PAIR:facing:FOLD/CALL"
+    assert shapes[0]["count"] == 1
+    assert shapes[0]["sum_bb_delta"] == -10.0  # h.bb_delta = -100/10
+
+
 def test_summary_string_renders():
     """summary() doesn't crash and includes the key fields."""
     snaps = [_snap("h1", hero_stack=1000), _snap("h1", hero_stack=1100)]

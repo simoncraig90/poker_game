@@ -54,6 +54,20 @@ if VISION_DIR not in sys.path:
 from coinpoker_runner import MultiTableCoinPokerSession  # noqa: E402
 from coinpoker_adapter import CHIP_SCALE  # noqa: E402
 from action_history import ActionHistory, AGGRESSIVE_ACTIONS  # noqa: E402
+from advisor_state_machine import AdvisorStateMachine  # noqa: E402
+
+# Hand class label lookup for shape tagging
+_HAND_CLASS_LABEL = {
+    AdvisorStateMachine.HAND_HIGH_CARD: "HIGH",
+    AdvisorStateMachine.HAND_PAIR: "PAIR",
+    AdvisorStateMachine.HAND_TWO_PAIR: "TWOPAIR",
+    AdvisorStateMachine.HAND_TRIPS: "TRIPS",
+    AdvisorStateMachine.HAND_STRAIGHT: "STRAIGHT",
+    AdvisorStateMachine.HAND_FLUSH: "FLUSH",
+    AdvisorStateMachine.HAND_FULL_HOUSE: "BOAT",
+    AdvisorStateMachine.HAND_QUADS: "QUADS",
+    AdvisorStateMachine.HAND_STRAIGHT_FLUSH: "SF",
+}
 
 
 # ── records ───────────────────────────────────────────────────────────
@@ -83,6 +97,12 @@ class Decision:
     hero_actual_action: Optional[str] = None
     hero_actual_amount: int = 0
     agreement: Optional[str] = None  # "AGREE" / "DISAGREE" / None
+    # Shape tag — coarse classification of the spot for leak ranking.
+    # Format: "STREET:HANDCLASS:facing|noface:advVERB/heroVERB"
+    # e.g.   "RIVER:PAIR:facing:FOLD/CALL"
+    # Computed once at decision creation time, after hero action is
+    # attributed (or "?" if hero action never observed).
+    shape_tag: str = ""
 
 
 @dataclass
@@ -223,6 +243,45 @@ class ReplayReport:
                 (r["bb_delta"] / r["hands"]) * 100.0 if r["hands"] else 0.0
             )
         return rooms
+
+    def shape_breakdown(self, disagreements_only: bool = True) -> list[dict]:
+        """
+        Aggregate per-shape stats across all decisions.
+
+        For each shape (street × hand_class × facing × adv_verb/hero_verb)
+        compute:
+          - count: number of decisions tagged with this shape
+          - sum_bb_delta: sum of containing-hand bb deltas
+          - avg_bb_per_decision: sum_bb_delta / count
+
+        Returned list is sorted by sum_bb_delta ascending (worst leaks
+        first — most negative bb impact at the top).
+
+        If disagreements_only=True (default), only DISAGREE decisions
+        are included. AGREE shapes also exist but they tell us where
+        the advisor matches the live player, not where there's a leak.
+        """
+        agg: dict[str, dict] = {}
+        for h in self.hands:
+            for d in h.decisions:
+                if disagreements_only and d.agreement != "DISAGREE":
+                    continue
+                if not d.shape_tag:
+                    continue
+                row = agg.setdefault(d.shape_tag, {
+                    "shape": d.shape_tag,
+                    "count": 0,
+                    "sum_bb_delta": 0.0,
+                    "sum_chip_delta": 0,
+                })
+                row["count"] += 1
+                row["sum_bb_delta"] += h.bb_delta
+                row["sum_chip_delta"] += h.chip_delta
+        for row in agg.values():
+            row["avg_bb_per_decision"] = (
+                row["sum_bb_delta"] / row["count"] if row["count"] else 0.0
+            )
+        return sorted(agg.values(), key=lambda r: r["sum_bb_delta"])
 
     def filter_real_money(self) -> "ReplayReport":
         """
@@ -392,6 +451,7 @@ class ReplayHarness:
                 pending.agreement = self._compare_actions(
                     pending.advisor_action, a.action
                 )
+                pending.shape_tag = self._shape_tag(pending)
                 self._pending[room] = None
                 break
 
@@ -520,6 +580,55 @@ class ReplayHarness:
         self._pending[room] = d
 
     @staticmethod
+    def _advisor_verb(advisor_action: str) -> str:
+        """Map an advisor action string to its canonical verb."""
+        if not advisor_action:
+            return "?"
+        a = advisor_action.upper()
+        if "FOLD" in a:
+            return "FOLD"
+        if "ALL" in a and "IN" in a:
+            return "ALLIN"
+        if "RAISE" in a:
+            return "RAISE"
+        if "BET" in a:
+            return "BET"
+        if "CALL" in a:
+            return "CALL"
+        if "CHECK" in a:
+            return "CHECK"
+        return "?"
+
+    @staticmethod
+    def _shape_tag(d: "Decision") -> str:
+        """
+        Coarse spot classification used for leak ranking.
+
+        Format: "STREET:HANDCLASS:facing|noface:advVERB/heroVERB"
+        e.g.   "RIVER:PAIR:facing:FOLD/CALL"
+               "PREFLOP:HIGH:facing:RAISE/CALL"
+               "FLOP:TWOPAIR:noface:BET/CHECK"
+
+        Hand class is HIGH for preflop (no board to evaluate against).
+        Empty hero_actual_action becomes "?".
+        """
+        # Hand class
+        if d.phase == "PREFLOP":
+            hc = "PREFLOP"
+        else:
+            try:
+                cls = AdvisorStateMachine._evaluate_hand_class(
+                    d.hero_cards, d.board
+                )
+                hc = _HAND_CLASS_LABEL.get(cls, "?")
+            except Exception:
+                hc = "?"
+        face = "facing" if d.facing_bet else "noface"
+        adv = ReplayHarness._advisor_verb(d.advisor_action)
+        hero = (d.hero_actual_action or "?").upper()
+        return f"{d.phase}:{hc}:{face}:{adv}/{hero}"
+
+    @staticmethod
     def _compare_actions(advisor_action: str, hero_action: str) -> str:
         """
         Compare an advisor recommendation string ("FOLD", "RAISE to 0.30",
@@ -641,6 +750,9 @@ def main(argv=None):
                    help="Exclude hands whose ending stack came from EOF fallback")
     p.add_argument("--by-room", action="store_true",
                    help="Print per-room breakdown")
+    p.add_argument("--by-shape", type=int, default=0,
+                   help="Print top-N leak shapes by chip impact "
+                        "(disagreements only). 0 disables.")
     p.add_argument("--output", default="",
                    help="Write per-decision JSONL to this path "
                         "(one line per hero decision point)")
@@ -687,6 +799,20 @@ def main(argv=None):
                   f"bb_cents={r['bb_cents']:6}  "
                   f"bb_delta={r['bb_delta']:+9.2f}  "
                   f"bb/100={r['bb_per_100']:+8.2f}")
+
+    if args.by_shape > 0:
+        shapes = report.shape_breakdown(disagreements_only=True)
+        n = min(args.by_shape, len(shapes))
+        print(f"\nTop {n} leak shapes by aggregate bb impact "
+              f"(disagreements only, worst first):")
+        print(f"  {'shape':50}  {'count':>5}  "
+              f"{'sum_bb':>9}  {'avg_bb':>9}")
+        for row in shapes[:n]:
+            print(f"  {row['shape']:50}  {row['count']:5}  "
+                  f"{row['sum_bb_delta']:+9.2f}  "
+                  f"{row['avg_bb_per_decision']:+9.2f}")
+        if len(shapes) > n:
+            print(f"  ... and {len(shapes) - n} more shapes")
     if args.output:
         written = 0
         with open(args.output, "w", encoding="utf-8") as f:
@@ -713,6 +839,7 @@ def main(argv=None):
                         "hero_actual": d.hero_actual_action,
                         "hero_actual_amount": d.hero_actual_amount,
                         "agreement": d.agreement,
+                        "shape": d.shape_tag,
                         "hand_chip_delta": h.chip_delta,
                         "hand_bb_delta": round(h.bb_delta, 2),
                         "hand_bb_cents": h.bb_cents,
