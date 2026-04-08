@@ -779,7 +779,8 @@ class ReplayHarness:
 # ── CLI ───────────────────────────────────────────────────────────────
 
 
-def _make_default_advisor_factory(enable_range_equity: bool = False):
+def _make_default_advisor_factory(enable_range_equity: bool = False,
+                                  use_hud: bool = False):
     """
     Build the standard live advisor stack (BaseAdvisor + PostflopEngine
     + preflop chart + AdvisorStateMachine). Used by the CLI; lazy-loads
@@ -787,9 +788,10 @@ def _make_default_advisor_factory(enable_range_equity: bool = False):
 
     Args:
         enable_range_equity: when True, the SM is constructed with the
-            Phase 2 shadow-mode range equity flag enabled. This adds
-            a few ms per postflop facing-bet decision but produces
-            the new range_equity field on each AdvisorOutput.
+            Phase 2 shadow-mode range equity flag enabled.
+        use_hud: when True, also load CoinPokerHudLoader and pass it to
+            the SM so per-villain classification comes from server-side
+            ground truth instead of being uniformly UNKNOWN.
     """
     from advisor import Advisor as BaseAdvisor
     from preflop_chart import preflop_advice
@@ -801,6 +803,16 @@ def _make_default_advisor_factory(enable_range_equity: bool = False):
         postflop = None
     base = BaseAdvisor(use_overlay=False, terminal=False, debug=False, unibet=True)
 
+    hud_loader = None
+    if use_hud:
+        try:
+            from coinpoker_hud_loader import CoinPokerHudLoader
+            hud_loader = CoinPokerHudLoader()
+            print(f"[harness] CoinPokerHudLoader loaded "
+                  f"({len(hud_loader)} ground-truth player profiles)")
+        except Exception as e:
+            print(f"[harness] HUD loader failed: {type(e).__name__}: {e}")
+
     def factory(bb_cents: int):
         return AdvisorStateMachine(
             base_advisor=base,
@@ -809,6 +821,7 @@ def _make_default_advisor_factory(enable_range_equity: bool = False):
             tracker=None,
             bb_cents=bb_cents,
             enable_range_equity=enable_range_equity,
+            hud_loader=hud_loader,
         )
     return factory
 
@@ -826,9 +839,10 @@ def main(argv=None):
     p.add_argument("--no-advisor", action="store_true",
                    help="Skip the advisor call (corpus-walker sanity check)")
     p.add_argument("--range-equity", action="store_true",
-                   help="Enable Phase 2 shadow-mode range equity (computes "
-                        "but doesn't change decisions). Adds range_equity "
-                        "field to per-decision JSONL output.")
+                   help="Enable Phase 2 range equity + decision gates.")
+    p.add_argument("--use-hud", action="store_true",
+                   help="Load CoinPokerHudLoader and use per-seat ground-truth "
+                        "villain classifications. Requires --range-equity.")
     p.add_argument("--limit", type=int, default=0,
                    help="Stop after processing N frames (0 = all)")
     p.add_argument("--real-money-only", action="store_true",
@@ -856,7 +870,8 @@ def main(argv=None):
 
     factory = (None if args.no_advisor
                else _make_default_advisor_factory(
-                   enable_range_equity=args.range_equity))
+                   enable_range_equity=args.range_equity,
+                   use_hud=args.use_hud))
     harness = ReplayHarness(hero_user_id=args.hero_id, advisor_factory=factory)
 
     if args.limit > 0:

@@ -74,7 +74,7 @@ class AdvisorStateMachine:
 
     def __init__(self, base_advisor, preflop_advice_fn, postflop_engine=None,
                  equity_fn=None, assess_board_danger_fn=None, tracker=None,
-                 bb_cents=4, enable_range_equity=False):
+                 bb_cents=4, enable_range_equity=False, hud_loader=None):
         self.base = base_advisor
         self.preflop_advice = preflop_advice_fn
         self.postflop = postflop_engine
@@ -85,12 +85,17 @@ class AdvisorStateMachine:
         # Phase 2 shadow-mode flag. When True, the SM also computes
         # range-aware equity using the new Phase 2 stack (range_model
         # + range_narrow + equity_calc) and attaches it to
-        # AdvisorOutput.range_equity. Decisions are NOT yet driven
-        # by this number — that wiring lands after the harness
-        # validates the shadow comparison shows the right values
-        # on the named loss spots. Default False so existing tests
-        # don't pay the import cost.
+        # AdvisorOutput.range_equity, plus drives the CALL→FOLD and
+        # BET→CHECK gates. Default False so existing tests don't
+        # pay the import cost.
         self.enable_range_equity = enable_range_equity
+        # Optional CoinPokerHudLoader. When supplied AND
+        # enable_range_equity is True, per-seat villain classifications
+        # come from server-side HUD ground truth instead of being
+        # uniformly UNKNOWN. Critical for multi-way pots where
+        # different villains have different classifications and the
+        # range narrowing produces different ranges per seat.
+        self.hud_loader = hud_loader
         self._range_history = None  # ActionHistory, lazy-init
 
         # Mutable state
@@ -610,34 +615,31 @@ class AdvisorStateMachine:
         # The Phase 1 leak ranking showed most chip impact comes from
         # hero AGGRESSING with weak hands (RIVER:PAIR:noface:CHECK/BET,
         # RIVER:PAIR:noface:CHECK/ALLIN). The CALL→FOLD gate above
-        # doesn't catch these because the trigger condition is hero
-        # facing aggression, not hero initiating it.
+        # doesn't catch these — its trigger is hero facing aggression,
+        # not hero initiating it.
         #
-        # When hero is about to BET or RAISE on a postflop street, the
-        # decision is "is this +EV vs the hands that will call?" In
-        # the absence of full bet-sizing math, use a coarse heuristic:
-        # if our PAIR-class hand has poor range equity vs the most
-        # likely caller, check instead.
+        # Threshold derivation: for a 0.66*pot value bet that gets
+        # called 100% of the time (no fold equity), EV(bet) > 0 when
+        # range_eq > bet_size / (pot + 2*bet_size) = 0.66/2.32 = 28%.
+        # We use 0.30 as the break-even with a 2% MC noise margin
+        # below it (so the gate fires at < 0.28). This allows thin
+        # value bets with adequate equity, only catching genuinely
+        # -EV bets.
         #
-        # Conditions are conservative — only fires when:
-        #   - hero is BET/RAISING (not just facing)
-        #   - hand class is HAND_PAIR or weaker
-        #   - range_equity is computed and well below break-even (50%)
-        #
-        # We skip this filter when there's no aggressor yet (no
-        # range_equity computed) — that's the v0 limitation; a real
-        # solver would compute equity vs the implied calling range.
+        # Tighter than v0 (0.40) because the v0 threshold caused false
+        # positives vs FISH villains with wide calling ranges — there,
+        # 30% equity is enough to bet for value.
         if (self.enable_range_equity
                 and out.range_equity is not None
                 and not facing
                 and pot_cents > 0
                 and ("BET" in action.upper() or "RAISE" in action.upper())
-                and "ALL" not in action.upper()  # don't override all-in plans
+                and "ALL" not in action.upper()
                 and self._evaluate_hand_class(hero, board) <= self.HAND_PAIR
-                and out.range_equity < 0.40):
+                and out.range_equity < 0.28):
             print(f"[range-equity-gate-bet] {phase} {hero_str} on {board_str}: "
                   f"{action!r} -> CHECK (range_eq={out.range_equity:.0%} "
-                  f"too thin to bet PAIR, combos={out.range_combos})")
+                  f"< break-even 28% for 0.66-pot bet, combos={out.range_combos})")
             action = "CHECK"
             source = f"{source}+range_eq_bet_gate"
 
@@ -761,6 +763,12 @@ class AdvisorStateMachine:
         # equity, we narrow each one independently and pass the list
         # to hero_equity_vs_multiway. For 2-player (heads-up) the same
         # function delegates to hero_equity_vs_range.
+        #
+        # Per-seat classification: when self.hud_loader is wired in,
+        # look up each villain's user_id in the HUD's classify() to
+        # get their actual NIT/TAG/LAG/FISH/WHALE class. Falls back
+        # to the tracker-based aggressor class (or UNKNOWN) when no
+        # HUD data is available for the seat.
         all_villains = []  # list of (seat, classification, position)
         for p in players:
             if p.get("seat") == hero_seat:
@@ -775,7 +783,18 @@ class AdvisorStateMachine:
                 v_pos = derive_position(v_seat, bb_seat, active_seats)
             except Exception:
                 continue
-            all_villains.append((v_seat, villain_class, v_pos))
+            # Per-seat HUD lookup
+            v_cls = villain_class
+            if self.hud_loader is not None:
+                v_uid = p.get("user_id")
+                if v_uid is not None:
+                    try:
+                        hud_class = self.hud_loader.classify(v_uid)
+                        if hud_class and hud_class != "UNKNOWN":
+                            v_cls = hud_class.upper()
+                    except Exception:
+                        pass
+            all_villains.append((v_seat, v_cls, v_pos))
 
         if not all_villains:
             return
