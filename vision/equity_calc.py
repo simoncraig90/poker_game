@@ -182,3 +182,128 @@ def hero_equity_vs_range(hero_hand: list,
     if cards_to_deal == 0:
         return total / valid_combos
     return total / (valid_combos * samples_per_combo)
+
+
+def hero_equity_vs_multiway(hero_hand: list,
+                            villain_ranges: list,
+                            board: list,
+                            samples: Optional[int] = None,
+                            rng: Optional[random.Random] = None) -> float:
+    """
+    Hero's equity in a multiway pot against N independent villain
+    ranges.
+
+    Args:
+        hero_hand: 2 card strings
+        villain_ranges: list where each element is itself a list of
+            (card1, card2) combos representing one villain's range.
+            Already pre-filtered for blockers via remove_blockers.
+            len(villain_ranges) == number of opponents at showdown.
+        board: 0..5 visible board cards
+        samples: Monte Carlo trial budget (default 300 for 2 villains,
+            200 for 3, 150 for 4+, scaled down for combinatorial cost)
+
+    Algorithm:
+        for each trial:
+            for each villain i in order:
+                sample a combo from villain_ranges[i] that doesn't
+                conflict with hero hand, board, or previously-sampled
+                villain combos (rejection sampling — small ranges
+                may need many retries)
+            sample remaining board completion
+            evaluate hero vs each villain
+            hero "wins" the trial when hero beats all villains
+            chop fractionally on ties
+
+    Returns hero equity in [0, 1]. Returns 0.5 for impossible
+    situations (no valid combo assignments after many retries).
+
+    Performance note: this is more expensive than the 2-player case
+    because each trial samples N combos with rejection and runs N+1
+    evaluations. v0 budgets are conservative; production tuning will
+    cache hand strength scores per combo.
+    """
+    if not villain_ranges:
+        return 0.5
+    if len(villain_ranges) == 1:
+        # Heads-up — delegate to the 2-player path for speed
+        return hero_equity_vs_range(hero_hand, villain_ranges[0], board,
+                                     samples_per_combo=samples, rng=rng)
+
+    if rng is None:
+        rng = random.Random(0)
+
+    n_villains = len(villain_ranges)
+    if samples is None:
+        if n_villains == 2:
+            samples = 300
+        elif n_villains == 3:
+            samples = 200
+        else:
+            samples = 150
+
+    cards_to_deal = 5 - len(board)
+    hero_set = set(hero_hand)
+    board_set = set(board)
+    base_dead = hero_set | board_set
+
+    wins = 0.0
+    valid_trials = 0
+    for _ in range(samples):
+        # Sample one combo per villain without card collisions
+        used_villain_cards: set = set()
+        chosen_combos: list = []
+        ok = True
+        for v_range in villain_ranges:
+            # Up to ~30 retries, then give up on this trial
+            chosen = None
+            for _try in range(30):
+                combo = rng.choice(v_range)
+                cs = set(combo)
+                if cs & base_dead or cs & used_villain_cards:
+                    continue
+                chosen = combo
+                used_villain_cards |= cs
+                break
+            if chosen is None:
+                ok = False
+                break
+            chosen_combos.append(chosen)
+        if not ok:
+            continue
+
+        # Deal remaining board cards from the shrunken deck
+        deck_dead = base_dead | used_villain_cards
+        deck = [c for c in ALL_CARDS if c not in deck_dead]
+        if cards_to_deal > 0:
+            try:
+                runout = rng.sample(deck, cards_to_deal)
+            except ValueError:
+                continue
+            full_board = list(board) + runout
+        else:
+            full_board = list(board)
+
+        valid_trials += 1
+
+        # Evaluate hero
+        hero_score = evaluate(list(hero_hand) + full_board)
+
+        # Evaluate each villain
+        villain_scores = [
+            evaluate(list(combo) + full_board) for combo in chosen_combos
+        ]
+
+        # Hero wins the trial if their hand beats EVERY villain
+        max_villain = max(villain_scores)
+        if hero_score > max_villain:
+            wins += 1.0
+        elif hero_score == max_villain:
+            # Chop — count by fraction of winners
+            winners_at_top = 1 + sum(1 for vs in villain_scores if vs == max_villain)
+            wins += 1.0 / winners_at_top
+        # else: hero loses, no contribution
+
+    if valid_trials == 0:
+        return 0.5
+    return wins / valid_trials

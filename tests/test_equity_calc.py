@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(ROOT, "vision"))
 from equity_calc import (  # noqa: E402
     hero_equity_vs_combo,
     hero_equity_vs_range,
+    hero_equity_vs_multiway,
 )
 from hand_combos import expand_hand_key  # noqa: E402
 
@@ -216,6 +217,84 @@ def test_one_pair_vs_overpair_range_is_dog():
     # straights for villain too.
     assert eq < 0.20, f"66 vs broadway-river value range too high: {eq:.2%}"
     print(f"\n66 on Q-A-8-K-T vs broadway value range: {eq:.1%} equity")
+
+
+def test_multiway_empty_returns_half():
+    """No villains → half (no information)."""
+    assert hero_equity_vs_multiway(["Ah", "Ks"], [], []) == 0.5
+
+
+def test_multiway_single_villain_delegates_to_heads_up():
+    """One villain in the list = heads-up; results should match."""
+    rng1 = random.Random(42)
+    rng2 = random.Random(42)
+    villain_combos = expand_hand_key("KK")
+    headsup = hero_equity_vs_range(
+        ["Ah", "Ad"], villain_combos, [], samples_per_combo=200, rng=rng1
+    )
+    multiway = hero_equity_vs_multiway(
+        ["Ah", "Ad"], [villain_combos], [], samples=200, rng=rng2
+    )
+    # Should be in the same ballpark
+    assert _approx(headsup, multiway, tol=0.10), \
+        f"single-villain mismatch: hu={headsup:.2%} mw={multiway:.2%}"
+
+
+def test_multiway_AA_vs_two_villains_lower_than_heads_up():
+    """
+    AA vs ONE random opponent ≈ 85%. AA vs TWO random opponents ≈ 73%.
+    Multiway equity always drops as opponents are added.
+    """
+    rng = random.Random(42)
+    # Two villains, both with the same wide range
+    wide_range = []
+    for key in ("AA", "KK", "QQ", "JJ", "TT", "99", "88",
+                "AKs", "AKo", "AQs", "AJs", "KQs", "KJs", "QJs"):
+        wide_range += expand_hand_key(key)
+
+    eq = hero_equity_vs_multiway(
+        hero_hand=["Ah", "Ad"],
+        villain_ranges=[wide_range, wide_range],
+        board=[],
+        samples=300,
+        rng=rng,
+    )
+    # AA vs 2 wide ranges should still be > 50% but well below 85%
+    assert 0.55 < eq < 0.85, f"AA multiway: {eq:.2%}"
+
+
+def test_multiway_drains_with_more_villains():
+    """Same hand vs 1, 2, 3 villains — equity should monotonically drop."""
+    rng_seeds = [10, 20, 30]
+    villain_range = expand_hand_key("KK") + expand_hand_key("QQ")
+    eqs = []
+    for n in (1, 2, 3):
+        rng = random.Random(rng_seeds[n - 1])
+        eq = hero_equity_vs_multiway(
+            hero_hand=["Ah", "Ad"],
+            villain_ranges=[villain_range] * n,
+            board=[],
+            samples=200,
+            rng=rng,
+        )
+        eqs.append(eq)
+    # AA vs KK/QQ heads-up ≈ 81%; vs 2 vs 3 should keep dropping
+    assert eqs[0] > eqs[1] > eqs[2], f"non-monotonic: {eqs}"
+
+
+def test_multiway_river_chop():
+    """Three players, board has the nuts → all chop."""
+    eq = hero_equity_vs_multiway(
+        hero_hand=["2h", "3d"],
+        villain_ranges=[
+            [("4h", "5d")],
+            [("6c", "7s")],
+        ],
+        board=["Ah", "Kh", "Qh", "Jh", "Th"],  # royal on board
+        samples=10,
+    )
+    # All three play the royal flush — chop. Hero gets 1/3.
+    assert _approx(eq, 1.0 / 3.0, tol=0.05), f"3-way chop: {eq:.2%}"
 
 
 def test_top_pair_top_kicker_vs_check_raise_range():

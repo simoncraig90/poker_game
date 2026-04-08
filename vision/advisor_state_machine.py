@@ -662,7 +662,7 @@ class AdvisorStateMachine:
         try:
             from action_history import ActionHistory  # noqa: WPS433
             from range_narrow import narrow_villain_range  # noqa: WPS433
-            from equity_calc import hero_equity_vs_range  # noqa: WPS433
+            from equity_calc import hero_equity_vs_range, hero_equity_vs_multiway  # noqa: WPS433
             from coinpoker_adapter import derive_position, derive_blinds_from_dealer  # noqa: WPS433
         except Exception as e:
             if debug:
@@ -757,36 +757,79 @@ class AdvisorStateMachine:
             except Exception:
                 pass
 
-        # Narrow the range
+        # Collect ALL active villain seats (not folded). For multi-way
+        # equity, we narrow each one independently and pass the list
+        # to hero_equity_vs_multiway. For 2-player (heads-up) the same
+        # function delegates to hero_equity_vs_range.
+        all_villains = []  # list of (seat, classification, position)
+        for p in players:
+            if p.get("seat") == hero_seat:
+                continue
+            la = (p.get("last_action") or "").lower()
+            if "fold" in la:
+                continue
+            v_seat = p.get("seat")
+            if v_seat is None:
+                continue
+            try:
+                v_pos = derive_position(v_seat, bb_seat, active_seats)
+            except Exception:
+                continue
+            all_villains.append((v_seat, villain_class, v_pos))
+
+        if not all_villains:
+            return
+
+        # Narrow each villain's range. v0: every villain uses the same
+        # tracker classification (we don't yet track per-seat HUD stats
+        # in the harness). When the tracker is wired in production,
+        # this is where per-seat classification would be looked up.
+        villain_ranges = []
+        for v_seat, v_cls, v_pos in all_villains:
+            try:
+                combos = narrow_villain_range(
+                    history=self._range_history,
+                    villain_seat=v_seat,
+                    villain_position=v_pos,
+                    villain_class=v_cls,
+                    hero_cards=hero,
+                    board_cards=board,
+                )
+            except Exception:
+                combos = []
+            if combos:
+                villain_ranges.append(combos)
+
+        if not villain_ranges:
+            return
+
+        # Compute equity. Heads-up case delegates internally to the
+        # 2-player path; 3+ villains uses the multi-way Monte Carlo.
         try:
-            combos = narrow_villain_range(
-                history=self._range_history,
-                villain_seat=villain_seat,
-                villain_position=villain_pos,
-                villain_class=villain_class,
-                hero_cards=hero,
-                board_cards=board,
-            )
+            if len(villain_ranges) == 1:
+                eq = hero_equity_vs_range(
+                    hero_hand=hero,
+                    villain_combos=villain_ranges[0],
+                    board=board,
+                    samples_per_combo=40,
+                )
+            else:
+                eq = hero_equity_vs_multiway(
+                    hero_hand=hero,
+                    villain_ranges=villain_ranges,
+                    board=board,
+                )
         except Exception:
             return
 
-        if not combos:
-            return
-
-        # Compute equity (small Monte Carlo budget for speed)
-        try:
-            eq = hero_equity_vs_range(
-                hero_hand=hero,
-                villain_combos=combos,
-                board=board,
-                samples_per_combo=40,
-            )
-        except Exception:
-            return
-
+        # Total combo count across all villains for the report
+        total_combos = sum(len(r) for r in villain_ranges)
         out.range_equity = float(eq)
-        out.range_combos = len(combos)
-        out.villain_position_for_range = villain_pos
+        out.range_combos = total_combos
+        out.villain_position_for_range = (
+            f"{len(villain_ranges)}way" if len(villain_ranges) > 1
+            else all_villains[0][2]
+        )
         out.villain_class_for_range = villain_class
 
     def _equity_rules_action(self, facing, dec_eq, raw_eq, pot_odds,
