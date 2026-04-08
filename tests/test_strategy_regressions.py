@@ -328,5 +328,171 @@ class TestDangerHelpers(unittest.TestCase):
         self.assertFalse(self.SM._hero_has_overpair(["Ks", "Kh"], ["Kd", "9s", "7d"]))
 
 
+class TestActionHistoryAccumulator(unittest.TestCase):
+    """
+    Tests for the v0 equity-vs-action-range action-history accumulator.
+    Verifies the SM detects new villain actions across snapshots and
+    computes a discount multiplier that reflects accumulated aggression.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from advisor_state_machine import AdvisorStateMachine
+        cls.SM = AdvisorStateMachine
+
+    def _new_sm(self):
+        # Use a tiny mock advisor so we don't load YOLO/CFR for these tests.
+        class MockAdvisor:
+            def _get_recommendation(self, state):
+                return {"phase": state.get("phase", "PREFLOP"), "equity": 0.5}
+        return self.SM(
+            base_advisor=MockAdvisor(),
+            preflop_advice_fn=lambda c1, c2, p, facing_raise: {
+                "action": "FOLD", "hand_key": "??", "in_range": False, "note": ""},
+            postflop_engine=None,
+            tracker=None,
+            bb_cents=4,
+        )
+
+    def _make_state(self, hand_id, phase, hero_seat, villain_actions):
+        """Helper: build a state dict where players[seat=N] has last_action."""
+        players = []
+        for seat, action in villain_actions.items():
+            players.append({"seat": seat, "last_action": action,
+                            "name": f"v{seat}", "user_id": 100 + seat,
+                            "stack": 1000, "bet": 0})
+        return {
+            "hero_cards": ["Ks", "Kh"],
+            "board_cards": ["5d", "9s", "7d"] if phase != "PREFLOP" else [],
+            "hand_id": hand_id,
+            "facing_bet": True,
+            "call_amount": 50,
+            "phase": phase,
+            "num_opponents": len(villain_actions),
+            "pot": 100,
+            "hero_stack": 1000,
+            "position": "BB",
+            "hero_turn": True,
+            "hero_seat": hero_seat,
+            "players": players,
+            "bets": [],
+        }
+
+    def test_no_actions_no_discount(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "PREFLOP", 1, {}))
+        self.assertEqual(sm._equity_discount_from_action_history(), 1.0)
+
+    def test_villain_check_no_discount(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "FLOP", 1, {2: "Check"}))
+        self.assertEqual(sm._equity_discount_from_action_history(), 1.0)
+
+    def test_villain_bet_no_discount_yet(self):
+        # A single BET shouldn't trigger discount in v0 — only RAISES do.
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "FLOP", 1, {2: "Bet"}))
+        self.assertEqual(sm._equity_discount_from_action_history(), 1.0)
+
+    def test_villain_raise_on_river_strong_discount(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "RIVER", 1, {2: "Raise"}))
+        # Single river raise → multiplier = 0.65
+        self.assertAlmostEqual(
+            sm._equity_discount_from_action_history(), 0.65, places=2)
+
+    def test_villain_raise_on_turn_moderate_discount(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "TURN", 1, {2: "Raise"}))
+        self.assertAlmostEqual(
+            sm._equity_discount_from_action_history(), 0.75, places=2)
+
+    def test_villain_raise_on_flop_mild_discount(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "FLOP", 1, {2: "Raise"}))
+        self.assertAlmostEqual(
+            sm._equity_discount_from_action_history(), 0.85, places=2)
+
+    def test_multiple_raises_compound(self):
+        sm = self._new_sm()
+        # Flop raise from seat 2
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "FLOP", 1, {2: "Raise"}))
+        # Then turn raise (still seat 2 — last_action transitions through Call)
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "TURN", 1, {2: "Call"}))
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "TURN", 1, {2: "Raise"}))
+        # 2 raises total, last on turn → 0.75 × 0.85 = 0.6375
+        self.assertAlmostEqual(
+            sm._equity_discount_from_action_history(), 0.75 * 0.85, places=2)
+
+    def test_idempotent_on_repeated_snapshot(self):
+        # Same snapshot ingested twice should NOT double-count the action.
+        sm = self._new_sm()
+        st = self._make_state("H1", "RIVER", 1, {2: "Raise"})
+        sm._ingest_snapshot_for_action_history(st)
+        sm._ingest_snapshot_for_action_history(st)
+        # Still only 1 raise tracked
+        self.assertEqual(len([a for a in sm.action_history if a['action']=='RAISE']), 1)
+        self.assertAlmostEqual(
+            sm._equity_discount_from_action_history(), 0.65, places=2)
+
+    def test_resets_on_new_hand(self):
+        sm = self._new_sm()
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "RIVER", 1, {2: "Raise"}))
+        # New hand
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H2", "PREFLOP", 1, {}))
+        self.assertEqual(sm.action_history, [])
+        self.assertEqual(sm._equity_discount_from_action_history(), 1.0)
+
+    def test_floor_at_30_percent(self):
+        sm = self._new_sm()
+        # 4 raises ending on river → would mathematically multiply down
+        # to 0.65 * 0.85 * 0.85 = 0.47, still above the 0.30 floor.
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "FLOP", 1, {2: "Raise"}))
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "TURN", 1, {2: "Call"}))
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "TURN", 1, {2: "Raise"}))
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "RIVER", 1, {2: "Call"}))
+        sm._ingest_snapshot_for_action_history(
+            self._make_state("H1", "RIVER", 1, {2: "Raise"}))
+        # Verify multiplier hasn't gone below the floor
+        m = sm._equity_discount_from_action_history()
+        self.assertGreaterEqual(m, 0.30)
+        self.assertLess(m, 1.0)
+
+    def test_ignores_passive_strings(self):
+        # 'Inuse', 'Sitout', 'Ante', 'SB', 'BB' should not register as actions
+        sm = self._new_sm()
+        for s in ["Inuse", "Sitout", "Ante", "SB", "BB"]:
+            sm._ingest_snapshot_for_action_history(
+                self._make_state("H1", "PREFLOP", 1, {2: s}))
+        self.assertEqual(sm.action_history, [])
+
+    def test_ignores_unibet_name_list_format(self):
+        # Unibet WS uses list-of-names players, not list-of-dicts.
+        # Accumulator should skip cleanly without crashing.
+        sm = self._new_sm()
+        state = {
+            "hand_id": "H1", "phase": "FLOP", "hero_seat": 0,
+            "players": ["hero", "v1", "v2"],  # plain strings, not dicts
+            "bets": [10, 20, 30],
+        }
+        sm._ingest_snapshot_for_action_history(state)
+        self.assertEqual(sm.action_history, [])
+
+
 if __name__ == "__main__":
     unittest.main()

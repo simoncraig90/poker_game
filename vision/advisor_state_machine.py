@@ -87,6 +87,15 @@ class AdvisorStateMachine:
         self.hands_played = 0
         self._last_stack = 0
 
+        # Action-history accumulator (v0 of equity-vs-action-range).
+        # Per-hand list of detected villain actions, populated by diffing
+        # `players[*].last_action` between successive snapshots. Used by
+        # `_equity_discount_from_action_history` to discount equity when
+        # the action sequence narrows villain's range. Resets on new hand.
+        self.action_history = []
+        self.action_history_hand = None
+        self._prev_villain_actions = {}  # seat -> last_action string
+
     def process_state(self, state):
         """
         Process a game state update and return an AdvisorOutput.
@@ -111,6 +120,12 @@ class AdvisorStateMachine:
         if hand_id != self.prev_hand_id and hand_id is not None:
             self.hands_played += 1
             self._last_stack = hero_stack
+
+        # Update action-history accumulator on every snapshot, BEFORE the
+        # waiting-for-cards short-circuit. This way villain actions during
+        # blinds posting / pre-deal still get tracked, and by the time hero
+        # has cards we already have history for them.
+        self._ingest_snapshot_for_action_history(state)
 
         # No hero cards = waiting
         if len(hero) < 2:
@@ -295,6 +310,17 @@ class AdvisorStateMachine:
             else:
                 adjusted_eq = eq * 0.90
 
+        # ── Action-history discount (v0 of equity-vs-action-range) ──
+        # Compose with the bet-ratio discount above. Only fires when
+        # facing aggression AND there's accumulated villain action history
+        # this hand. The multiplier is < 1.0 only when villain has shown
+        # specific aggression patterns (recent raise, multiple raises).
+        # See _equity_discount_from_action_history for the math.
+        if facing and pot_cents > 0:
+            history_mult = self._equity_discount_from_action_history()
+            if history_mult < 1.0:
+                adjusted_eq *= history_mult
+
         dec_eq = adjusted_eq if facing else eq
 
         # ── Pot odds ──
@@ -456,6 +482,118 @@ class AdvisorStateMachine:
                     return f"CALL {call_amt/100:.2f}"
                 else:
                     return "FOLD"
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Action history accumulator (v0 of equity-vs-action-range)
+    # ─────────────────────────────────────────────────────────────────────
+    #
+    # Why this exists: the equity model computes hero vs RANDOM hand.
+    # In real spots, villain's actions narrow their range — a check-call
+    # check-raise sequence on a wet board doesn't have random hands in
+    # it, it has draws and made hands. The equity model doesn't see this
+    # narrowing, so it overestimates hero's chances against an action-
+    # narrowed range.
+    #
+    # The proper fix is range-vs-range equity computation (P0 in the
+    # kanban). This v0 is a stand-in: we accumulate detected villain
+    # actions per hand and compute a multiplier on equity that scales
+    # with how much aggression villain has shown. Compounds with the
+    # existing bet-ratio discount in `_process_postflop`.
+    #
+    # Detection works by diffing successive snapshots: if a player's
+    # `last_action` field changes, that's a new action. This is robust
+    # to multiple snapshots arriving for the same actual decision (no
+    # double-counting) and to seeing a player for the first time mid-
+    # hand (treats their current last_action as their first detected).
+
+    def _ingest_snapshot_for_action_history(self, state):
+        """Update self.action_history from the current snapshot. Resets
+        on new hand. Idempotent on duplicate snapshots within a hand."""
+        hand_id = state.get('hand_id')
+        if hand_id != self.action_history_hand:
+            self.action_history_hand = hand_id
+            self.action_history = []
+            self._prev_villain_actions = {}
+
+        hero_seat = state.get('hero_seat')
+        phase = state.get('phase', '?')
+
+        for p in state.get('players', []) or []:
+            if not isinstance(p, dict):
+                continue  # Unibet name-list format — skip
+            seat = p.get('seat')
+            if seat is None or seat == hero_seat:
+                continue
+            la = (p.get('last_action') or '').strip()
+            if not la:
+                continue
+            prev = self._prev_villain_actions.get(seat, '')
+            if la == prev:
+                continue  # not a new action
+
+            # Classify the action — only aggressive/passive actions count
+            la_upper = la.upper()
+            if 'RAISE' in la_upper or 'ALLIN' in la_upper or 'ALL-IN' in la_upper or 'ALL IN' in la_upper:
+                action_type = 'RAISE'
+            elif 'BET' in la_upper:
+                action_type = 'BET'
+            elif 'CALL' in la_upper:
+                action_type = 'CALL'
+            elif 'CHECK' in la_upper:
+                action_type = 'CHECK'
+            elif 'FOLD' in la_upper:
+                action_type = 'FOLD'
+            else:
+                action_type = None  # ignore "Inuse", "Sitout", "Ante", "SB", "BB", etc.
+
+            if action_type in ('RAISE', 'BET', 'CALL', 'CHECK'):
+                self.action_history.append({
+                    'phase': phase,
+                    'seat': seat,
+                    'action': action_type,
+                })
+            self._prev_villain_actions[seat] = la
+
+    def _equity_discount_from_action_history(self):
+        """
+        Compute a multiplier on hero's equity based on the action history
+        accumulated this hand. Conservative — only ever <= 1.0, never
+        inflates. Floor at 0.30 to avoid catastrophically discounting
+        when hero might still have a strong hand.
+
+        Multiplier components (compose multiplicatively):
+          - last action is RAISE on RIVER:  × 0.65
+          - last action is RAISE on TURN:   × 0.75
+          - last action is RAISE on FLOP:   × 0.85
+          - villain has raised >= 2 times this hand: × 0.85
+          - villain has raised >= 3 times this hand: × 0.85 (compounds)
+
+        These thresholds were chosen so that a single c-bet on the flop
+        produces no discount (just BET, not RAISE), but a flop bet
+        followed by a turn check-raise produces ~0.64 (= 0.75 × 0.85)
+        — significant but not catastrophic.
+        """
+        if not self.action_history:
+            return 1.0
+
+        multiplier = 1.0
+        last = self.action_history[-1]
+
+        if last['action'] == 'RAISE':
+            if last['phase'] == 'RIVER':
+                multiplier *= 0.65
+            elif last['phase'] == 'TURN':
+                multiplier *= 0.75
+            elif last['phase'] == 'FLOP':
+                multiplier *= 0.85
+
+        raise_count = sum(1 for a in self.action_history if a['action'] == 'RAISE')
+        if raise_count >= 2:
+            multiplier *= 0.85
+        if raise_count >= 3:
+            multiplier *= 0.85
+
+        return max(0.30, multiplier)
 
     # ─────────────────────────────────────────────────────────────────────
     # Danger overrides — hard-coded fold rules for spots where the equity
