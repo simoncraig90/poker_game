@@ -386,7 +386,7 @@ def main():
                 v = categorize_action(variant_recs[i]["action"])
                 if b != v:
                     div = True
-                    diff_actions[f"{b}→{v}"] += 1
+                    diff_actions[f"{b}->{v}"] += 1
                     if len(diff_examples) < 5 and args.verbose:
                         diff_examples.append({
                             "hero": h.get("hero"),
