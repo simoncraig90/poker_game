@@ -185,6 +185,87 @@ class TestStrategyRegressions(unittest.TestCase):
         self.assertIn("FOLD", out.action.upper(),
                       f"QJ flush on paired board facing 2x pot raise should FOLD, got {out.action!r}")
 
+    def test_2502750404_call_amount_change_must_re_fire_advisor(self):
+        """
+        Hand 2502750404, NL10 real money, 9c8c CO.
+
+        The action sequence:
+          1. Hero limps for 0.10 facing the BB
+          2. BTN (Kelsier) raises to 0.50
+          3. BB (stark) calls
+          4. Hero now faces a 0.40 raise on top
+
+        The pre-fix bug: AdvisorStateMachine.process_state had a state
+        change detection guard that returned None unless one of
+        (hand_id, board, phase, hero_cards, facing_bet) changed. When a
+        villain raises mid-preflop after hero already faced a bet,
+        facing_bet stays True the whole time so the guard returned
+        early. The advisor never re-fired and the overlay kept
+        showing the stale 'CALL 0.10' rec from the limp moment when
+        the user actually needed to make a 'fold or call 0.40' decision.
+
+        FIX: track call_amount and pot in the change detection. Any
+        sizing change inside the same betting round re-fires the rec.
+
+        This test simulates the exact two-snapshot sequence: first
+        snapshot at hero turn 1 (call 10, pot 25), second snapshot
+        at hero turn 2 (call 40, pot 115). The SM must produce a
+        non-None action on BOTH snapshots, and the second one must
+        reflect the new sizing.
+        """
+        sm = self.sm
+
+        # Reset SM state for the test (don't depend on test ordering)
+        sm.prev_hero = []
+        sm.prev_board = []
+        sm.prev_hand_id = None
+        sm.prev_phase = None
+        sm.last_facing = None
+        sm.last_call_amount = None
+        sm.last_pot = None
+
+        # Hero turn 1: limping into BB for 0.10
+        state1 = {
+            "hero_cards":   ["9c", "8c"],
+            "board_cards":  [],
+            "hand_id":      "2502750404",
+            "facing_bet":   True,
+            "call_amount":  10,    # 0.10 in chip cents
+            "pot":          25,
+            "phase":        "PREFLOP",
+            "num_opponents": 5,
+            "hero_stack":   1113,
+            "position":     "CO",
+        }
+        out1 = sm.process_state(state1)
+        self.assertIsNotNone(out1, "first snapshot must produce a recommendation")
+
+        # Hero turn 2: BTN raised to 0.50, BB called, hero faces 0.40 raise
+        state2 = {
+            "hero_cards":   ["9c", "8c"],
+            "board_cards":  [],
+            "hand_id":      "2502750404",
+            "facing_bet":   True,    # still True (was True before, KEY: this didn't change)
+            "call_amount":  40,      # CHANGED: now 0.40 to call (the raise on top)
+            "pot":          115,     # CHANGED: pot grew
+            "phase":        "PREFLOP",  # SAME phase
+            "num_opponents": 5,
+            "hero_stack":   1103,
+            "position":     "CO",
+        }
+        out2 = sm.process_state(state2)
+        # Critical assertion: the SM MUST re-fire on the new call_amount
+        self.assertIsNotNone(
+            out2,
+            "SM must produce a fresh rec when call_amount changes mid-round "
+            "(even if facing_bet boolean stays True). Stale rec on the overlay "
+            "is the bug that almost cost real money on hand 2502750404.")
+        # And the action should reflect the new sizing — either FOLD or
+        # a CALL with the new amount, NOT the stale "CALL 0.10"
+        action_upper = out2.action.upper() if out2.action else ""
+        self.assertNotIn("0.10", action_upper,
+                         f"Stale 'CALL 0.10' is the bug. Got: {out2.action!r}")
+
     def test_synthetic_TPTK_on_coordinated_river_should_fold(self):
         """
         Synthetic regression test for Filter 5: top pair top kicker on a

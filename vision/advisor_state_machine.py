@@ -79,6 +79,8 @@ class AdvisorStateMachine:
         self.prev_hand_id = None
         self.prev_phase = None
         self.last_facing = None
+        self.last_call_amount = None
+        self.last_pot = None
         self.flop_action_history = ""
 
         # Session tracking
@@ -140,17 +142,32 @@ class AdvisorStateMachine:
             return None
 
         # State change detection
+        # CRITICAL: call_amount and pot MUST be in this list. They change
+        # mid-betting-round whenever a villain raises after hero already
+        # faced a bet. Before 2026-04-09 this was a real bug -- on hand
+        # 2502750404 (9c8c CO), hero limped facing 0.10 BB, then BTN
+        # raised to 0.50, then hero needed to call 0.40 more. The SM's
+        # change detection said "facing was already True, nothing changed"
+        # and silently kept the stale "CALL 0.10" rec on the overlay.
+        # User caught it before clicking. Fix: track call_amount and pot
+        # explicitly so any sizing change re-fires the recommendation.
         hand_changed = hand_id != self.prev_hand_id
         board_changed = board != self.prev_board
         phase_changed = phase != self.prev_phase
         hero_changed = hero != self.prev_hero
         facing_changed = facing != self.last_facing
+        call_amount_changed = call_amt != self.last_call_amount
+        pot_changed = state.get("pot") != self.last_pot
 
-        if not (hand_changed or board_changed or phase_changed or hero_changed or facing_changed):
+        if not (hand_changed or board_changed or phase_changed
+                or hero_changed or facing_changed
+                or call_amount_changed or pot_changed):
             return None
 
         # Update tracked state
         self.last_facing = facing
+        self.last_call_amount = call_amt
+        self.last_pot = state.get("pot")
         self.prev_hero = hero[:]
         self.prev_board = board[:]
         self.prev_hand_id = hand_id
