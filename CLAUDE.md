@@ -16,10 +16,55 @@ The "stop chasing auto-click" decision was reversed. CoinPoker turned out to be 
 Read `HANDOFF.md` and the `project_coinpoker_unity.md` auto-memory for the full session-by-session history.
 
 Key files:
-- `vision/coinpoker_adapter.py` (28 tests), `vision/coinpoker_runner.py` (36 tests), `vision/coinpoker_clicker.py` (20 tests)
+- `vision/coinpoker_adapter.py` (39 tests), `vision/coinpoker_runner.py` (36 tests), `vision/coinpoker_clicker.py` (20 tests)
 - `tools/phase2_gauntlet.py` — round-trip reliability gauntlet
 - `tests/fixtures/coinpoker_session.jsonl` — 200-frame test fixture
 - Patcher + deploy at `C:\Users\Simon\coinpoker_patcher\` (NOT in this repo)
+
+## Pre-flight validation gate (2026-04-08 — `tools/check_ready_for_live.py`)
+
+**ALWAYS run this before any session where real money is at stake.** Single
+command, ~12 seconds, exit 0 = safe to start the advisor. Bundles four gates:
+
+  1. Full test suite green (currently 125 tests)
+  2. Strategy regression suite green, no @expectedFailure on named loss spots
+  3. Named danger overrides fire on EXACTLY the expected hands across captured
+     replay (currently 3 hands: 2379414698, 2379447781, 2460830707)
+  4. `scripts/replay_whatif.py` baseline within tolerance vs all variants
+
+```bash
+python tools/check_ready_for_live.py
+# Exit 0 = GO, exit non-zero = NO-GO with specific failure
+```
+
+This gate exists because **passing unit tests is not validation**. The user
+lost two real-money buy-ins on 2026-04-08 with passing unit tests because
+the strategy itself had unvalidated leaks. See memory entry
+`feedback_passing_tests_not_validation.md`. The four named loss spots from
+that session are now permanent regression tests in
+`tests/test_strategy_regressions.py` — never delete or weaken those.
+
+## Strategy fixes shipped 2026-04-08 (branch `coinpoker-strategy-fixes-20260408`)
+
+Four named real-money loss spots fixed and locked in as regression tests:
+
+  - **Hand 2460830661** AQo SB flat-call vs 2.5x open at 4-handed
+    → fixed by per-position 3-bet ranges in `vision/preflop_chart.py`
+  - **Hand 2460830707** KK BB river call-off on 5d-9s-7d-4c-8c (4-card straight)
+    → fixed by Filter 1 of `_apply_danger_overrides`
+  - **Hand 2379414698** KK SB call-off on 9h-6h-2h flop facing 9x pot bet (3-flush)
+    → fixed by Filter 3 of `_apply_danger_overrides`
+  - **Hand 2379447781** QcJc BTN call-off on Kc-Th-Td-3c-8c river (flush on paired
+    board, no boat possibility) → fixed by Filter 4
+
+Plus:
+  - Action-history accumulator (v0 of equity-vs-action-range) in `AdvisorStateMachine`
+  - Default unknown villains to NIT at micro stakes (validated +EUR 0.22 in
+    replay against 733 captured hands, then folded into baseline)
+  - Position derivation fix in `vision/coinpoker_adapter.py` (was always returning MP)
+  - `tools/coinpoker_frames_to_session.py` converter so `replay_whatif.py` can
+    run on CoinPoker frame logs alongside Unibet sessions
+  - `tools/check_ready_for_live.py` validation gate (above)
 
 ## Current State
 
