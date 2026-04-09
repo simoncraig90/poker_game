@@ -212,25 +212,102 @@ def phase_navigate_to_cash_lobby() -> bool:
         return False
 
 
-def phase_select_table() -> bool:
+def phase_select_table(stake: str = "€4 NL") -> bool:
     """
-    Select a table from the cash game lobby.
+    Select a stake + click PLAY to enter the cash game pool.
 
-    TODO: full automation. For now this is the manual hand-off point —
-    the orchestrator pauses and asks the user to manually pick a table
-    + complete the buy-in dialog. Once seated, the orchestrator detects
-    via hero_seat being assigned in the WS state.
+    Unibet uses anonymous POOL PLAY, not a table-list model. The
+    cash game lobby shows a stake list (€4 NL, €10 NL, €25 NL, ...)
+    on the left and a single big PLAY button on the right. Clicking
+    PLAY seats you at an available pool table at the chosen stake
+    automatically — no table picking, no seat selection.
 
-    Future implementation:
-      1. OCR-click a table row (filter by stake from CLI arg)
-      2. Buy-in dialog: OCR-click default buy-in amount + "Buy In"
-      3. Wait for the table window to load
+    Stake format: "€4 NL" = €0.02/€0.04 blinds, €2-€4 buy-in (NL4)
+                  "€10 NL" = €0.05/€0.10 blinds, €5-€10 (NL10)
+                  "€25 NL" = €0.10/€0.25 blinds, €12.50-€25 (NL25)
+                  "€50 NL" = €0.25/€0.50 blinds, etc.
+
+    Username displayed in lobby is a random alias (e.g. Skurj_uni41) —
+    Unibet hides real usernames at cash tables.
+
+    Steps:
+      1. OCR-click the stake label (e.g. "€4 NL")
+      2. OCR-click "PLAY"
+      3. Buy-in dialog opens (handled in phase_handle_buyin_dialog)
     """
-    log("phase_select_table: MANUAL HAND-OFF — please select a table")
-    log("                   and complete the buy-in dialog manually.")
-    log("                   The runner will detect hero_seat assignment")
-    log("                   in the WS stream and continue automatically.")
+    log(f"phase_select_table: selecting stake '{stake}'")
+
+    # Step 1: click the stake row in the left list
+    try:
+        r = subprocess.run(
+            [sys.executable, OCR_CLICK_PY, stake],
+            cwd=ROOT, timeout=15, capture_output=True, text=True,
+        )
+        if r.stdout:
+            for line in r.stdout.strip().split("\n"):
+                log(f"  | {line}")
+        if r.returncode != 0 or "Found" not in (r.stdout or ""):
+            log(f"phase_select_table: WARN — could not OCR-click '{stake}'")
+            log("                    falling back to manual selection")
+            return True  # let user click manually; phase_wait_for_seat polls
+    except Exception as e:
+        log(f"phase_select_table: stake click error {e}")
+        return True
+
+    time.sleep(1)
+
+    # Step 2: click the PLAY button
+    try:
+        r = subprocess.run(
+            [sys.executable, OCR_CLICK_PY, "PLAY"],
+            cwd=ROOT, timeout=15, capture_output=True, text=True,
+        )
+        if r.stdout:
+            for line in r.stdout.strip().split("\n"):
+                log(f"  | {line}")
+        if r.returncode != 0 or "Found" not in (r.stdout or ""):
+            log("phase_select_table: WARN — could not OCR-click PLAY")
+            return True
+    except Exception as e:
+        log(f"phase_select_table: PLAY click error {e}")
+        return True
+
+    time.sleep(1.5)
+
+    # Step 3: handle the buy-in dialog (TBD — needs first-run identification)
+    if not phase_handle_buyin_dialog():
+        log("phase_select_table: buy-in dialog not handled — manual hand-off")
     return True
+
+
+def phase_handle_buyin_dialog() -> bool:
+    """
+    Handle the Unibet buy-in dialog that appears after clicking PLAY.
+
+    TODO: dialog content TBD. Needs to be captured during a live
+    session to identify the OCR targets. For now this is a best-effort
+    OCR-click sweep on common labels.
+
+    Likely elements:
+      - Buy-in amount slider or text box (we want max — €4 at NL4)
+      - "Buy In" / "Confirm" / "OK" button
+      - Possibly a "Wait for BB" checkbox (we don't toggle this here;
+        --wait-bb in the orchestrator handles BB-waiting via state polling)
+    """
+    log("phase_handle_buyin_dialog: best-effort OCR-click on confirm labels")
+    for label in ("Buy In", "Buy in", "Confirm", "OK", "Join"):
+        try:
+            r = subprocess.run(
+                [sys.executable, OCR_CLICK_PY, label],
+                cwd=ROOT, timeout=10, capture_output=True, text=True,
+            )
+            if r.returncode == 0 and "Found" in (r.stdout or ""):
+                log(f"  buy-in: clicked '{label}'")
+                time.sleep(2)
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def phase_wait_for_seat(reader, timeout: int = SEAT_WAIT_SECS) -> bool:
@@ -486,6 +563,10 @@ def main(argv=None):
     p.add_argument("--no-orchestrate-tables", action="store_true",
                    help="Skip the table-find loop on table-closed events. "
                         "When set, exit after the first table closes.")
+    p.add_argument("--stake", default="€4 NL",
+                   help="Cash game stake to play (default: '€4 NL'). "
+                        "Options: '€4 NL', '€10 NL', '€25 NL', '€50 NL', "
+                        "'€100 NL', '€200 NL', '€400 NL'")
     args = p.parse_args(argv)
 
     log("=" * 60)
@@ -515,8 +596,8 @@ def main(argv=None):
     reader.start()
 
     while True:
-        # Phase 4: Table selection (manual hand-off for now)
-        phase_select_table()
+        # Phase 4: stake selection + click PLAY (anonymous pool model)
+        phase_select_table(stake=args.stake)
 
         # Phase 5: Wait for hero to be seated
         if not phase_wait_for_seat(reader):
