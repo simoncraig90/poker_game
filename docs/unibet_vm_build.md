@@ -380,6 +380,74 @@ The rebuild branch (`rebuild-foundation-20260408`) has the new Phase 2 / Phase 3
 
 ---
 
+## End-to-end automation orchestrator (added 2026-04-09)
+
+`vision/unibet_session_runner.py` is the master orchestrator that ties everything together. Wrapper batch file: `start_unibet_session.bat`.
+
+**What the orchestrator handles:**
+
+| Phase | Status | Mechanism |
+|---|---|---|
+| 1. Launch Chrome with debug port + stealth flags | ✅ DONE | Spawns `start.bat`, waits for port 9222 |
+| 2. Auto-login | ✅ DONE (with reCAPTCHA hand-off) | Runs `scripts/auto-login.js`. If reCAPTCHA fires, the script waits up to 2 minutes for the user to click the checkbox. Stealth patches reduce the rate at which v3 escalates to v2. |
+| 3. Navigate to cash game lobby | ✅ DONE | OCR-clicks "CASH GAME" tab via `scripts/ocr-click.py` |
+| 4. **Select a table from the lobby** | ⚠️ MANUAL HAND-OFF for now | The orchestrator pauses and asks the operator to manually click a table + complete the buy-in dialog. After that, it auto-detects via `hero_seat` being assigned in the WS state. **Full automation TODO**: needs OCR-click on a filtered table row + buy-in dialog OCR. |
+| 5. Wait for hero to be seated | ✅ DONE | Polls the WS reader for `hero_seat >= 0`, up to 90s |
+| 6. Optional: wait for BB before clicking | ✅ DONE | `--wait-bb` flag polls for `position == "BB"` before unleashing the auto-clicker. Avoids posting a dead BB on the first orbit. |
+| 7. Run the auto-player | ✅ DONE | Spawns `vision/auto_player.py` as a subprocess |
+| 8. Monitor for stack-low → trigger re-buy | ⚠️ STUB (best-effort OCR-click) | When `hero_stack < 60% of initial buy-in` between hands, calls `trigger_rebuy()` which OCR-clicks for "Top up" / "Add chips" / "Re-buy" / "Rebuy" / "Buy in" buttons + confirms the dialog. **Real button text TBD** — needs first run on Unibet to identify exact label. |
+| 9. Monitor for table-closed → return to lobby | ✅ DONE | If WS state hasn't changed for 60s, assumes the table closed. Loops back to phase 4 (table selection) for the next table. |
+| 10. Monitor for session end (max-hands / SessionManager) | ✅ DONE | Cleanly leaves the table + closes Chrome |
+| 11. Take breaks | ✅ DONE (in auto_player) | The humanizer SessionManager fires 2-15 minute breaks at hand transitions every 20-60 min. Sets the PAUSE_FLAG so any in-flight click thread bails. |
+| 12. Re-buy limit | ✅ DONE | `--max-buyins N` flag (default 3). Once exhausted, exits. |
+| 13. Graceful Chrome close | ✅ DONE | `taskkill chrome.exe` at session end |
+
+**What's still TODO** (filling in the OCR/click handlers):
+
+- Phase 4 full automation: pick a table from the cash game lobby. The current stub does manual hand-off. To finish: OCR the table list, filter by stake (e.g. NL2/NL5/NL10), pick one, click. Then the buy-in dialog needs OCR-click on the default amount + "Buy In" button.
+- Phase 8 button text: identify the actual Unibet "top up" button text and update `trigger_rebuy()` accordingly. Best done by running the orchestrator and watching what fails.
+- Phase 13 confirm dialog: there's usually a "Yes / No" confirm on Leave Table. Same approach as phase 8 — identify on first live run.
+
+**Usage:**
+
+```powershell
+cd C:\poker-research
+
+# Default: launch Chrome, auto-login, you pick the table, then full
+# automated play with break management + re-buy
+start_unibet_session.bat
+
+# With explicit limits
+start_unibet_session.bat --max-hands 200 --max-buyins 2 --wait-bb
+
+# If Chrome is already running on 9222 (skip the launch step)
+start_unibet_session.bat --no-launch-chrome
+
+# Stop after the first table closes (don't auto-find a new table)
+start_unibet_session.bat --no-orchestrate-tables
+```
+
+**Architecture:**
+
+```
+start_unibet_session.bat
+   └─ vision/unibet_session_runner.py (orchestrator)
+         ├─ phase_launch_chrome  → start.bat → chrome.exe (port 9222)
+         ├─ phase_auto_login     → node scripts/auto-login.js
+         ├─ phase_navigate_to_cash_lobby → python scripts/ocr-click.py
+         ├─ phase_select_table   → MANUAL or OCR (TODO)
+         ├─ phase_wait_for_seat  → polls UnibetWSReader.get_state()
+         ├─ phase_wait_for_bb    → optional, polls position
+         ├─ phase_run_auto_player → spawns vision/auto_player.py
+         └─ monitor_loop:
+              ├─ on stack low → trigger_rebuy() (OCR-click)
+              ├─ on no state for 60s → "table closed", loop back to lobby
+              ├─ on max_hands → trigger_leave_table() + close_chrome()
+              └─ on SessionManager break → handled inside auto_player
+```
+
+The orchestrator does NOT re-implement game logic. It launches `auto_player.py` as a subprocess and monitors the WebSocket state via its own `UnibetWSReader` instance. State events trigger orchestrator-side click sequences (rebuy, leave). The auto-player runs independently and respects the `.autoplay_pause` flag the orchestrator sets when it needs to take over the cursor for a click sequence.
+
 ## 10. Quick-start TL;DR for tonight
 
 ```powershell
