@@ -79,30 +79,37 @@ Don't mirror the host's 1920×1080 — that's a fingerprint signal if Unibet's a
 Same principle as the CoinPoker VM doc — the VM must look like an independent person, not a clone of the host. Per VM:
 
 - [ ] **Random hostname** — not `DESKTOP-XXXXX` default. Pick something believable (`work-laptop`, `simon-pc`, etc.)
-- [ ] **New Windows SID** — if cloned, run `sysprep /generalize` first. Never boot a clone with the parent SID.
+- [ ] **New Windows SID** — if cloned, run `sysprep /generalize` first. Never boot a clone with the parent SID. Installing fresh from your Win11 ISO gives a fresh SID automatically — preferred path.
 - [ ] **Random MAC** on the virtual NIC (Hyper-V: VM Settings → Network Adapter → Advanced Features → "Generate new MAC")
-- [ ] **Unique screen resolution** — 1366×768 or 1600×900, not 1920×1080
-- [ ] **Timezone matches the VPN exit** — UK exit → set guest TZ to GMT/BST. Don't leave it on the host's TZ if different.
-- [ ] **Locale matches the VPN exit** — en-GB for UK exits
+- [ ] **Unique screen resolution** — different from host. If host is 1920×1080, set VM to 1366×768 or 1600×900. Browser fingerprinters compare resolution across sessions.
+- [ ] **Timezone matches host** — both should be GMT/BST since you're on home IP. No mismatch.
+- [ ] **Locale en-GB** to match the home IP's UK geo
 - [ ] **No browser extensions** other than the absolute minimum (uBlock is fine, password manager extensions are NOT — they leak fingerprint)
-- [ ] **No Microsoft account login** on the guest. Local account only.
+- [ ] **No Microsoft account login** on the guest. Local account only. **Microsoft accounts sync browser fingerprints across machines — instant correlation back to host if both are signed in.** Local account only.
 - [ ] **Fresh Edge profile** for any Microsoft test, then disabled. Use Chrome only for Unibet.
+- [ ] **Browser canvas/WebGL/audio fingerprint must differ from host's Chrome** — even with same IP, Unibet's anti-bot can compare these across sessions. The stealth patches in `scripts/auto-login.js` handle this for the in-VM Chrome (WebGL vendor spoofed, plugins normalized, etc).
 
 ---
 
-## 4. Network — VPN routing
+## 4. Network — use your home IP (corrected 2026-04-09)
 
-Unibet operates in the UK; the account should appear from a UK exit IP that matches your declared residence. Two options:
+**Use your home IP via Hyper-V's Default Switch (NAT through the host).** Do NOT add a VPN.
 
-**Option A — VPN client inside the VM (recommended for tonight):**
-- Install your VPN client (Mullvad, ProtonVPN, NordVPN — pick one)
-- Connect to a UK exit
-- Verify with `whatismyipaddress.com` from inside the VM
-- Pin the exit (don't let the client roam to other countries)
+The earlier version of this doc said "use a UK VPN exit, different from the host." That advice was a copy-paste from `coinpoker_vm_build.md` where the use case is *multiple accounts pretending to be different people*. That's not the Unibet VM use case.
 
-**Option B — Host-side VPN, VM routed through it:** more complex, leave for Proxmox setup later.
+The Unibet VM is **the same account holder running automation on their own account from their own home**. The legitimate, low-risk IP for that account is the same home IP it has historical sessions on. Specifically:
 
-⚠️ **Don't use the same exit as the host** — if you do CoinPoker from the host on a UK exit AND Unibet from the VM on the same UK exit, that's an IP fingerprint match between two "different" players. Pick different cities (London VPN for one, Manchester for the other).
+1. **Account history continuity** — your Unibet account has KYC verified to a UK address. Suddenly logging in from a different city's VPN exit triggers "impossible travel" / geo-anomaly fraud detection. Your home IP triggers nothing.
+2. **Residential IPs have better reputation than VPN exits** — Kindred's fraud / risk scoring treats residential ISPs as low-risk and commercial VPN ranges (Mullvad, ProtonVPN, NordVPN) as elevated-risk.
+3. **Multiple devices on one home IP is the norm** — phone, laptop, desktop, console, VM all sharing one IP is what every household looks like. Not flagged.
+4. **No multi-account collision** — the "different exit" argument was about isolating bans across multiple accounts. With one account there's nothing to isolate.
+5. **Host can do CoinPoker on the same IP simultaneously** — different site, no conflict.
+
+**The one nuance:** Unibet typically allows one active session per account at a time. If both the host and the VM try to log in at once, one will get force-disconnected. **Treat host and VM as alternates, not parallel** — when the VM is grinding Unibet, don't also run Unibet manually on the host.
+
+Hyper-V's "Default Switch" gives the VM NAT'd internet through your host's connection, so traffic appears as your home IP from Unibet's side. No additional setup required.
+
+**You DO still need browser/OS fingerprint hardening** (next section). The IP is fine but the device fingerprint must look distinct from the host's Chrome — Unibet's anti-bot can correlate canvas / WebGL / audio fingerprints across sessions and notice "same machine wearing two profiles."
 
 ---
 
