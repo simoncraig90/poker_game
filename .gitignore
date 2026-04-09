@@ -39,3 +39,27 @@ click_debug_*.png
 
 # Patcher / IL build artifacts (separate workspace)
 coinpoker_patcher/
+
+# ACR sandbox (extracted binaries and large JS, never commit)
+sandbox/acr/SetupACR.exe
+sandbox/acr/extracted/
+sandbox/acr/asar_unpacked/
+sandbox/acr/ie/
+sandbox/acr/innoextract.zip
+sandbox/acr/node_modules/
+sandbox/acr/package-lock.json
+sandbox/acr/key-files/
+sandbox/acr/package.json
+
+# Solver build artifacts and precomputed solutions
+solver/postflop-solver/target/
+solver/solutions/
+solver/postflop-solver/Cargo.lock
+solver/TexasSolver-Windows.zip
+solver/ts/
+
+# Transient screenshots and inspection dumps
+chrome-no-bar.png
+vm-*.png
+unibet-*.png
+unibet-*.txt

@@ -1,0 +1,20 @@
+const asar = require('@electron/asar');
+const list = asar.listPackage('extracted/app/resources/app.asar');
+const topDirs = new Set();
+list.forEach(p => {
+  const parts = p.replace(/^\\/, '').split('\\');
+  if (parts.length >= 1 && parts[0]) topDirs.add(parts[0]);
+});
+console.log('top-level entries:');
+[...topDirs].sort().forEach(d => console.log(' ', d));
+console.log('---');
+const jsFiles = list.filter(p => p.endsWith('.js'));
+const htmlFiles = list.filter(p => p.endsWith('.html'));
+const jsonFiles = list.filter(p => p.endsWith('.json'));
+console.log(`JS files: ${jsFiles.length}, HTML: ${htmlFiles.length}, JSON: ${jsonFiles.length}`);
+console.log('--- HTML files (likely entry points) ---');
+htmlFiles.slice(0, 30).forEach(p => console.log(' ', p));
+console.log('--- top-level JS files ---');
+jsFiles.filter(p => p.replace(/^\\/, '').split('\\').length <= 2).forEach(p => console.log(' ', p));
+console.log('--- package.json files ---');
+jsonFiles.filter(p => p.endsWith('package.json')).forEach(p => console.log(' ', p));

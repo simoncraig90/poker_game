@@ -165,14 +165,39 @@ The clicker is broken across all viable targets. Stop investing in click reliabi
 - [ ] **Auto-flag suspicious tables** — surface bot/collusion warnings on the overlay (already in collusion section, elevate priority)
 - [ ] **Decision-needed: target site choice** — once strategy + HUD are tight, decide whether to ever revisit auto-clicking, on which site, and with what new approach.
 
-### Todo — Find a different auto-clickable poker target (research, low priority)
-The two sites we know — Unibet (Emscripten canvas) and CoinPoker (Unity client) — both resist DOM automation. Before investing in either of the hard paths (TCP protocol RE, screen automation), spend a few hours surveying:
-- [ ] **888poker web client** — does it use canvas or DOM? Quick test: load in Chrome, devtools, inspect.
-- [ ] **partypoker web client** — same check
-- [ ] **GGPoker web client** — same check (note: native client is C++, web may be different)
-- [ ] **Pokerstars web client** — already in research notes as DOM-based, but anti-bot is the strongest in industry
-- [ ] **Smaller crypto sites** — Nitrobetting, BetOnline, ACR — many smaller operations use plain HTML
-- Goal: find ONE site that's pure DOM. If found, the existing CoinPoker replica adapter (which works against DOM) becomes the bones of a real auto-player. If not found after a few hours, accept that auto-clicking is dead and focus on advisor/HUD work indefinitely.
+### URGENT — Unibet account cool-down (added 2026-04-09)
+**Status:** During the VM dry-run on 2026-04-09 we triggered three rapid BUY-IN clicks via CDP that all timed out at the financial-commit step (Unibet flags `isTrusted=false` events at the money step but accepts them for navigation — same pattern as CoinPoker lobby clicks). Combined with: brand-new IP/device fingerprint, low captcha score, and headless-Chrome signals our stealth patches may not have fully suppressed. Unibet account is **single-shot due to KYC** — can't open another. Conservative estimate: <15% chance of any soft action, <2% chance of permanent ban from this incident alone, but non-zero.
+- [ ] **DO NOT TOUCH UNIBET FOR 48–72 HOURS** (until 2026-04-11 minimum)
+- [ ] When resuming: log in from normal home PC + normal browser, browse lobby manually 10–15 mins, no automation. Restores behavioral baseline.
+- [ ] Pause all Unibet automation development until alternative platform identified — see section below.
+- [ ] Rotate the Unibet password — currently in `scripts/auto-login.js` lines 11–12 (committed to public repo)
+
+### Todo — Find equivalent to CoinPoker (added 2026-04-09)
+After the Unibet near-miss, pivoting away from web-Chrome targets entirely. Looking for a site with: (a) tolerant or absent third-party tool policy, (b) instrumentable client (native binary we can hook, not Emscripten/wasm), (c) real player pool, (d) reachable from UK.
+
+**Tier 1 — closest profile to CoinPoker:**
+- [x] **ACR Poker (Winning Poker Network)** ⭐ PICKED + STATIC ANALYSIS COMPLETE 2026-04-09 — installer downloaded to `C:\poker-research\sandbox\acr\` (never executed), extracted via innoextract. **Findings:** Electron app (NOT Adobe AIR — old intel was wrong), 134 MB installer, code-signed by Lunar Software Inc. Panama, version 1.21.61. Entire client is JavaScript in `app.asar` (122 MB → 7,435 files). Electron security extraordinarily weak: `webSecurity:false, contextIsolation:false, nodeIntegration:true` — renderer has full Node.js. Anti-cheat is **five JS functions in `controller/deviceInfo.js`**: hardcoded Jivaro Pro check (`bridgeworker.exe` polling every 5 min), server-driven restricted-app blacklist via `POST /frontend/restricted-app`, one-shot full process telemetry via `POST /frontend/running-executables` 10 min after login, hardware fingerprint (MAC/UUID/disk serial/CPU ProcessorId via wmic, cached in storage). Hand histories written as **plaintext files** by `controller/handhistory.js` — free game state capture, no hooking required. See `memory/project_acr_inspection.md` for full inventory and 5-patch instrumentation plan.
+- [ ] **ACR — next steps (research, no client execution yet):**
+  1. Read `lib/wpn_client.min.js` (game protocol) — large file, deferred
+  2. Find handhistory output directory (probably `%APPDATA%\ACR Poker\handhistory` — verify by reading `controller/handhistory.js`)
+  3. Determine the asar repack workflow (`@electron/asar` `createPackage` after editing files)
+  4. Write the 5-patch deviceInfo.js diff (anti-cheat neutralization)
+  5. Decide instrumentation host: Proxmox VM (clean fingerprint, lower account risk) or main PC (faster iteration, but bound to host fingerprint)
+  6. **Only after all of the above:** create real account, deposit small amount, run patched client at micro stakes
+- [ ] **BetOnline / Sportsbetting.ag (Chico network)** — sister sites, allow HUDs, crypto, smaller pool than ACR. Same legal posture.
+
+**Tier 2 — private club apps (most permissive, softest games):**
+- [ ] **PokerBros** — Asian-style private club, agent-mediated deposits, completely unpoliced HUDs/overlays, very soft rec player base
+- [ ] **ClubGG / PPPoker / Pokio / Suprema** — same model variations
+- Friction: must trust an agent for fiat↔crypto settlement, no chargebacks if they vanish. Reputable agents exist (TGT, OnFire, BlackChip).
+
+**Tier 3 — fully permissive sandbox:**
+- [ ] **SwC Poker (Seals With Clubs)** — bitcoin-only, completely permissive on tools, small player pool, hands-off operator. Best for low-volume experimentation with the advisor stack.
+
+**UKGC-licensed (legal but harder to instrument):**
+- [ ] **888poker** — allows HUDs from approved whitelist, weaker anti-bot than Stars
+- [ ] **PokerStars** — most sophisticated anti-bot in industry, NOT a good fit
+- Goal: pick ONE site, instrument it the way we did CoinPoker (game state capture + advisor wiring + Win32 click for the financial step). Web/canvas targets like Unibet are abandoned.
 
 ### Todo — Venue-wide player database & profiling (added 2026-04-07 evening)
 - [x] **Wire opponent_type + table_summary to overlay + log + session JSONL** (DONE 2026-04-07) — `vs TAG | FISHY table` line on overlay, `villain=...` and `players=...` in `[REC]` log lines
@@ -265,6 +290,7 @@ The two sites we know — Unibet (Emscripten canvas) and CoinPoker (Unity client
 - [ ] Hand history logging — save all hands for post-session review + leak analysis
 - [ ] Session review — flag bad advisor recommendations post-session
 - [ ] Bet sizing optimization — size bets based on opponent tendencies (bigger vs calling stations, smaller vs nits)
+- [ ] **Action-Priority Table Switcher** (added 2026-04-09) — "table stacking" mode: only 1 table visible at full size, system brings whichever table needs your decision to front via `SetForegroundWindow(hwnd)`. Queue ordered by: (1) time urgency (least time remaining first), (2) pot size (larger pots = higher priority), (3) decision complexity (trivial folds auto-execute or go to back). Advisor overlay rendered at full size on the single visible table. Pre-action queuing: obvious folds auto-submitted, simple spots pre-filled for one-click confirm. On ACR: HWND from `.osf` seating files + `RequestSelection` WS message triggers queue entry. On CoinPoker: enumerate windows by title. Realistic table ceiling: 8-12 with human clicking, 16+ with auto-fold for junk. At 12 tables NL50 @ 3 BB/100 = ~$22/hr. Design: `TableManager` class with `PriorityQueue`, `on_request_selection(table_id, time_remaining)`, `bring_to_front(table_id)`. Build time: ~3 days. Slot after solver integration is validated.
 
 ### Todo — Multi-Site Expansion
 
