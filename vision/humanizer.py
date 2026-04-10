@@ -30,10 +30,10 @@ import threading
 
 TIMING_PROFILES = {
     # Preflop: fast for obvious folds, slower for marginal hands
-    "preflop_fold":      {"mu": 0.4,  "sigma": 0.5, "min": 0.8,  "max": 6.0},
-    "preflop_call":      {"mu": 0.8,  "sigma": 0.5, "min": 1.0,  "max": 8.0},
-    "preflop_raise":     {"mu": 0.9,  "sigma": 0.5, "min": 1.2,  "max": 10.0},
-    "preflop_check":     {"mu": 0.3,  "sigma": 0.4, "min": 0.5,  "max": 4.0},
+    "preflop_fold":      {"mu": -0.5, "sigma": 0.3, "min": 0.2,  "max": 0.6},
+    "preflop_call":      {"mu": -0.3, "sigma": 0.3, "min": 0.2,  "max": 0.6},
+    "preflop_raise":     {"mu": -0.3, "sigma": 0.3, "min": 0.2,  "max": 0.6},
+    "preflop_check":     {"mu": -0.5, "sigma": 0.2, "min": 0.1,  "max": 0.4},
 
     # Postflop: generally slower, more complex decisions
     "postflop_fold":     {"mu": 0.7,  "sigma": 0.6, "min": 0.8,  "max": 12.0},
@@ -79,8 +79,9 @@ def get_think_time(phase, action):
     t = math.exp(random.gauss(profile["mu"], profile["sigma"]))
     t = max(profile["min"], min(profile["max"], t))
 
-    # Occasional long tank (3% chance, adds 5-20 seconds)
-    if random.random() < 0.03:
+    # Occasional long tank (3% chance, adds 5-20 seconds) — postflop only
+    # Preflop has a short timer so skip long tanks there
+    if phase != "preflop" and random.random() < 0.03:
         t += random.uniform(5.0, 20.0)
 
     # Occasional instant snap (2% for folds only — humans snap-fold trash)

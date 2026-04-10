@@ -28,15 +28,12 @@ PAUSE_FLAG = os.path.join(ROOT, ".autoplay_pause")
 def is_paused():
     return os.path.exists(PAUSE_FLAG)
 
-# Safety: every auto_player.py launch starts PAUSED. User must explicitly
-# click ▶ RUNNING on the overlay to enable clicks. Prevents accidentally
-# letting the (unreliable) auto-clicker loose on a fresh session.
+# Start unpaused — remove any stale pause flag from previous session
 try:
-    with open(PAUSE_FLAG, "w") as _f:
-        _f.write(str(time.time()))
-    print(f"[Auto] Started PAUSED — click ▶ RUNNING on overlay to enable clicks")
-except Exception as _e:
-    print(f"[Auto] Could not create pause flag: {_e}")
+    if os.path.exists(PAUSE_FLAG):
+        os.remove(PAUSE_FLAG)
+except Exception:
+    pass
 
 class TeeWriter:
     def __init__(self, *streams):
@@ -163,6 +160,7 @@ def main():
     no_cards_since = [None]  # when did hero last have cards
     latest_ws_state = [None]  # most recent WS state for click verification
     pending_action = [None]  # currently pending action info
+    _cached_iframe = [None]  # cached iframe coords: (if_x, if_y, if_w, if_h)
 
     def click_play_button():
         """Click the PLAY button (center-bottom of canvas) to rejoin after sitting out."""
@@ -308,45 +306,65 @@ def main():
                     render = _ctypes.windll.user32.FindWindowExW(hwnd, None, "Chrome_RenderWidgetHostHWND", None)
                     target_widget = render if render else hwnd
 
-                    # Get viewport dimensions and screen origin
-                    rect = _wt.RECT()
-                    _ctypes.windll.user32.GetClientRect(target_widget, _ctypes.byref(rect))
-                    cw, ch = rect.right, rect.bottom
+                    # Get render widget screen origin
                     pt = _wt.POINT(0, 0)
                     _ctypes.windll.user32.ClientToScreen(target_widget, _ctypes.byref(pt))
 
-                    # Button positions:
-                    # X: % of render widget width (stable)
-                    # Y: ABSOLUTE OFFSET FROM BOTTOM in physical pixels
-                    #    (more robust than % when render height changes)
-                    # FOLD/CALL center at 74px from bottom, RAISE at 82px from bottom
-                    btn_pct = {"FOLD": (0.384, None), "CHECK": (0.485, None),
-                               "CALL": (0.485, None), "RAISE": (0.587, None),
-                               "BET": (0.587, None)}
-                    btn_y_from_bottom = {"FOLD": 74, "CHECK": 74, "CALL": 74,
-                                          "RAISE": 82, "BET": 82}
-                    # Slider preset positions (in render-widget pct)
-                    # Screen y 935 → render y (935-131)/944 = 0.852
-                    # x positions from screenshot: 0.373, 0.424, 0.474, 0.525 of full image
-                    # In render: subtract origin offset, divide by render width
-                    # Image width 1902, render origin x 26, render width 1899
-                    # x_render_pct = (image_x - 26) / 1899
-                    slider_pct = {
-                        25:  (0.360, 0.852),  # (710-26)/1899
-                        50:  (0.411, 0.852),  # (806-26)/1899
-                        80:  (0.461, 0.852),  # (902-26)/1899
-                        100: (0.512, 0.852),  # (998-26)/1899
-                    }
-                    pct = btn_pct[cmd]
-                    sx = pt.x + int(cw * pct[0])
-                    # Use absolute Y offset from bottom (more robust)
-                    sy = pt.y + ch - btn_y_from_bottom[cmd]
+                    # Button positions as % of iframe CSS dimensions
+                    btn_pct = {"FOLD": (0.403, 0.935), "CHECK": (0.505, 0.935),
+                               "CALL": (0.605, 0.932), "RAISE": (0.609, 0.932),
+                               "BET": (0.609, 0.932)}
+
+                    # Get iframe position — use cache if available, else query via Node CDP
+                    if _cached_iframe[0]:
+                        _if_x, _if_y, _if_w, _if_h = _cached_iframe[0]
+                        pct = btn_pct[cmd]
+                        sx = _if_x + int(_if_w * pct[0])
+                        sy = _if_y + int(_if_h * pct[1])
+                        print(f"[Auto] iframe cached: btn=({sx},{sy})")
+                    else:
+                        _node_js = (
+                            "const CDP=require('chrome-remote-interface');"
+                            "CDP.List({port:9222}).then(ts=>{"
+                            "const p=ts.find(t=>t.type==='page'&&t.url.includes('unibet'));"
+                            "if(!p)return console.log('{}');"
+                            "CDP({target:p.id,port:9222}).then(async c=>{"
+                            "const r=await c.Runtime.evaluate({returnByValue:true,expression:"
+                            "'(()=>{const f=Array.from(document.querySelectorAll(\"iframe\")).find(x=>x.src&&x.src.includes(\"relaxg\"));if(!f)return\"{}\";const r=f.getBoundingClientRect();return JSON.stringify({l:r.left,t:r.top,w:r.width,h:r.height,dpr:devicePixelRatio});})()'"
+                            "});console.log(r.result.value);await c.close();process.exit(0);"
+                            "});}).catch(()=>console.log('{}'));"
+                        )
+                        try:
+                            import subprocess as _sp, json as _json2
+                            _nr = _sp.run(['node', '-e', _node_js], capture_output=True,
+                                          text=True, timeout=3, cwd='C:/poker-research')
+                            _fr = _json2.loads(_nr.stdout.strip() or '{}')
+                            if _fr and 'l' in _fr:
+                                _dpr = _fr['dpr']
+                                _if_x = pt.x + int(_fr['l'] * _dpr)
+                                _if_y = pt.y + int(_fr['t'] * _dpr)
+                                _if_w = int(_fr['w'] * _dpr)
+                                _if_h = int(_fr['h'] * _dpr)
+                                _cached_iframe[0] = (_if_x, _if_y, _if_w, _if_h)
+                                pct = btn_pct[cmd]
+                                sx = _if_x + int(_if_w * pct[0])
+                                sy = _if_y + int(_if_h * pct[1])
+                                print(f"[Auto] iframe coords: origin=({_if_x},{_if_y}) size={_if_w}x{_if_h} -> btn=({sx},{sy})")
+                            else:
+                                raise ValueError("no iframe data")
+                        except Exception as _ce:
+                            print(f"[Auto] coord fallback ({_ce})")
+                            rect = _wt.RECT()
+                            _ctypes.windll.user32.GetClientRect(target_widget, _ctypes.byref(rect))
+                            cw, ch = rect.right, rect.bottom
+                            pct = btn_pct[cmd]
+                            sx = pt.x + int(cw * (0.1399 + 0.6887 * pct[0]))
+                            sy = pt.y + int(ch * (0.1879 + 0.5801 * pct[1]))
+
+                    preset_target = None
+                    bet_input = None
 
                     # Don't touch slider — accept Unibet's default raise/bet sizing.
-                    # Strategy will adapt to whatever amount the button represents.
-                    bet_input = None
-                    preset_target = None
-
                     # Save current foreground window
                     prev_hwnd = _ctypes.windll.user32.GetForegroundWindow()
                     saved_cursor = _wt.POINT()
@@ -377,15 +395,60 @@ def main():
                     # Extra wait so Chrome's compositor catches up
                     time.sleep(0.15)
 
-                    # Click slider preset first (safe — never All-in)
-                    if preset_target:
-                        _ctypes.windll.user32.SetCursorPos(preset_target[0], preset_target[1])
-                        time.sleep(0.04)
+                    # Set bet/raise amount by typing into the Unibet bet input field.
+                    # The input is above the action buttons at ~x=61%, y=87.3% of iframe.
+                    # Click it, Ctrl+A to select, Ctrl+V to paste the target amount.
+                    if cmd in ("RAISE", "BET") and amount > 0 and _cached_iframe[0]:
+                        _bif_x, _bif_y, _bif_w, _bif_h = _cached_iframe[0]
+                        bix = _bif_x + int(_bif_w * 0.610)
+                        biy = _bif_y + int(_bif_h * 0.873)
+                        amount_str = f"{amount:.2f}"
+                        # Put amount on clipboard for paste.
+                        # restype must be c_void_p — default c_int truncates 64-bit handles.
+                        _clipboard_ok = False
+                        try:
+                            CF_UNICODETEXT = 13
+                            GMEM_MOVEABLE = 0x0002
+                            _cbuf = (amount_str + '\x00').encode('utf-16-le')
+                            _ga = _ctypes.windll.kernel32.GlobalAlloc
+                            _ga.restype = _ctypes.c_void_p
+                            _gl = _ctypes.windll.kernel32.GlobalLock
+                            _gl.restype = _ctypes.c_void_p
+                            _hg = _ga(GMEM_MOVEABLE, len(_cbuf))
+                            if _hg:
+                                _ptr = _gl(_hg)
+                                if _ptr:
+                                    _ctypes.memmove(_ptr, _cbuf, len(_cbuf))
+                                    _ctypes.windll.kernel32.GlobalUnlock(_hg)
+                                    _ctypes.windll.user32.OpenClipboard(0)
+                                    _ctypes.windll.user32.EmptyClipboard()
+                                    _ctypes.windll.user32.SetClipboardData(CF_UNICODETEXT, _hg)
+                                    _ctypes.windll.user32.CloseClipboard()
+                                    _clipboard_ok = True
+                        except Exception as _be:
+                            print(f"[Auto] bet clipboard error: {_be}")
+                        # Click bet input field
+                        _ctypes.windll.user32.SetCursorPos(bix, biy)
+                        time.sleep(0.06)
                         _ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
-                        time.sleep(0.07)
+                        time.sleep(0.05)
                         _ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
                         time.sleep(0.15)
-                        print(f"[Auto] slider clicked at {preset_target}")
+                        # Ctrl+A select all existing text
+                        _ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)   # Ctrl down
+                        _ctypes.windll.user32.keybd_event(0x41, 0, 0, 0)   # A down
+                        time.sleep(0.03)
+                        _ctypes.windll.user32.keybd_event(0x41, 0, 2, 0)   # A up
+                        _ctypes.windll.user32.keybd_event(0x11, 0, 2, 0)   # Ctrl up
+                        time.sleep(0.05)
+                        # Ctrl+V paste amount
+                        _ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)   # Ctrl down
+                        _ctypes.windll.user32.keybd_event(0x56, 0, 0, 0)   # V down
+                        time.sleep(0.03)
+                        _ctypes.windll.user32.keybd_event(0x56, 0, 2, 0)   # V up
+                        _ctypes.windll.user32.keybd_event(0x11, 0, 2, 0)   # Ctrl up
+                        time.sleep(0.15)
+                        print(f"[Auto] bet amount €{amount_str} at ({bix},{biy}) clipboard={'ok' if _clipboard_ok else 'FAILED'}")
 
                     # Snapshot state BEFORE clicking
                     pre_state = latest_ws_state[0] or {}

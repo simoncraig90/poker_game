@@ -526,6 +526,7 @@ class AdvisorStateMachine:
         override = self._apply_danger_overrides(
             phase=phase, hero=hero, board=board, facing=facing,
             call_amt=call_amt, pot_cents=pot_cents, current_action=action,
+            adj_equity=dec_eq,
         )
         if override:
             new_action, reason = override
@@ -1262,7 +1263,7 @@ class AdvisorStateMachine:
         return r1 > max(board_ranks)
 
     def _apply_danger_overrides(self, *, phase, hero, board, facing,
-                                call_amt, pot_cents, current_action):
+                                call_amt, pot_cents, current_action, adj_equity=0.5):
         """
         Run hard-coded fold filters AFTER the engine produces an action.
         Returns (new_action, reason) or None if no override applies.
@@ -1354,7 +1355,8 @@ class AdvisorStateMachine:
         if (phase in ("FLOP", "TURN")
                 and phase in self.aggressed_phases
                 and bet_ratio >= 0.40
-                and self._evaluate_hand_class(hero, board) == self.HAND_PAIR):
+                and self._evaluate_hand_class(hero, board) == self.HAND_PAIR
+                and adj_equity < 0.75):
             return ("FOLD",
                     f"one-pair facing raise after our {phase.lower()} bet "
                     f"({bet_ratio:.0%}-pot)")
