@@ -46,6 +46,8 @@ See `project_coinpoker_unity.md` in memory for the full session-by-session log o
 - [x] **Eval lab** — `baseline_replay_runner.py` (synthetic + file-based replay), `hit_rate_report.py` (EXACT/EMERGENCY rates, spot class breakdown, snap rate, trust), `latency_bench.py` (P50/P95/P99 by mode).
 - [x] **Mode router** — `python/advisor_service/mode_router.py` subprocess bridge with structured logging and accumulated stats.
 - [x] **First baseline numbers**: EXACT 57%, EMERGENCY 43% on synthetic hands. EXACT mean 1.2ms, EMERGENCY mean 66us. Zero errors, zero illegal outputs.
+- [x] **Session-to-replay converter** — `python/eval_lab/session_to_replay.py`. Converts session JSONL (Unibet + CoinPoker + review formats) to `RecommendRequest`-shaped replay inputs. Handles position→seat mapping, big-blind inference, action-history synthesis, legal-action inference, board-bucket computation. Every inferred field explicitly tagged in `inference_metadata`. `--validate --sample N` mode with 10 structural checks. `--extract-requests` mode for the replay runner.
+- [x] **First real-data baseline (733 hands → 1143 decisions)**: EXACT 3.2%, EMERGENCY 96.8%. Zero errors, zero illegal outputs. Dominant EMERGENCY source: limped pots (58.4%). SRP hits 9.5% EXACT. 230 "exact quality" EMERGENCY hits (SRP spots that missed on board_bucket or stack_bucket) are the most immediately buildable coverage gaps.
 
 ### In Progress
 - [ ] Fix CHECK when need to CALL (preflop: base advisor returns CHECK)
