@@ -1,0 +1,10 @@
+{
+  "artifact_type": "solver_strategy",
+  "version": 1,
+  "checksum_sha256": "81578def1cc60165f1b8b594add42ebf512e5481bc59249caf87f327a2d581da",
+  "file_size_bytes": 116,
+  "menu_version": 1,
+  "n_actions": 2,
+  "n_hand_buckets": 12,
+  "scenario_id": "4bp/turn/btn_vs_hj_2way/s60/bb64/norake/mv1"
+}

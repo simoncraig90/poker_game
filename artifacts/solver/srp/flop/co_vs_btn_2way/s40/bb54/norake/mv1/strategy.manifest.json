@@ -1,0 +1,10 @@
+{
+  "artifact_type": "solver_strategy",
+  "version": 1,
+  "checksum_sha256": "8a1b7ac4b9e998d2dac46f1569c678ef27b286596c68279607c5ed691b2aa1cd",
+  "file_size_bytes": 166,
+  "menu_version": 1,
+  "n_actions": 3,
+  "n_hand_buckets": 12,
+  "scenario_id": "srp/flop/co_vs_btn_2way/s40/bb54/norake/mv1"
+}

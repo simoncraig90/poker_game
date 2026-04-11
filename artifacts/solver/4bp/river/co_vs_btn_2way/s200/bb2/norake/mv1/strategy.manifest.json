@@ -1,0 +1,10 @@
+{
+  "artifact_type": "solver_strategy",
+  "version": 1,
+  "checksum_sha256": "185b37a6457a23367ad82351f6a654187b35fc9c421cc19a64bd56e58f1fb7d7",
+  "file_size_bytes": 116,
+  "menu_version": 1,
+  "n_actions": 2,
+  "n_hand_buckets": 12,
+  "scenario_id": "4bp/river/co_vs_btn_2way/s200/bb2/norake/mv1"
+}
