@@ -48,13 +48,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import glob
+import hashlib
+import json
 import os
+import random
 import subprocess
 import sys
 import time
 from typing import Optional
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PREFLIGHT_STATE = os.path.join(ROOT, ".shadow_preflight.json")
 PYTHON = sys.executable
 
 # ── Gate definitions ─────────────────────────────────────────────────────
@@ -191,12 +196,13 @@ def gate_named_overrides(verbose: bool) -> tuple[bool, str]:
     when replaying captured data. Any new firing is a signal that something
     has shifted in a way that wasn't anticipated.
 
-    Expected firings (as of 2026-04-08, ~125-test green state):
+    Expected firings (as of 2026-04-11, Phase 15 green state):
       Unibet: 1 hand (hand_id 2379414698 = KK 3-flush) + 1 hand (2379447781 = QJ paired)
       CoinPoker: 1 hand (2460830707 = KK 4-straight river)
+               + 1 hand (2460830659 = 54o counterfeited two-pair on paired board)
     """
     expected_unibet = {"2379414698", "2379447781"}
-    expected_coinpoker = {"2460830707"}
+    expected_coinpoker = {"2460830707", "2460830659"}
 
     print("[gate] running named-override sweep on captured data ...")
     script = '''
@@ -276,6 +282,210 @@ print("FIRED:" + ",".join(sorted(fired_hands)))
     return True, f"all {len(expected)} expected overrides fired, no unexpected ones"
 
 
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 16), b""):
+            h.update(chunk)
+    return "sha256:" + h.hexdigest()
+
+
+def _load_preflight_state() -> dict:
+    try:
+        return json.loads(open(_PREFLIGHT_STATE, encoding="utf-8").read())
+    except Exception:
+        return {}
+
+
+def _save_preflight_state(state: dict) -> None:
+    with open(_PREFLIGHT_STATE, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+
+def gate_binary_freshness(verbose: bool) -> tuple[bool, str]:
+    """Verify advisor-cli binary exists, hash it, warn if stale."""
+    bin_path = os.path.join(ROOT, "rust", "target", "release",
+                            "advisor-cli.exe" if sys.platform == "win32" else "advisor-cli")
+    if not os.path.exists(bin_path):
+        return False, f"advisor-cli binary not found at {bin_path}"
+
+    h = _sha256_file(bin_path)
+    mtime = os.path.getmtime(bin_path)
+    age_hours = (time.time() - mtime) / 3600
+
+    state = _load_preflight_state()
+    prev_hash = state.get("binary_hash", "")
+
+    warnings = []
+    if prev_hash and prev_hash != h:
+        warnings.append("hash changed since last run (rebuilt?)")
+    if age_hours > 24:
+        warnings.append(f"binary is {age_hours:.0f}h old")
+
+    state["binary_hash"] = h
+    state["binary_mtime"] = mtime
+    _save_preflight_state(state)
+
+    if verbose:
+        print(f"    binary: {bin_path}")
+        print(f"    hash:   {h}")
+        print(f"    age:    {age_hours:.1f}h")
+
+    msg = f"hash={h[:24]}... age={age_hours:.0f}h"
+    if warnings:
+        msg += " WARN: " + "; ".join(warnings)
+    return True, msg
+
+
+def gate_artifact_snapshot(verbose: bool) -> tuple[bool, str]:
+    """Count artifacts, verify manifest/bin pairing, sample integrity."""
+    solver_root = os.path.join(ROOT, "artifacts", "solver")
+    bins = glob.glob(os.path.join(solver_root, "**", "*.bin"), recursive=True)
+    manifests = glob.glob(os.path.join(solver_root, "**", "*.manifest.json"), recursive=True)
+
+    if len(bins) == 0:
+        return False, "zero artifact bins found in artifacts/solver/"
+    if len(manifests) == 0:
+        return False, "zero manifests found in artifacts/solver/"
+
+    warnings = []
+    if len(bins) != len(manifests):
+        warnings.append(f"bin count ({len(bins)}) != manifest count ({len(manifests)})")
+
+    # Sample up to 5 manifests and verify their bin exists + SHA matches
+    sample = random.sample(manifests, min(5, len(manifests)))
+    sample_ok = 0
+    for mf_path in sample:
+        try:
+            mf = json.loads(open(mf_path, encoding="utf-8").read())
+            expected_sha = mf.get("checksum_sha256", "")
+            # Bin path: same directory, same stem but .bin extension
+            bin_stem = mf_path.replace(".manifest.json", ".bin")
+            if not os.path.exists(bin_stem):
+                warnings.append(f"manifest orphan: {os.path.basename(mf_path)}")
+                continue
+            if expected_sha:
+                actual = hashlib.sha256(open(bin_stem, "rb").read()).hexdigest()
+                if actual != expected_sha:
+                    warnings.append(f"SHA mismatch: {os.path.basename(bin_stem)}")
+                    continue
+            sample_ok += 1
+        except Exception as e:
+            warnings.append(f"sample error: {e}")
+
+    state = _load_preflight_state()
+    prev_count = state.get("artifact_count", 0)
+    if prev_count and prev_count != len(bins):
+        warnings.append(f"count changed: {prev_count} -> {len(bins)}")
+    state["artifact_count"] = len(bins)
+    _save_preflight_state(state)
+
+    if verbose:
+        print(f"    bins:      {len(bins)}")
+        print(f"    manifests: {len(manifests)}")
+        print(f"    sample OK: {sample_ok}/{len(sample)}")
+
+    msg = f"{len(bins)} bins, {len(manifests)} manifests, sample {sample_ok}/{len(sample)}"
+    if warnings:
+        msg += " WARN: " + "; ".join(warnings[:3])
+    return True, msg
+
+
+def gate_frame_file_health(verbose: bool, frame_path: str = "") -> tuple[bool, str]:
+    """Verify the CoinPoker frame log exists and is fresh."""
+    if not frame_path:
+        frame_path = r"C:\Users\Simon\coinpoker_frames.jsonl"
+
+    if not os.path.exists(frame_path):
+        return False, f"frame file not found: {frame_path}"
+
+    mtime = os.path.getmtime(frame_path)
+    age_min = (time.time() - mtime) / 60
+    size_mb = os.path.getsize(frame_path) / (1024 * 1024)
+
+    # Read last 5 lines and verify they're valid JSON with cmd_bean
+    valid_lines = 0
+    try:
+        with open(frame_path, "rb") as f:
+            # Seek to near the end
+            f.seek(max(0, os.path.getsize(frame_path) - 8192))
+            tail = f.read().decode("utf-8", errors="replace")
+            lines = [l for l in tail.strip().split("\n") if l.strip()][-5:]
+            for line in lines:
+                try:
+                    obj = json.loads(line)
+                    if "cmd_bean" in obj:
+                        valid_lines += 1
+                except json.JSONDecodeError:
+                    pass
+    except Exception as e:
+        return False, f"cannot read frame file: {e}"
+
+    warnings = []
+    if age_min > 5:
+        warnings.append(f"last write {age_min:.0f}min ago (DLL patched?)")
+    if valid_lines == 0:
+        warnings.append("no valid cmd_bean lines in tail")
+
+    if verbose:
+        print(f"    path:        {frame_path}")
+        print(f"    size:        {size_mb:.1f} MB")
+        print(f"    last write:  {age_min:.1f} min ago")
+        print(f"    tail valid:  {valid_lines}/5")
+
+    msg = f"{size_mb:.1f}MB, {age_min:.0f}min ago, tail {valid_lines}/5 valid"
+    if warnings:
+        msg += " WARN: " + "; ".join(warnings)
+    # Frame file existing but stale is a WARN, not a FAIL
+    return True, msg
+
+
+# ── Preflight summary for shadow sessions ─────────────────────────────
+
+
+def run_preflight(session_id: str = "", skip_replay: bool = False,
+                  skip_tests: bool = False, verbose: bool = False,
+                  frame_path: str = "") -> dict:
+    """Run all gates and return a preflight summary dict.
+
+    This is the API entry point for shadow_session.py to call
+    programmatically instead of shelling out.
+    """
+    gates = []
+    if not skip_tests:
+        gates.append(("test_suite", lambda v: gate_test_suite(v)))
+    gates.append(("strategy_regressions", lambda v: gate_strategy_regressions(v)))
+    gates.append(("named_overrides", lambda v: gate_named_overrides(v)))
+    if not skip_replay:
+        gates.append(("replay_validation", lambda v: gate_replay_validation(v)))
+    gates.append(("binary_freshness", lambda v: gate_binary_freshness(v)))
+    gates.append(("artifact_snapshot", lambda v: gate_artifact_snapshot(v)))
+    gates.append(("frame_file_health", lambda v: gate_frame_file_health(v, frame_path)))
+
+    results = {}
+    all_pass = True
+    for name, fn in gates:
+        try:
+            ok, msg = fn(verbose)
+        except Exception as e:
+            ok, msg = False, f"tooling error: {type(e).__name__}: {e}"
+        results[name] = "PASS" if ok else f"FAIL: {msg}"
+        if not ok:
+            all_pass = False
+
+    state = _load_preflight_state()
+    return {
+        "session_id": session_id,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "binary_hash": state.get("binary_hash", ""),
+        "binary_mtime": state.get("binary_mtime", ""),
+        "artifact_count": state.get("artifact_count", 0),
+        "frame_file": frame_path or r"C:\Users\Simon\coinpoker_frames.jsonl",
+        "gates": results,
+        "verdict": "GO" if all_pass else "NO-GO",
+    }
+
+
 # ── Driver ───────────────────────────────────────────────────────────────
 
 
@@ -300,6 +510,9 @@ def main() -> int:
     gates.append(("named_overrides", gate_named_overrides))
     if not args.skip_replay:
         gates.append(("replay_validation", gate_replay_validation))
+    gates.append(("binary_freshness", gate_binary_freshness))
+    gates.append(("artifact_snapshot", gate_artifact_snapshot))
+    gates.append(("frame_file_health", gate_frame_file_health))
 
     results = []
     for name, fn in gates:

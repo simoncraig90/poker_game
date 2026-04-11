@@ -31,6 +31,11 @@ class AdvisorOutput:
         # or villain seat couldn't be determined).
         "range_equity", "range_combos",
         "villain_position_for_range", "villain_class_for_range",
+        # Phase 15 shadow-mode fields — trust and latency for
+        # complete session metrics. Python-path decisions set these
+        # directly; Rust-path decisions would override from the
+        # advisor-cli response.
+        "trust_score", "latency_us",
     )
 
     def __init__(self):
@@ -56,6 +61,8 @@ class AdvisorOutput:
         self.range_combos = 0
         self.villain_position_for_range = ""
         self.villain_class_for_range = ""
+        self.trust_score = 0.0
+        self.latency_us = 0
 
 
 class AdvisorStateMachine:
@@ -421,6 +428,7 @@ class AdvisorStateMachine:
         out.info = info
         out.rec_bg = rec_bg
         out.source = "preflop_chart"
+        out.trust_score = 0.85
         out.log_line = (f"[{out.phase}] {hero_str} | {pf.get('hand_key','')} {pos} "
                         f"facing={facing} chart={pf.get('action','?')} -> {action}")
 
@@ -643,6 +651,14 @@ class AdvisorStateMachine:
         out.info = info
         out.rec_bg = rec_bg
         out.source = source
+        # Trust: CFR-backed sources get 0.80, rules-only get 0.65,
+        # danger-override get 0.90 (high confidence in fold).
+        if "danger" in source:
+            out.trust_score = 0.90
+        elif "cfr" in source:
+            out.trust_score = 0.80
+        else:
+            out.trust_score = 0.65
         adj_str = f" adj:{adjusted_eq:.0%}" if facing and adjusted_eq < eq else ""
         out.log_line = f"[{phase}] {hero_str} | Board: {board_str} | Eq: {eq:.0%}{adj_str} | {action}"
 

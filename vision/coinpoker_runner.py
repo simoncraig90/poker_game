@@ -802,7 +802,9 @@ class _CoinPokerTrackerAdapter:
 
 def make_advisor_callback(session: CoinPokerSession,
                           overlay: Optional[OverlayClient] = None,
-                          room_name: str = ""):
+                          room_name: str = "",
+                          decision_logger=None,
+                          focus_manager=None):
     """
     Lazy-load AdvisorStateMachine and return a callback that drives it
     on each snapshot. Uses ``session.bb_cents`` so the BB scale matches
@@ -814,6 +816,12 @@ def make_advisor_callback(session: CoinPokerSession,
 
     If ``overlay`` is provided, each snapshot also renders to it via the
     table_update protocol.
+
+    If ``decision_logger`` is provided (DecisionLogger instance), every
+    advisor decision is written to the shadow session JSONL log.
+
+    If ``focus_manager`` is provided (FocusManager instance), the correct
+    table window is brought to foreground on each hero_turn.
     """
     print("[runner] loading advisor dependencies ...")
     from advisor import Advisor as BaseAdvisor  # noqa: WPS433
@@ -927,6 +935,9 @@ def make_advisor_callback(session: CoinPokerSession,
         import atexit
         atexit.register(tracker.flush)
 
+    # Import state_validator here (deferred, like the other vision imports)
+    from state_validator import validate_snapshot  # noqa: WPS433
+
     def on_snapshot(snap: dict) -> None:
         # Multi-table dispatch: each room has its own SM + cache so
         # action history and last-rec state don't cross-contaminate.
@@ -957,14 +968,36 @@ def make_advisor_callback(session: CoinPokerSession,
             cache["hand"] = snap["hand_id"]
             cache["out"] = None
 
+        # ── Task 5: state validation before advisor ──────────────────
+        validation = validate_snapshot(snap)
+        if validation.status != "ok" and decision_logger is not None:
+            # Only log anomalies that matter: skip hero_cards_missing
+            # when it's not hero's turn (between-hand noise). These are
+            # benign non-decision frames and pollute the review output.
+            is_between_hand_noise = (
+                validation.checks_failed == ["hero_cards_missing"]
+                and not snap.get("hero_turn", False)
+            )
+            if not is_between_hand_noise:
+                decision_logger.log_validation_anomaly(
+                    snap, validation.status, validation.checks_failed)
+
         # Compute a fresh recommendation only when it's hero's turn AND
         # hero has cards (not spectating). Otherwise reuse the cached
         # rec for display so the overlay stays informative.
         out = None
         if snap["hero_turn"] and len(snap["hero_cards"]) >= 2:
-            out = sm.process_state(snap)
-            if out is not None and out.action:
-                cache["out"] = out
+            if validation.status == "unsafe":
+                # Block advisor on corrupted state; print warning
+                print(f"[UNSAFE] hand={snap.get('hand_id')} "
+                      f"checks={validation.checks_failed} — skipping advisor")
+            else:
+                t0 = _time.monotonic()
+                out = sm.process_state(snap)
+                elapsed_us = int((_time.monotonic() - t0) * 1_000_000)
+                if out is not None and out.action:
+                    out.latency_us = elapsed_us
+                    cache["out"] = out
 
         display_out = cache["out"]
 
@@ -980,6 +1013,8 @@ def make_advisor_callback(session: CoinPokerSession,
         # Console line — only print when the advisor JUST produced a fresh
         # action this turn. Avoids spamming the same rec on every villain
         # bet update.
+        sm_class = ""
+        src = ""
         if out is not None and out.action:
             hero = " ".join(snap["hero_cards"]) or "??"
             board = " ".join(snap["board_cards"]) or "-"
@@ -1036,6 +1071,39 @@ def make_advisor_callback(session: CoinPokerSession,
                   f"pos={snap['position']:3}  eq={out.equity:.0%}  "
                   f"=> {out.action}{opp_tag}")
 
+        # ── Task 6: decision logging ─────────────────────────────────
+        if out is not None and out.action and decision_logger is not None:
+            snap_room = snap.get("room_name") or ""
+            table_id_for_log = (
+                room_to_table_id(snap_room, fallback="coinpoker_t1")
+                if snap_room else "coinpoker_t1"
+            )
+            decision_logger.log_decision(
+                snap, out,
+                validation_status=validation.status,
+                table_id=table_id_for_log,
+                villain_class=sm_class,
+                villain_class_source=src,
+            )
+
+        # ── Task 7: focus management ─────────────────────────────────
+        if (focus_manager is not None
+                and out is not None and out.action
+                and snap.get("hero_turn")
+                and validation.status != "unsafe"):
+            snap_room = snap.get("room_name") or ""
+            table_id_for_focus = (
+                room_to_table_id(snap_room, fallback="coinpoker_t1")
+                if snap_room else "coinpoker_t1"
+            )
+            focus_manager.request_focus(
+                room_name=snap_room,
+                hand_id=str(snap.get("hand_id", "")),
+                phase=snap.get("phase", ""),
+                table_id=table_id_for_focus,
+                pot=snap.get("pot", 0),
+            )
+
         # Overlay update — fire on every state change so the HUD reflects
         # current cards/board/phase even when the advisor has no fresh rec.
         # Per-table routing: each room gets its own table_id, which makes
@@ -1048,11 +1116,19 @@ def make_advisor_callback(session: CoinPokerSession,
                     room_to_table_id(snap_room, fallback=overlay.table_id)
                     if snap_room else overlay.table_id
                 )
+                # On unsafe validation, override the overlay rec to
+                # "STATE?" so the human knows the input is suspect.
+                overlay_out = display_out
+                if validation.status == "unsafe" and snap.get("hero_turn"):
+                    overlay_out = None  # clear any cached rec
                 msg = snapshot_to_overlay_msg(
-                    snap, display_out,
+                    snap, overlay_out,
                     table_id=table_id_for_panel,
                     room_name=snap_room or room_name,
                 )
+                if validation.status == "unsafe" and snap.get("hero_turn"):
+                    msg["rec"] = "STATE?"
+                    msg["rec_color"] = "red"
                 overlay.send(msg)
                 # Mark this panel as live and sweep any panels that
                 # have not received a frame in STALE_TABLE_SECS — those
@@ -1105,6 +1181,12 @@ def main(argv=None) -> int:
                         "simultaneously. Each table gets its own SM, "
                         "action history, and rec cache. Single-table is "
                         "the default for backwards compat.")
+    p.add_argument("--shadow", action="store_true",
+                   help="Shadow mode: enable decision logging, state "
+                        "validation, and focus management. Writes a "
+                        "per-decision JSONL log for post-session review.")
+    p.add_argument("--session-id", default=None,
+                   help="Session ID for shadow mode logging (default: auto)")
     args = p.parse_args(argv)
 
     if not args.follow and not args.replay:
@@ -1134,18 +1216,46 @@ def main(argv=None) -> int:
     if args.multi_table:
         print("[runner] MULTI-TABLE mode enabled — per-room state isolation")
 
+    # ── Shadow mode components ─────���────────────────────────────────────
+    dl = None   # DecisionLogger
+    fm = None   # FocusManager
+    if args.shadow:
+        import uuid
+        from decision_logger import DecisionLogger
+        from focus_manager import FocusManager
+        sid = args.session_id or uuid.uuid4().hex[:12]
+        dl = DecisionLogger(sid)
+        fm = FocusManager(
+            cooldown_secs=2.0,
+            on_event=lambda tid, hid, ok, reason: dl.log_focus_event(
+                tid, hid, ok, reason) if dl else None,
+        )
+        print(f"[shadow] session_id={sid}  log={dl.path}")
+
     if args.print_only:
         callback_holder[0] = make_console_printer()
         print(f"[runner] print-only mode, hero_id={args.hero_id}, file={args.file}")
     else:
-        callback_holder[0] = make_advisor_callback(session, overlay=overlay)
+        callback_holder[0] = make_advisor_callback(
+            session, overlay=overlay,
+            decision_logger=dl, focus_manager=fm,
+        )
 
     print("=" * 60)
-    print(f"  CoinPoker Advisor Runner — {'follow' if args.follow else 'replay'} mode")
+    label = "follow" if args.follow else "replay"
+    if args.shadow:
+        label = f"shadow-{label}"
+    print(f"  CoinPoker Advisor Runner — {label} mode")
     print("=" * 60)
 
     import atexit
     def _cleanup():
+        if dl is not None:
+            try:
+                dl.close()
+                print(f"\n[shadow] session log written to {dl.path}")
+            except Exception:
+                pass
         if overlay is not None:
             try:
                 overlay.remove_table()
