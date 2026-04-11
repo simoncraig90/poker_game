@@ -1,609 +1,345 @@
-# 6-Max Poker Bot — Production Architecture
+# 6-Max NLHE Advisor — Architecture & Roadmap
 
-## Principal Engineer: Claude | Date: 2026-04-06
-
----
-
-## Executive Verdict
-
-Do NOT train full 6-max CFR across all 4 streets at 50+ buckets. The memory math kills it:
-
-- 6 players x 6 actions x 4 streets x 50 buckets x 3 stack depths = hundreds of millions of info sets
-- At 48 bytes/info set (regret + strategy sums) = 10-100GB just for training tables
-- The resulting strategy file is 5-10GB, Python dict = 25GB, OOM on the 32GB client
-
-Instead: **stratified architecture**. Each street uses the cheapest strategy source that's profitable at the target stakes.
+**Target:** Profitable at high-stakes 6-max cash (NL100–NL500+)
+**Last updated:** 2026-04-11
 
 ---
 
-## 1. Architecture Overview
+## Executive Summary
 
-```
-                         GAME STATE (from WS reader)
-                                  |
-                    +-------------+-------------+
-                    |                           |
-              PREFLOP                     POSTFLOP
-           (Deterministic)            (Stratified Engine)
-                    |                           |
-            Position-based             +--------+--------+
-            range chart                |        |        |
-            (0 MB, instant)         FLOP     TURN    RIVER
-                    |                  |        |        |
-                    |              2-player   Equity   Equity
-                    |              CFR-50    + Rules  + Rules
-                    |              (mmap)    (0 MB)   (0 MB)
-                    |                  |        |        |
-                    +-------+----------+--------+--------+
-                            |
-                    OPPONENT MODEL
-                    (adjust frequencies)
-                            |
-                    ACTION + SIZING
-                            |
-                        OVERLAY
-```
+The goal is a full-coverage 6-max decision system, not runtime solving from scratch. The correct approach is:
 
-### Why This Design
+- **Offline exact library** for all high-frequency spots (precomputed, instant lookup)
+- **Bounded live re-solve** seeded from the library for novel spots
+- **Explicit approximation tiers** so the advisor knows when it's guessing
 
-| Street | % of decisions | Current accuracy | Strategy source | Justification |
-|--------|---------------|------------------|-----------------|---------------|
-| Preflop | ~40% | Good (chart +99 bb/100) | Deterministic chart | Already profitable. No CFR needed. |
-| Flop | ~30% | Bad (threshold heuristics) | 2-player CFR-50 | Most EV-dense street. Opponent count usually 2-3 by flop. |
-| Turn | ~20% | Bad | Equity + rule engine | Lower branching, fewer decisions. Rules + equity sufficient for 25NL. |
-| River | ~10% | Bad | Equity + rule engine | Binary decisions (value bet / bluff / check-fold). Rules work. |
-
-The insight: **by the flop, most 6-max hands are heads-up or 3-way.** The 6-max preflop complexity collapses. A 2-player CFR with position awareness covers 70%+ of flop spots. The remaining multiway flops use equity + rules.
+At high stakes, regs probe for leaks systematically. Any consistent gap in the strategy — multiway postflop, weird stack depths, 3-bet/4-bet pots — will be found and exploited. Coverage must be genuinely broad.
 
 ---
 
-## 2. Module Structure
+## Coverage Tiers
 
-```
-vision/
-  strategy/
-    __init__.py
-    preflop.py           # Deterministic chart (exists: preflop_chart.py)
-    postflop_engine.py   # Street router: flop→CFR, turn/river→rules
-    flop_cfr.py          # Mmap binary CFR loader + lookup
-    turn_river_rules.py  # Equity-based decision engine
-    opponent_model.py    # VPIP/PFR/AF tracker + frequency adjustment
-    sizing.py            # Bet/raise sizing logic
-    binary_format.py     # Mmap strategy reader/writer
+| Tier | Meaning | SLA |
+|------|---------|-----|
+| A | Direct library lookup — exact-ish solution precomputed offline | <200ms |
+| B | Library seed + bounded live re-solve (100-500 CFR iterations) | <3s |
+| C | Nearest supported abstraction + low-confidence flag | <1s |
 
-  models/
-    preflop_ranges.json          # Static chart data (tiny)
-    flop_cfr_strategy.bin        # Mmap binary: flop-only 2-player CFR
-    flop_cfr_strategy.idx        # Index file for binary search
+### Coverage Matrix (v1 → high-stakes target)
 
-scripts/
-  cfr/
-    train-flop-cfr.js    # Flop-only CFR trainer (new)
-    flop-holdem.js        # 2-player flop game model (new)
-    export-binary.js      # JSON strategy → binary mmap format (new)
-    cfr.js                # CFR engine (existing, needs typed array refactor)
-    abstraction.js        # Card bucketing (existing)
-```
+| Spot | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|------|---------|---------|---------|---------|
+| 6-max preflop all lines | A | A | A | A |
+| HU flop SRP | A | A | A | A |
+| HU turn SRP | C (heuristic) | A/B | A | A |
+| HU river SRP | C (heuristic) | A/B | A | A |
+| HU flop 3-bet pot | C | A/B | A | A |
+| HU turn/river 3-bet pot | C | B | A/B | A |
+| HU 4-bet pot | C | C | B | A/B |
+| 3-way flop | C | B | A/B | A |
+| 3-way turn/river | C | C | B | A/B |
+| 4-6 way | C (check/fold bias) | C | C | B |
 
 ---
 
-## 3. Preflop Module (No Changes Needed)
+## Canonical Game Settings
 
-Use `preflop_chart.py` exactly as-is. The backtest proved it: +99 bb/100 improvement, 80.6% agreement with actual play.
+### Stack depths
+- **v1:** 100bb only
+- **Later:** 40bb, 60bb, 150bb added as separate solve packs
 
-**Interface:**
+### Preflop action menu
+```
+Unopened:
+  UTG/HJ/CO: 2.2x
+  BTN:       2.5x
+  SB:        3.0x
 
-```python
-def get_preflop_action(hero_cards, position, facing_raise, num_raisers=0):
-    """
-    Returns: {
-        'action': 'RAISE' | 'CALL' | 'FOLD' | 'CHECK',
-        'hand_key': 'AKs',
-        'in_range': True/False
-    }
-    """
+Facing open:
+  Fold / Call
+  3-bet: IP 3.2x, OOP 4.0x, BB vs BTN/SB 4.5x
+
+Facing 3-bet:
+  Fold / Call
+  4-bet: IP 2.2x 3-bet, OOP 2.5x 3-bet
+  Jam if eff. stack <= 40bb
+
+Facing 4-bet:
+  Fold / Call / Jam
 ```
 
-Zero memory. Zero latency. Deterministic.
+### Postflop action menu
+```
+Check
+Bet 25% / 50% / 75% / 125% / Jam
+Raise: 3x vs small bet, 2.5x vs medium/large, jam always legal
+```
+
+### Rake profiles
+- v1: no-rake research baseline (clean GTO)
+- Later: 5% cap 1bb (NL100 typical), 5% cap 0.5bb (NL500 typical)
 
 ---
 
-## 4. Flop CFR — The Core Investment
+## Preflop Scenarios Required
 
-### 4.1 Why Flop-Only
+Full 6-max coverage requires ~15-20 scenarios. Currently built: 6.
 
-Full 4-street 6-max CFR at 50 buckets = 50-200M info sets = 64-128GB training RAM.
-
-**Flop-only 2-player CFR at 50 buckets:**
-
-| Parameter | Value |
-|-----------|-------|
-| Players | 2 (IP vs OOP — by the flop, usually HU/3-way) |
-| Streets | 1 (flop only) |
-| Buckets | 50 |
-| Bet sizes | 4 (check, half-pot, pot, all-in) |
-| Max raises | 3 per street |
-| Positions | 6 (IP: BTN/CO/MP, OOP: SB/BB/EP) mapped to 2 |
-| Stack depths | 3 (short <40bb, medium 40-120bb, deep 120bb+) |
-| Board texture | Encoded in bucket (strength relative to board) |
-| Est. info sets | ~500K-2M |
-| Training RAM | ~500MB-2GB |
-| Training time | 1-2 hours |
-| Strategy file | 5-20MB |
-| Client RAM (mmap) | ~10-50MB |
-
-This **trains on your laptop**. No cloud needed. Retrainable in an hour when you want to experiment.
-
-### 4.2 Flop Game Model (`flop-holdem.js`)
-
-```
-State:
-  - hero_bucket: 0-49 (hand strength vs this board)
-  - villain_bucket: 0-49
-  - pot_size_bucket: 0-3 (small/medium/large/huge relative to stacks)
-  - position: IP or OOP
-  - action_history: string of encoded actions
-  - is_terminal: bool
-  - payoff: [hero_payoff, villain_payoff]
-
-Actions:
-  - CHECK, FOLD, CALL
-  - BET_33 (1/3 pot), BET_66 (2/3 pot), BET_POT, BET_ALLIN
-  - RAISE_HALF, RAISE_POT, RAISE_ALLIN
-
-Info set key:
-  "FLOP:{bucket}:s{stack}:{pos}:{history}"
-
-Example:
-  "FLOP:34:s1:IP:kbhc"
-  = bucket 34, medium stack, in position, villain checked, hero bet half, villain called
-```
-
-### 4.3 Training Flow
-
-```
-Deal iteration:
-  1. Sample random 2 hole cards for each player
-  2. Sample random 3-card flop
-  3. Compute strength bucket for each player (vs this board)
-  4. Create initial state with blinds already posted + preflop action complete
-  5. Run CFR traversal for player 0, then player 1
-
-The flop CFR doesn't model preflop — it assumes both players are already in the pot.
-The preflop chart handles the entry decision independently.
-```
-
-### 4.4 Memory Math (Training)
-
-```
-Info sets: ~1M (generous estimate)
-Per info set:
-  - regret_sum: Float32Array[9 actions] = 36 bytes
-  - strategy_sum: Float32Array[9 actions] = 36 bytes
-  - Total: 72 bytes
-
-Total: 1M x 72 bytes = 72MB
-
-With Map overhead in JS: ~200-300MB
-With typed array flat storage: ~100-150MB
-
-Fits in 2GB. Trains on anything.
-```
+| Scenario | Status |
+|----------|--------|
+| BTN_open_BB_call | Built, SPR3 done, other SPR in progress |
+| CO_open_BTN_call | Built, 0 solves done |
+| CO_open_BB_call | Built, 0 solves done |
+| UTG_open_BB_call | Built, 0 solves done |
+| UTG_open_CO_call | Built, 0 solves done |
+| SB_3bet_BTN_call | Built, 0 solves done |
+| BTN_open_SB_call | Not built |
+| SB_open_BB_call | Not built |
+| CO_open_SB_call | Not built |
+| UTG_open_BTN_call | Not built |
+| UTG_open_CO_3bet_BTN_call | Not built |
+| BB_squeeze_vs_BTN_CO | Not built |
+| ... (squeeze / cold-call multiway) | Not built |
 
 ---
 
-## 5. Turn/River Rule Engine
+## Gap Analysis vs High-Stakes Target
 
-No CFR. Pure equity + heuristics with opponent-model adjustments.
+| Component | Current state | High-stakes requirement | Gap |
+|-----------|--------------|------------------------|-----|
+| Preflop | 6 scenarios, 100bb, no rake | 15-20 scenarios, multi-stack, rake-adjusted | Large |
+| Flop HU SRP | 99 clusters, spr_3 done (57/594 total) | All 594 spots done | Medium |
+| Flop 3bet/4bet pots | Not built | Required | Large |
+| Turn/river | Equity heuristic + rules | Full trees from flop action path | Large |
+| 3-way flop | Check/fold fallback | High-frequency cluster library | Large |
+| 3-way turn/river | Not built | Common branches | Very large |
+| Bounded re-solver | Not built | Required for novel spots | Large |
+| Exploitability | ~0.5% pot | <0.3% pot | Medium |
+| Rake adjustment | None | Per-stake rake profile | Medium |
 
-### 5.1 Decision Logic
+---
 
-```python
-def get_postflop_action(equity, adjusted_equity, facing_bet, pot, call_amount,
-                         stack, board_danger, opponent_type, street):
-    """
-    equity:          raw Monte Carlo or NN equity (0-1)
-    adjusted_equity: equity discounted by opponent bet sizing
-    facing_bet:      bool
-    pot:             current pot in cents
-    call_amount:     amount to call in cents
-    stack:           hero stack in cents
-    board_danger:    {warnings: [...], suppress_raise: bool}
-    opponent_type:   'FISH' | 'NIT' | 'TAG' | 'LAG' | 'UNKNOWN'
-    street:          'TURN' | 'RIVER'
-    """
+## System Architecture
+
+### Services (runtime)
+
+```
+CoinPoker / Unibet game state
+        │
+        ▼
+  state-gateway          ← ingest + validate + normalize action history
+        │
+        ▼
+  canonicalizer          ← position/stack/pot normalization, spot-family ID,
+                            board-family mapping, tier selection (A/B/C)
+        │
+   ┌────┴────┐
+   │         │
+   ▼         ▼
+library    resolve        ← mmap artifact lookup (Tier A)
+service    service        ← bounded CFR re-solve seeded from library (Tier B)
+   │         │            ← nearest abstraction fallback (Tier C)
+   └────┬────┘
+        │
+        ▼
+  advisor-service         ← merge results, compute confidence, enforce 5s SLA
+        │
+        ▼
+     overlay              ← single-word action, color confidence, EV display
 ```
 
-### 5.2 Turn/River Thresholds (Base)
+### Infrastructure
+- **Solver precompute:** cloud VM (dedicated, hard RAM cap). Never run on Proxmox.
+- **Runtime:** Windows laptop, mmap artifact loading, ~20-50MB resident per table
+- **Artifact storage:** versioned binary blobs + JSON manifest (see format below)
 
-| Situation | Action | Threshold |
-|-----------|--------|-----------|
-| Not facing bet, equity > 0.70 | BET 66% pot | Value bet |
-| Not facing bet, equity 0.50-0.70 | CHECK | Pot control |
-| Not facing bet, equity < 0.50 | CHECK (bluff 10%) | Give up or bluff |
-| Facing bet, equity > pot odds + 10% | CALL or RAISE | +EV call |
-| Facing bet, equity near pot odds | CALL (if implied odds) | Marginal call |
-| Facing bet, equity < pot odds | FOLD | -EV fold |
-| Facing bet, equity > 0.85 | RAISE | Value raise |
+---
 
-### 5.3 Opponent-Adjusted Thresholds
+## Artifact Format
 
-```python
-OPPONENT_ADJUSTMENTS = {
-    'FISH': {
-        'value_bet_threshold': -0.05,    # bet thinner (they call wider)
-        'bluff_frequency': -0.05,         # bluff less (they don't fold)
-        'call_threshold': -0.05,          # call wider (they bluff too much)
-        'equity_discount': 0.05,          # discount less (they bet weak)
-    },
-    'NIT': {
-        'value_bet_threshold': +0.10,    # only bet strong (they fold everything else)
-        'bluff_frequency': +0.15,         # bluff more (they fold too much)
-        'call_threshold': +0.10,          # fold more vs their bets (they only bet strong)
-        'equity_discount': 0.35,          # heavy discount (their bets are strong)
-    },
-    'TAG': {
-        'value_bet_threshold': 0,
-        'bluff_frequency': 0,
-        'call_threshold': 0,
-        'equity_discount': 0.20,
-    },
-    'LAG': {
-        'value_bet_threshold': -0.05,
-        'bluff_frequency': -0.10,         # bluff less (they 3bet bluffs themselves)
-        'call_threshold': -0.05,          # call wider (they bluff often)
-        'equity_discount': 0.10,          # discount less (they bet wide)
-    },
+### Implemented: strategy.bin v1 (EXACT path)
+
+Binary format used by the Rust runtime-advisor. Deterministic, flat, little-endian.
+
+```
+Header (16 bytes):
+  [0..4]   magic: b"STRT"
+  [4..8]   version: u32 = 1
+  [8..10]  n_actions: u16
+  [10..12] n_hand_buckets: u16 = 12
+  [12..16] reserved: [0; 4]
+
+Action table (2 * n_actions bytes):
+  [(kind_wire: u8, size_wire: u8)] per action
+
+Strategy matrix (4 * 12 * n_actions bytes):
+  f32[12][n_actions] row-major (one row per HandBucket)
+
+Total: 16 + 50*N bytes (N = n_actions; typical 6-action spot = 316 bytes)
+```
+
+Artifact tree layout:
+```
+artifacts/solver/{artifact_key}/
+  strategy.bin              ← binary strategy (format above)
+  strategy.manifest.json    ← SHA-256 checksum, version, dimensions
+
+artifacts/emergency/
+  emergency_range_prior.bin ← 4,320 f64 entries (34.5 KB)
+  emergency_range_prior.manifest.json
+```
+
+Artifact key format: `{pot_class}/{street}/{agg}_vs_{hero}_{n}way/{stack}/{board}/{rake}/mv{version}`
+
+### Future: fp16 migration
+
+Current f32 format is fine for Phase 1. Migrate to fp16 in Phase 2 when the library is large enough that file size matters.
+
+---
+
+## Runtime Output Schema
+
+```json
+{
+  "tier": "A",
+  "spot_family": "btn_vs_bb_srp_flop",
+  "action_mix": [
+    {"action": "check",   "freq": 0.41, "ev": 1.12},
+    {"action": "bet_25",  "freq": 0.37, "ev": 1.08},
+    {"action": "bet_75",  "freq": 0.22, "ev": 1.05}
+  ],
+  "top_action": "check",
+  "confidence": 0.87,
+  "latency_ms": 120
 }
 ```
 
-This is where profitability at microstakes lives. Fish call too much (value bet thinner, don't bluff). Nits fold too much (bluff more, fold to their raises). This alone is worth more than 50 extra buckets.
+---
+
+## Latency Budget (4 concurrent tables)
+
+| Stage | Budget |
+|-------|--------|
+| Game state capture + parse | 50ms |
+| Canonicalization | 25ms |
+| Library lookup (Tier A) | 25–100ms |
+| Bounded re-solve (Tier B) | 500–3500ms |
+| Response + overlay update | 50ms |
+| **Hard ceiling** | **5000ms** |
+
+Target p95: preflop <150ms, cached postflop <750ms, re-solve path <3000ms.
 
 ---
 
-## 6. Opponent Model
+## Phased Roadmap
 
-### 6.1 Data Tracked Per Player
+### Phase 1 — NL2 to NL25 (current)
 
-```python
-@dataclass
-class PlayerProfile:
-    name: str
-    hands_seen: int = 0
-    vpip: int = 0          # voluntarily put $ in pot
-    pfr: int = 0           # preflop raise
-    postflop_bets: int = 0 # bets + raises postflop
-    postflop_calls: int = 0
-    postflop_folds: int = 0
-    went_to_showdown: int = 0
-    won_at_showdown: int = 0
-    three_bet: int = 0     # 3-bet count
-    cbet: int = 0          # continuation bet count
-    cbet_opportunity: int = 0
-```
+**Goal:** Working advisor, real edge, build bankroll.
 
-### 6.2 Classification
+What we finish:
+1. Precompute remaining 3,507 solver spots on cloud VM (6 scenarios × 99 clusters × all SPR)
+2. Wire `solver/lookup.py` into `PostflopEngine` — replace JS binary mmap on the flop
+3. Build preflop scenario detector (`vision/preflop_scenario.py`) — who raised from where → scenario key
+4. Wire flop action history into turn/river tree navigation (already supported in `lookup.py`)
+5. Validate on captured hands before going live
 
-```python
-def classify(profile) -> str:
-    if profile.hands_seen < 15:
-        return 'UNKNOWN'
+Advisor at end of Phase 1: Tier A on HU SRP flop, Tier C (heuristic) everywhere else.
 
-    vpip_pct = profile.vpip / profile.hands_seen
-    pfr_pct = profile.pfr / profile.hands_seen
-    af = (profile.postflop_bets / max(1, profile.postflop_calls))
-
-    if vpip_pct > 0.45 and af < 1.5:
-        return 'FISH'       # loose-passive
-    if vpip_pct > 0.35 and af > 2.5:
-        return 'LAG'        # loose-aggressive
-    if vpip_pct < 0.18 and af < 2.0:
-        return 'NIT'        # tight-passive
-    if vpip_pct < 0.28 and af > 1.5:
-        return 'TAG'        # tight-aggressive
-    if vpip_pct > 0.60:
-        return 'WHALE'      # plays everything
-
-    return 'TAG'  # default assumption
-```
-
-### 6.3 Integration Point
-
-The opponent model feeds into:
-1. **Flop CFR:** No direct integration (CFR plays GTO baseline). But the adapter can bias toward certain actions when opponent is classified.
-2. **Turn/River rules:** Direct threshold adjustments (Section 5.3).
-3. **Preflop:** Widen 3-bet range vs fish, tighten vs nits. Simple chart modifications.
-4. **Bet sizing:** Larger vs fish (they call anyway), smaller vs nits (induce folds cheaper).
+**Acceptance criteria:**
+- All 6 preflop scenarios × 99 clusters × 6 SPR done
+- Solver lookup replaces heuristic on flop for known scenarios
+- Validation: preflop pass rate >85%, flop lookup hit rate >70%
+- Preflight gate (`check_ready_for_live.py`) returns GO
 
 ---
 
-## 7. Binary Strategy Format
+### Phase 2 — NL25 to NL100
 
-### 7.1 File Layout
+**Goal:** Full street coverage for HU pots. No more heuristic turn/river.
 
-```
-HEADER (32 bytes):
-  magic:        4 bytes  "CFR1"
-  version:      4 bytes  uint32 = 1
-  num_entries:  4 bytes  uint32
-  num_actions:  4 bytes  uint32 (max actions per info set, e.g. 9)
-  bucket_count: 4 bytes  uint32
-  reserved:     12 bytes (zero)
+What we build:
+- Full turn/river trees (branch from flop action path, not just 3 levels deep)
+- 3-bet pot postflop coverage (own scenario class, own solve pass)
+- Additional preflop scenarios (BTN vs SB, SB vs BB, squeeze spots)
+- 40bb and 60bb stack packs
+- Migrate artifacts to fp16 binary format (runtime memory drops 4x)
 
-INDEX (num_entries x 12 bytes):
-  key_hash:   8 bytes  uint64 (FNV-1a hash of info set key string)
-  data_offset: 4 bytes uint32 (byte offset into DATA section)
-
-  Sorted by key_hash for binary search.
-
-DATA (num_entries x num_actions x 4 bytes):
-  probabilities: float32[num_actions]
-  Packed sequentially. Actions in fixed order:
-    [FOLD, CHECK, CALL, BET_33, BET_66, BET_POT, BET_ALLIN, RAISE_HALF, RAISE_POT]
-  Unused actions = 0.0.
-```
-
-### 7.2 Size Calculation
-
-```
-Flop-only CFR (1M info sets, 9 actions):
-  Header:  32 bytes
-  Index:   1M x 12 = 12MB
-  Data:    1M x 36 = 36MB
-  Total:   ~48MB on disk
-  Resident via mmap: ~5-10MB (only accessed entries paged in)
-```
-
-### 7.3 Lookup (Python)
-
-```python
-import mmap
-import struct
-import hashlib
-
-class MmapStrategy:
-    """Memory-mapped binary strategy lookup."""
-
-    def __init__(self, bin_path, idx_path):
-        self.bin_file = open(bin_path, 'rb')
-        self.mm = mmap.mmap(self.bin_file.fileno(), 0, access=mmap.ACCESS_READ)
-
-        # Read header
-        magic = self.mm[0:4]
-        assert magic == b'CFR1'
-        self.num_entries = struct.unpack_from('<I', self.mm, 8)[0]
-        self.num_actions = struct.unpack_from('<I', self.mm, 12)[0]
-        self.bucket_count = struct.unpack_from('<I', self.mm, 16)[0]
-
-        self.header_size = 32
-        self.index_entry_size = 12
-        self.index_start = self.header_size
-        self.data_start = self.index_start + self.num_entries * self.index_entry_size
-
-        self.ACTION_NAMES = [
-            'FOLD', 'CHECK', 'CALL', 'BET_33', 'BET_66',
-            'BET_POT', 'BET_ALLIN', 'RAISE_HALF', 'RAISE_POT'
-        ]
-
-    def _hash_key(self, key: str) -> int:
-        """FNV-1a 64-bit hash."""
-        h = 0xcbf29ce484222325
-        for b in key.encode('utf-8'):
-            h ^= b
-            h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
-        return h
-
-    def lookup(self, info_set_key: str) -> dict | None:
-        """Binary search for info set key. Returns action probabilities or None."""
-        target = self._hash_key(info_set_key)
-
-        lo, hi = 0, self.num_entries - 1
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            offset = self.index_start + mid * self.index_entry_size
-            entry_hash = struct.unpack_from('<Q', self.mm, offset)[0]
-
-            if entry_hash == target:
-                data_offset = struct.unpack_from('<I', self.mm, offset + 8)[0]
-                abs_offset = self.data_start + data_offset
-                probs = struct.unpack_from(f'<{self.num_actions}f', self.mm, abs_offset)
-                return {
-                    self.ACTION_NAMES[i]: probs[i]
-                    for i in range(self.num_actions)
-                    if probs[i] > 0.001
-                }
-            elif entry_hash < target:
-                lo = mid + 1
-            else:
-                hi = mid - 1
-
-        return None
-
-    def close(self):
-        self.mm.close()
-        self.bin_file.close()
-```
-
-Lookup cost: ~17 comparisons (log2 of 1M), zero memory allocation, zero dict construction for misses. Under 1 microsecond per lookup.
+Advisor at end of Phase 2: Tier A/B on all HU postflop streets, Tier C on 3-way.
 
 ---
 
-## 8. CFR Training Engine — Typed Array Refactor
+### Phase 3 — NL100 to NL200
 
-### 8.1 Current Problem
+**Goal:** 3-way postflop coverage. Rake-adjusted ranges. Sub-0.3% exploitability.
 
-`cfr.js` stores regrets and strategies in `Map<string, Object>`:
+What we build:
+- 3-way flop library for high-frequency spot classes
+- Rake-adjusted solving for NL100 and NL200 profiles (5% cap 1bb)
+- 150bb stack pack
+- 4-bet pot postflop trees
+- Bounded live re-solver (Tier B) for spots not in library
+- Confidence model calibrated against real outcomes
 
-```javascript
-// Current: ~500 bytes per info set due to JS object/Map overhead
-this.regretSum = new Map();   // key -> { FOLD: 0.5, CALL: 1.2, ... }
-this.strategySum = new Map(); // same
-```
-
-At 50M info sets: 50M x 500 bytes = 25GB. OOM.
-
-### 8.2 Proposed: Flat Typed Arrays + String Table
-
-```javascript
-class CompactCFRStore {
-    constructor(maxInfoSets, numActions) {
-        this.maxInfoSets = maxInfoSets;
-        this.numActions = numActions;
-
-        // String table: info set key strings
-        // Use a hash map: hash(key) -> index into flat arrays
-        this.keyHashes = new BigUint64Array(maxInfoSets);  // 8 bytes each
-        this.keyStrings = new Array(maxInfoSets);           // for export only
-
-        // Flat regret and strategy storage
-        // regrets[i * numActions + a] = regret for info set i, action a
-        this.regrets = new Float32Array(maxInfoSets * numActions);    // 4 bytes each
-        this.strategies = new Float32Array(maxInfoSets * numActions);  // 4 bytes each
-
-        this.count = 0;
-        this.indexMap = new Map(); // hash -> index (for insertion)
-    }
-
-    // Memory per info set: 8 (hash) + 4*9*2 (regret+strategy) = 80 bytes
-    // At 1M info sets: 80MB. At 50M: 4GB. At 200M: 16GB.
-}
-```
-
-### 8.3 Memory Comparison
-
-| Info Sets | Current (JS Map) | Proposed (Typed Arrays) | Reduction |
-|-----------|-----------------|------------------------|-----------|
-| 1M | 500MB | 80MB | 6x |
-| 10M | 5GB | 800MB | 6x |
-| 50M | 25GB | 4GB | 6x |
-| 200M | 100GB | 16GB | 6x |
-
-The flop-only CFR at 1M info sets uses **80MB** with typed arrays. No optimization needed.
-
-For the eventual full 6-max CFR (if ever), typed arrays make 50M info sets fit in 4GB — trainable on the Proxmox host without stopping VMs.
+Advisor at end of Phase 3: Tier A on all HU streets, Tier B on 3-way, explicit Tier C flags everywhere else.
 
 ---
 
-## 9. Deployment Flow
+### Phase 4 — NL200+
 
-```
-TRAINING (cloud or Proxmox, one-time)
-  |
-  1. node scripts/cfr/train-flop-cfr.js --buckets 50 --iterations 5000000
-  |    Output: vision/models/flop_cfr_checkpoint.json (~100-200MB)
-  |
-  2. node scripts/cfr/export-binary.js --input flop_cfr_checkpoint.json
-  |    Output: vision/models/flop_cfr_strategy.bin (~48MB)
-  |            vision/models/flop_cfr_strategy.idx
-  |
-  v
-TRANSFER
-  |
-  scp or rsync to Windows PC
-  |
-  v
-RUNTIME (Windows PC, 10 tables)
-  |
-  Python process loads:
-    - preflop_chart.py        (0 MB, instant)
-    - MmapStrategy(.bin)      (~10MB resident, instant)
-    - EquityModel(.pt)        (~5MB)
-    - OpponentTracker          (~1MB per 100 players)
-  |
-  Total resident memory: ~20-50MB
-  |
-  Per decision:
-    1. Preflop? → chart lookup (instant)
-    2. Flop?    → MmapStrategy.lookup(key) (<1us)
-    3. Turn/River? → equity + rules (~1ms for NN inference)
-    4. Apply opponent adjustment
-    5. Compute bet sizing
-    6. Send to overlay
-```
+**Goal:** High-stakes ready. No systematic exploitable gaps.
+
+What we build:
+- 3-way turn/river coverage for common branches
+- Smarter nearest-spot interpolation (distance metric, not just cluster key)
+- Learned value/policy approximation layer on top of solved datasets
+- Better multiway support
+- Full confidence calibration
 
 ---
 
-## 10. Upgrade Path
+## What's Already Built
 
-### Phase 1: Now (days)
-- Build flop-only 2-player CFR trainer
-- Train on laptop/Proxmox (1-2 hours)
-- Build mmap binary format
-- Wire into advisor
-- **Result: profitable at 5NL-10NL**
-
-### Phase 2: Month 1 (if needed)
-- Add turn CFR (same 2-player model, single street)
-- Combined flop+turn strategy: ~100MB on disk, ~20MB resident
-- Improve opponent model with cross-session persistence
-- **Result: competitive at 10NL-25NL**
-
-### Phase 3: When profitable at 25NL
-- Buy PioSolver (€250)
-- Solve key spots: SRP IP, SRP OOP, 3bet pots, 4bet pots
-- Export as same binary format — drop-in replacement
-- **Result: competitive at 25NL-100NL**
-
-### Phase 4: Optional
-- Full 6-max CFR with typed arrays (fits in 16GB for 50M info sets)
-- Train on Hetzner if solver imports leave gaps
-- Only if specific spots are underperforming
-
----
-
-## 11. What NOT To Build
-
-1. **Full 4-street 6-max CFR at 50+ buckets.** Memory math doesn't justify it when flop-only + rules covers 90% of the EV.
-
-2. **Monte Carlo tree search at runtime.** Latency budget is <100ms. MCTS needs seconds.
-
-3. **Neural network policy.** Training data doesn't exist yet. Build the CFR/rules system first, generate training data from it, then consider NN distillation later.
-
-4. **River solver.** River decisions are almost always binary (bet or check, call or fold). Equity + pot odds + opponent type handles this. A solver adds complexity without EV at 25NL.
-
-5. **GTO preflop ranges.** The static chart is already +99 bb/100 vs your play. Dynamic preflop adjustments via opponent model are higher EV than computing exact GTO opens.
+| Component | File | Status |
+|-----------|------|--------|
+| Rust solver (b-inary/postflop-solver) | `solver/postflop-solver/` | Working |
+| JSON CLI bridge | `solver/solver_bridge.py` | Working |
+| 99 board clusters | `solver/board_clusters.py` | Working |
+| 6 preflop range sets | `solver/preflop_ranges.py` | Working |
+| Precompute pipeline | `solver/precompute.py` | Working, needs cloud |
+| Runtime lookup engine | `solver/lookup.py` | Working |
+| CoinPoker game-state adapter | `vision/coinpoker_adapter.py` | Live |
+| CoinPoker runner + overlay | `vision/coinpoker_runner.py` | Live |
+| Preflop chart (all positions) | `vision/preflop_chart.py` | Live |
+| Postflop engine (heuristic) | `vision/strategy/postflop_engine.py` | Live, to be replaced |
+| Opponent model | `vision/strategy/opponent_model.py` | Live |
+| Danger filter suite (5 filters) | `AdvisorStateMachine` | Live |
+| HUD stats sniffer | `tools/coinpoker_stats_sniffer.py` | Live |
+| Pre-flight validation gate | `tools/check_ready_for_live.py` | Live |
+| **Rust runtime-advisor (EXACT+EMERGENCY)** | `rust/crates/runtime-advisor/` | **Working, 115 tests** |
+| **Rust engine-core (hand eval)** | `rust/crates/engine-core/` | **Working, 27 tests** |
+| **Rust artifact-store (integrity)** | `rust/crates/artifact-store/` | **Working, 14 tests** |
+| **advisor-cli (JSON bridge)** | `rust/crates/advisor-cli/` | **Working, release binary** |
+| **Strategy artifact builder** | `python/scripts/build_exact_artifact.py` | **Working, 28-artifact corpus** |
+| **Mode router (Python wrapper)** | `python/advisor_service/mode_router.py` | **Working** |
+| **Baseline replay runner** | `python/eval_lab/baseline_replay_runner.py` | **Working** |
+| **Hit-rate report** | `python/eval_lab/hit_rate_report.py` | **Working** |
+| **Latency benchmark** | `python/eval_lab/latency_bench.py` | **Working** |
 
 ---
 
-## 12. Risk Assessment
+## Immediate Blockers
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Flop CFR bucket count too coarse at 50 | Loses subtle spots vs TAG regs | Increase to 100 buckets (still fits in memory for flop-only) |
-| Opponent model misclassifies (too few hands) | Bad adjustments | Default to TAG profile (play GTO) until 25+ hands |
-| Mmap binary has hash collisions | Wrong strategy looked up | FNV-1a 64-bit has <1 collision per billion entries. Verify with test suite. |
-| Turn/river rules too simple for 25NL | Exploitable by good regs | Upgrade to turn CFR (Phase 2) or solver imports (Phase 3) |
-| Equity model inaccurate on rare boards | Bad postflop decisions | Equity model already trained on 50K+ hands. Monitor and retrain if needed. |
+1. **Precompute:** 3,507 remaining solver spots need a cloud VM with real memory caps. Never use Proxmox — it crashed the edge-lab VM twice.
+2. **Scenario detector:** `vision/preflop_scenario.py` doesn't exist yet. Blocks wiring lookup into PostflopEngine.
+3. **Turn/river trees:** Current solver output is 3 levels deep on the flop only. Full street coverage requires deeper trees — different solve configuration.
 
 ---
 
-## 13. Implementation Priority
+## What NOT To Build (revised)
 
-| # | Task | Effort | Blocks | EV Impact |
-|---|------|--------|--------|-----------|
-| 1 | `flop-holdem.js` game model | 3hr | Training | High — enables flop CFR |
-| 2 | Train flop CFR (50-bucket, 5M iter) | 1-2hr compute | Binary export | High |
-| 3 | `export-binary.js` converter | 2hr | Client deployment | High |
-| 4 | `binary_format.py` mmap loader | 2hr | Client deployment | High |
-| 5 | `postflop_engine.py` street router | 2hr | Live play | High |
-| 6 | `turn_river_rules.py` with opponent adjustments | 3hr | Live play | Medium-High |
-| 7 | `opponent_model.py` upgrade (classification + adjustments) | 2hr | Better decisions | Medium-High |
-| 8 | `sizing.py` opponent-aware bet sizing | 1hr | Better sizing | Medium |
-| 9 | Wire into `advisor_ws.py` | 1hr | Live play | High (integration) |
-| 10 | Backtest against PS hands | 1hr | Validation | Medium |
-
-**Total: ~18 hours of engineering. No cloud costs. Trainable on any machine with 2GB free RAM.**
-
----
-
-## 14. Success Criteria
-
-| Metric | Target | How to Measure |
-|--------|--------|----------------|
-| Flop CFR coverage | >60% of real flop decisions match an info set | Backtest vs PS hands |
-| Preflop + flop agreement | >50% with actual winning play | Backtest |
-| Hybrid backtest improvement | >+50 bb/100 vs actual | Backtest vs PS hands |
-| Bot eval vs heuristic bots | #1 or #2 in round-robin | eval-bots.js |
-| Client memory (10 tables) | <500MB total strategy | Measure at runtime |
-| Decision latency | <50ms per action | Measure at runtime |
-| Profitable at 5NL | >5 bb/100 over 10K+ hands | Live play |
+1. **Full 4-street 6-max CFR from scratch.** The Rust solver already exists. Use it.
+2. **Monte Carlo tree search at runtime.** Latency budget is 5s. MCTS is too slow.
+3. **NN policy without solved data.** Build the solver library first, distil to NN later if needed.
+4. **Check/fold bias for multiway as a permanent strategy.** Fine for Phase 1 micros, exploitable at NL100+. Must build proper 3-way coverage by Phase 3.
+5. **Any solver workload on the Proxmox host.** Hard rule. Cloud VMs only, with MemoryMax cgroup cap.

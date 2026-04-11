@@ -39,6 +39,14 @@ See `project_coinpoker_unity.md` in memory for the full session-by-session log o
 - [x] **CoinPoker click adapter Phase 1 + 2 (dry-run)** (2026-04-08 sessions 9-10) — Click target: `_PROJECT_NEW.Scripts.TableEventHandlers.UserActionHandler.UserAction(ActionId, Nullable<float>)` static. Phase 2 IL inlined into HandlePipeMessage Prologue 2 (file check + log). Python writer at `vision/coinpoker_clicker.py` (atomic write, pause flag, queue dedup, hand-id staleness check). 20 clicker tests. **Gauntlet: 50/50 round-trips zero drops** in periodic mode. Two real bugs found and locked in (Cecil leave-rewire, Unity Mono cross-assembly resolution failure). See `tools/phase2_gauntlet.py`.
 - [x] **CoinPoker click adapter Phase 3 IL BUILT** (2026-04-08 session 11) — `--enable-phase3` flag in patcher. `PBClient.phase3.dll` ready (130 instructions, 3 EHs, 5 locals). Sentinel-file format (one file per ActionId). NOT deployed — gated on operator-supervised single-hand live test.
 
+### Done (Rust runtime-advisor — 2026-04-11)
+- [x] **Rust EXACT + EMERGENCY baseline** — full pipeline: action contract, classify, artifact_key, legalizer, integrity + quarantine, emergency range prior, strategy binary format v1, EXACT routing, conservative EMERGENCY fallback, trust scoring. 156 Rust tests across 4 crates.
+- [x] **advisor-cli binary** — JSON stdin/stdout bridge callable from Python. JSONL mode, per-request latency measurement.
+- [x] **Strategy artifact builder** — `python/scripts/build_exact_artifact.py` generates strategy.bin + manifest from YAML or builds initial corpus (`--corpus`). 28 artifacts for common SRP spots (3 positions x 8 board buckets + 4 preflop).
+- [x] **Eval lab** — `baseline_replay_runner.py` (synthetic + file-based replay), `hit_rate_report.py` (EXACT/EMERGENCY rates, spot class breakdown, snap rate, trust), `latency_bench.py` (P50/P95/P99 by mode).
+- [x] **Mode router** — `python/advisor_service/mode_router.py` subprocess bridge with structured logging and accumulated stats.
+- [x] **First baseline numbers**: EXACT 57%, EMERGENCY 43% on synthetic hands. EXACT mean 1.2ms, EMERGENCY mean 66us. Zero errors, zero illegal outputs.
+
 ### In Progress
 - [ ] Fix CHECK when need to CALL (preflop: base advisor returns CHECK)
 - [x] **Position detection stability — FIXED 2026-04-08 session 13** — `vision/coinpoker_adapter.py` now derives bb_seat from dealer + dealt-in lineup when game.game_alldata isn't in the live stream (which is always, post-join). Was causing pos="MP" on every hand. 39 adapter tests pass, replay verified rotating SB→BTN→CO→MP→UTG→BB across 17 hands. See `derive_blinds_from_dealer` + `_dealt_in_seat_ids` + `TestPositionDerivationFromLiveEvents`.

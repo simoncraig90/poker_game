@@ -1,0 +1,191 @@
+syntax = "proto3";
+
+package advisor.v2;
+
+// ─── Decision mode ───────────────────────────────────────────────────────────
+
+enum DecisionMode {
+  MODE_UNKNOWN = 0;
+  EXACT        = 1;  // Verified artifact lookup
+  // SEEDED    = 2;  // reserved — live re-solve (Phase 3)
+  EMERGENCY    = 3;  // Hardened fallback; always returns a legal action
+}
+
+// ─── Action vocabulary ───────────────────────────────────────────────────────
+
+enum ActionKind {
+  ACTION_KIND_UNKNOWN = 0;
+  FOLD                = 1;
+  CHECK               = 2;
+  CALL                = 3;
+  BET_TO              = 4;  // absolute chip amount in Action.amount
+  RAISE_TO            = 5;  // absolute chip amount in Action.amount
+  JAM                 = 6;  // all-in; amount = hero remaining stack
+}
+
+// Abstract size identifiers — stable as coverage grows.
+// Numeric amounts computed at runtime from ActionMenuConfig + SizeContext.
+enum AbstractSizeId {
+  SIZE_NONE = 0;
+
+  // Preflop opens (multiplier × big blind)
+  OPEN_STD   = 1;
+  OPEN_LARGE = 2;
+
+  // Preflop 3-bets (multiplier × open size)
+  THREEBET_IP_STD  = 10;
+  THREEBET_OOP_STD = 11;
+  THREEBET_BB_WIDE = 12;
+
+  // Preflop 4-bets (multiplier × 3-bet size)
+  FOURBET_STD = 20;
+
+  // Postflop bets (fraction of pot)
+  CBET_SMALL   = 30;
+  CBET_MEDIUM  = 31;
+  CBET_LARGE   = 32;
+  CBET_OVERBET = 33;
+
+  // Postflop raises (multiplier × villain bet)
+  RAISE_VS_SMALL = 40;
+  RAISE_VS_LARGE = 41;
+
+  // Protection / thin-value small bet
+  PROTECTION_VALUE_SM = 50;
+}
+
+// ─── Game geometry ───────────────────────────────────────────────────────────
+
+enum Street {
+  STREET_UNKNOWN = 0;
+  PREFLOP        = 1;
+  FLOP           = 2;
+  TURN           = 3;
+  RIVER          = 4;
+}
+
+enum SpotClass {
+  SPOT_CLASS_UNKNOWN  = 0;
+  PREFLOP_UNOPENED    = 1;
+  PREFLOP_SRP         = 2;   // single raised pot, 2-way
+  PREFLOP_3BET        = 3;
+  PREFLOP_4BET        = 4;
+  PREFLOP_SQUEEZE     = 5;
+  POSTFLOP_SRP_HU     = 10;  // heads-up single raised pot
+  POSTFLOP_3BP_HU     = 11;
+  POSTFLOP_4BP_HU     = 12;
+  POSTFLOP_SRP_3WAY   = 20;
+  POSTFLOP_SRP_NWAY   = 21;  // 4-6 way
+}
+
+// ─── Emergency metadata ──────────────────────────────────────────────────────
+
+enum EmergencyReason {
+  EMERGENCY_UNKNOWN        = 0;
+  BUDGET_EXHAUSTED         = 1;  // latency budget exceeded
+  UNKNOWN_SPOT             = 2;  // spot class unrecognised
+  ARTIFACT_CHECKSUM_FAIL   = 3;
+  ARTIFACT_VERSION_MISMATCH = 4;
+  RANGE_PARSE_ERROR        = 5;
+  BOARD_PARSE_ERROR        = 6;
+  ACTION_HISTORY_INVALID   = 7;
+  NO_EXACT_ARTIFACT        = 8;  // spot known, artifact not precomputed yet
+}
+
+// ─── Focus hint (platform-neutral) ───────────────────────────────────────────
+// Rust core emits this; app/Python layer calls SetForegroundWindow.
+
+message FocusHint {
+  bool   requests_focus            = 1;
+  string table_id                  = 2;
+  uint32 action_clock_remaining_ms = 3;
+  // reserved 4: scheduler_priority — added when scheduler is built
+}
+
+// ─── Core action types ───────────────────────────────────────────────────────
+
+message Action {
+  ActionKind     kind        = 1;
+  AbstractSizeId size_id     = 2;
+  double         amount      = 3;  // absolute chips; 0 for CHECK/FOLD/JAM (use hero_stack)
+  double         pot_fraction = 4; // informational only
+}
+
+message ActionMixEntry {
+  Action action    = 1;
+  double frequency = 2;  // [0, 1]
+  double ev        = 3;  // in chips
+}
+
+// ─── Legal actions (from client game state) ──────────────────────────────────
+
+message LegalActionEntry {
+  ActionKind kind       = 1;
+  double     min_amount = 2;
+  double     max_amount = 3;
+}
+
+// ─── Request ─────────────────────────────────────────────────────────────────
+
+message RecommendRequest {
+  // Identity
+  string request_id = 1;
+  string table_id   = 2;
+
+  // Hero
+  string hero_seat       = 3;  // "BTN", "BB", etc.
+  double hero_stack      = 4;
+  repeated string hero_hole_cards = 5;  // ["Ah", "Kd"]
+
+  // Game state
+  Street         street         = 6;
+  double         pot            = 7;
+  double         big_blind      = 8;
+  repeated string board_cards   = 9;
+  repeated LegalActionEntry legal_actions = 10;
+
+  // Action history this hand (chronological)
+  // Format per entry: "BTN:BET_TO:220" or "BB:FOLD"
+  repeated string action_history = 11;
+
+  // All players still in hand: seat → stack
+  map<string, double> active_stacks = 12;
+
+  // Timing
+  uint32 action_clock_ms         = 13;  // milliseconds remaining to act
+  uint32 budget_ms               = 14;  // max latency we can spend; 0 = use default
+
+  // Rake profile key (matches configs/action_menu_v1.yaml)
+  string rake_profile = 15;  // "norake" | "rake5cap1bb" | "rake5cap05bb"
+}
+
+// ─── Response ────────────────────────────────────────────────────────────────
+
+message RecommendResponse {
+  string request_id = 1;
+
+  DecisionMode mode       = 2;
+  SpotClass    spot_class = 3;
+  string       artifact_key = 4;  // empty if EMERGENCY
+
+  Action top_action = 5;
+
+  // Confidence [0, 1]; <0.6 means genuinely uncertain
+  double trust_score = 6;
+
+  // Exploitability proxy in % of pot (lower is better)
+  double exploitability_proxy = 7;
+
+  // Solver iterations used (0 for EXACT lookup, >0 for SEEDED)
+  uint32 resolve_iterations = 8;
+
+  uint32 latency_ms = 9;
+
+  // Full mixed strategy (empty for EMERGENCY to save latency)
+  repeated ActionMixEntry action_mix = 10;
+
+  // Set iff mode == EMERGENCY
+  EmergencyReason emergency_reason = 11;
+
+  FocusHint focus_hint = 12;
+}

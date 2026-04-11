@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/artifact-store",
+    "crates/engine-core",
+    "crates/runtime-advisor",
+    "crates/advisor-cli",
+]

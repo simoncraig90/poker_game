@@ -1,0 +1,53 @@
+{
+  "artifact_type": "emergency_range_prior",
+  "version": 1,
+  "checksum_sha256": "c1ffabc238da64a9f3633d316e25f9c6e1456949771ea3816a7faf21e8d2d709",
+  "file_size_bytes": 34560,
+  "n_hand_buckets": 12,
+  "n_board_textures": 6,
+  "n_pot_classes": 4,
+  "n_aggressor_roles": 3,
+  "n_player_buckets": 5,
+  "index_order": "hand_bucket,board_texture,pot_class,aggressor_role,n_players_bucket",
+  "hand_buckets": [
+    "Monster",
+    "VeryStrong",
+    "Strong",
+    "StrongTwoPair",
+    "WeakTwoPair",
+    "Overpair",
+    "TopPairGoodKicker",
+    "TopPairWeak",
+    "WeakPair",
+    "StrongDraw",
+    "WeakDraw",
+    "Air"
+  ],
+  "board_textures": [
+    "DryRainbow",
+    "DryPaired",
+    "ConnectedRainbow",
+    "FlushdrawBoard",
+    "WetConnected",
+    "Monotone"
+  ],
+  "pot_classes": [
+    "Limped",
+    "SRP",
+    "3BP",
+    "4BP"
+  ],
+  "aggressor_roles": [
+    "None",
+    "IP",
+    "OOP"
+  ],
+  "n_players_values": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "created_at": "2026-04-10T22:21:49Z"
+}

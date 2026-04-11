@@ -25,7 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-SOLVER_BIN = Path(__file__).parent / "postflop-solver" / "target" / "release" / "examples" / "solve_json.exe"
+_EXE = ".exe" if __import__("sys").platform == "win32" else ""
+SOLVER_BIN = Path(__file__).parent / "postflop-solver" / "target" / "release" / "examples" / f"solve_json{_EXE}"
 
 
 @dataclass

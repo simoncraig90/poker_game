@@ -1,0 +1,10 @@
+{
+  "artifact_type": "solver_strategy",
+  "version": 1,
+  "checksum_sha256": "1069466d7c68ba318b7af57a5497c1c52e959528f94dd2ca9fbe58fb50ec1ae8",
+  "file_size_bytes": 166,
+  "menu_version": 1,
+  "n_actions": 3,
+  "n_hand_buckets": 12,
+  "scenario_id": "srp/preflop/utg_vs_bb_2way/s100/preflop/norake/mv1"
+}

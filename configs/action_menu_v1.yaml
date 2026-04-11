@@ -1,0 +1,52 @@
+# Action menu v1 — canonical bet/raise sizing for 6-max NLHE advisor
+# Frozen at v1. Bump menu_version for any size change that breaks artifact compatibility.
+#
+# All preflop multipliers are applied to big_blind (opens) or the facing bet (3-bets, 4-bets).
+# All postflop pot_fractions are applied to the current pot at time of bet.
+# All postflop raise_multipliers are applied to the villain's bet size.
+
+version: "v1"
+menu_version: 1
+
+# ── Preflop opens (× big blind) ──────────────────────────────────────────────
+preflop_opens:
+  OPEN_STD:
+    utg: 2.2
+    hj:  2.2
+    co:  2.2
+    btn: 2.5
+    sb:  3.0
+  OPEN_LARGE:
+    utg: 3.0
+    hj:  3.0
+    co:  3.0
+    btn: 3.0
+    sb:  4.0
+
+# ── Preflop 3-bets (× open size) ─────────────────────────────────────────────
+preflop_3bets:
+  THREEBET_IP_STD:  3.2
+  THREEBET_OOP_STD: 4.0
+  THREEBET_BB_WIDE: 4.5   # BB defending wide vs BTN/SB steals
+
+# ── Preflop 4-bets (× 3-bet size) ────────────────────────────────────────────
+preflop_4bets:
+  FOURBET_STD: 2.3
+
+# ── Postflop bets (fraction of pot) ──────────────────────────────────────────
+postflop_pot_fractions:
+  CBET_SMALL:         0.33
+  CBET_MEDIUM:        0.60
+  CBET_LARGE:         0.80
+  CBET_OVERBET:       1.25
+  PROTECTION_VALUE_SM: 0.33
+
+# ── Postflop raises (× villain bet) ──────────────────────────────────────────
+postflop_raise_multipliers:
+  RAISE_VS_SMALL: 3.0   # vs bets ≤ 40% pot
+  RAISE_VS_LARGE: 2.5   # vs bets > 40% pot
+
+# ── Jam threshold ─────────────────────────────────────────────────────────────
+# If computed BET_TO/RAISE_TO amount is within this fraction of hero's remaining
+# stack, promote to JAM instead.
+jam_threshold_of_stack: 0.95
