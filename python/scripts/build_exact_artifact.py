@@ -213,6 +213,66 @@ def build_corpus(output_dir):
     print(f"Corpus: wrote {count} artifacts to {output_dir}")
 
 
+# ─── Manifest mode ───────────────────────────────────────────────────────────
+
+# Postflop acting order (lower = acts first = OOP).
+# Must match runtime-advisor/src/classify.rs::postflop_order.
+_POSTFLOP_ORDER = {"sb": 1, "bb": 2, "utg": 3, "hj": 4, "co": 5, "btn": 6}
+
+
+def hero_is_ip(aggressor: str, hero: str) -> bool:
+    """True if hero acts AFTER aggressor postflop (hero is in position).
+
+    Examples:
+      co_vs_btn  → hero btn(6) > agg co(5)  → hero IP  ✓
+      btn_vs_bb  → hero bb(2)  < agg btn(6) → hero OOP ✓
+      sb_vs_bb   → hero bb(2)  > agg sb(1)  → hero IP  ✓  (BB is IP vs SB)
+      btn_vs_sb  → hero sb(1)  < agg btn(6) → hero OOP ✓
+
+    Limped pots (aggressor="noagg"):
+      No preflop aggressor. Use OOP as the safe default — in a 2-way
+      limped pot, hero's opponent is unknown, and OOP strategy (more
+      check-heavy) is the conservative choice.
+    """
+    if aggressor == "noagg":
+        return False  # default to OOP for limped pots
+    return _POSTFLOP_ORDER.get(hero, 0) > _POSTFLOP_ORDER.get(aggressor, 0)
+
+
+def build_from_manifest(manifest_path, output_dir):
+    """Build artifacts from a manifest JSONL file.
+
+    Each line must have: artifact_key, aggressor, hero.
+    IP/OOP matrix is selected from hero's relative position to aggressor.
+    """
+    count = 0
+    skipped = 0
+    with open(manifest_path) as f:
+        for line_no, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            key = entry["artifact_key"]
+            agg = entry["aggressor"]
+            hero = entry["hero"]
+
+            if hero_is_ip(agg, hero):
+                matrix = IP_MATRIX
+                tag = "IP"
+            else:
+                matrix = OOP_MATRIX
+                tag = "OOP"
+
+            dest = write_artifact(output_dir, key, POSTFLOP_ACTIONS, matrix)
+            count += 1
+            print(f"  [{count:3d}] {tag:3s}  {key}")
+
+    print(f"\nManifest: wrote {count} artifacts to {output_dir}")
+    if skipped:
+        print(f"  Skipped: {skipped}")
+
+
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -220,10 +280,14 @@ def main():
     parser.add_argument("definition", nargs="?", help="YAML strategy definition file")
     parser.add_argument("--output-dir", required=True, help="Root output directory")
     parser.add_argument("--corpus", action="store_true", help="Build initial corpus of common spots")
+    parser.add_argument("--from-manifest", metavar="MANIFEST_JSONL",
+                        help="Build from a manifest JSONL (one artifact_key per line)")
     args = parser.parse_args()
 
     if args.corpus:
         build_corpus(args.output_dir)
+    elif args.from_manifest:
+        build_from_manifest(args.from_manifest, args.output_dir)
     elif args.definition:
         build_from_yaml(args.definition, args.output_dir)
     else:

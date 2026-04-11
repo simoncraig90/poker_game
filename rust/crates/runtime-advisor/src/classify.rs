@@ -362,13 +362,23 @@ pub fn stack_to_bucket(eff_bb: f64) -> StackBucket {
 fn classification_quality(
     pot_class:    PotClass,
     n_players:    u8,
-    stack_bucket: StackBucket,
+    _stack_bucket: StackBucket,
     rake_profile: RakeProfile,
 ) -> ClassificationQuality {
-    // Phase 1 exact coverage: SRP, 2-way, 100bb, no rake.
-    let is_exact = pot_class == PotClass::Srp
+    // Exact coverage: SRP or Limped, 2-way, no rake, any stack bucket.
+    //
+    // The stack_bucket constraint was removed in Phase 2 to allow S40/S60/S150/S200+
+    // artifacts to be served when present.  The artifact-key lookup will still miss
+    // if no artifact exists for that specific stack bucket, so widening here is safe:
+    // it only enables the EXACT *attempt*, not a guaranteed hit.
+    //
+    // Limped pots were added in Phase 3 (same gating logic: 2-way, norake).
+    //
+    // Note: board_bucket validity is enforced by the artifact_key lookup itself —
+    // a None board_bucket (preflop_unknown) will produce a key with "preflop" as
+    // the board component, which only matches if a preflop artifact actually exists.
+    let is_exact = (pot_class == PotClass::Srp || pot_class == PotClass::Limped)
         && n_players == 2
-        && stack_bucket == StackBucket::S100
         && rake_profile == RakeProfile::NoRake;
 
     if is_exact {
@@ -483,6 +493,50 @@ mod tests {
         assert_eq!(key.aggressor_pos, Some(Position::Btn));
         assert_eq!(key.n_players, 2);
         assert_eq!(key.stack_bucket, StackBucket::S100);
+        assert_eq!(quality, ClassificationQuality::Exact);
+    }
+
+    #[test]
+    fn srp_s40_is_exact() {
+        // SRP at 40bb should also be Exact quality (gate widened in Phase 2).
+        let history = vec!["4:BET_TO:250", "6:CALL"];
+        let inp = ClassifyInput {
+            active_seats: &six_seats(),
+            button_seat: 4,
+            hero_seat: 6,
+            street: Street::Flop,
+            effective_stack_bb: 40.0,
+            n_players_in_hand: 2,
+            action_history: &history,
+            board_bucket: Some(42),
+            rake_profile_str: "norake",
+            menu_version: 1,
+        };
+        let (key, quality) = classify_spot(&inp).unwrap();
+        assert_eq!(key.pot_class, PotClass::Srp);
+        assert_eq!(key.stack_bucket, StackBucket::S40);
+        assert_eq!(quality, ClassificationQuality::Exact);
+    }
+
+    #[test]
+    fn limped_pot_is_exact() {
+        // Limped pot, 2-way, norake should be Exact quality (Phase 3).
+        let history = vec!["4:CALL", "5:CALL", "6:CHECK"];
+        let inp = ClassifyInput {
+            active_seats: &six_seats(),
+            button_seat: 4,
+            hero_seat: 6,
+            street: Street::Flop,
+            effective_stack_bb: 40.0,
+            n_players_in_hand: 2,
+            action_history: &history,
+            board_bucket: Some(10),
+            rake_profile_str: "norake",
+            menu_version: 1,
+        };
+        let (key, quality) = classify_spot(&inp).unwrap();
+        assert_eq!(key.pot_class, PotClass::Limped);
+        assert_eq!(key.aggressor_pos, None);
         assert_eq!(quality, ClassificationQuality::Exact);
     }
 

@@ -1,0 +1,10 @@
+{
+  "artifact_type": "solver_strategy",
+  "version": 1,
+  "checksum_sha256": "60b04c0534852ee94d3024763ed68f288b7758282588daa07a202c9d461ff075",
+  "file_size_bytes": 166,
+  "menu_version": 1,
+  "n_actions": 3,
+  "n_hand_buckets": 12,
+  "scenario_id": "limped/flop/noagg_vs_hj_2way/s40/bb77/norake/mv1"
+}

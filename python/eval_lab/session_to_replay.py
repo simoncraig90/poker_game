@@ -282,12 +282,10 @@ def _convert_standard_hand(hand: dict, source_file: str) -> list[dict]:
         inferred["hero_stack"] = "min_of_stack_and_starting_stack"
 
         # ── action_history ───────────────────────────────────────────────
-        # CRITICAL GAP: session data does not include a full action history.
-        # We must synthesize a plausible one from the pot trajectory.
-        #
-        # For SRP detection we need at least one BET_TO from a non-hero seat.
-        # Strategy: look at the preflop street (index 0) pot size to infer
-        # whether there was a raise.
+        # Session data does not include opponent actions.  We synthesize
+        # a plausible action_history using facing_bet, call_amount, and
+        # hero preflop investment.  Preflop decisions are tagged as
+        # preflop_unknown (pot class is unknowable before hero acts).
         action_history, ah_method = _infer_action_history(
             hand, si, phase, big_blind, hero_seat
         )
@@ -484,6 +482,61 @@ def _convert_review_hand(hand: dict, source_file: str) -> list[dict]:
 
 # ─── Action history inference ────────────────────────────────────────────────
 
+# V2 thresholds for hero preflop investment (in bb).
+# Validated against pot_semantics_audit.py on 106 preflop+flop transitions.
+_INVEST_LIMP_CEIL = 2.0   # hero invested < 2bb → limped/walk/blind
+_INVEST_SRP_CEIL  = 5.0   # hero invested 2–5bb → standard open or call
+_INVEST_3BP_CEIL  = 12.0  # hero invested 5–12bb → 3-bet pot
+
+# V2 thresholds for preflop call_amount (in bb).
+# When hero faces a bet, call_amount tells us the raise size.
+_CALL_LIMP_CEIL = 1.5     # call < 1.5bb → completing vs a limp, not a raise
+_CALL_SRP_CEIL  = 4.0     # call 1.5–4bb → standard raise
+_CALL_3BP_CEIL  = 10.0    # call 4–10bb → 3-bet
+
+
+def _pick_aggressor_seat(hero_seat: int) -> int:
+    """Pick a plausible aggressor seat that is not the hero."""
+    return 3 if hero_seat == 4 else 4  # CO if hero is BTN, else BTN
+
+
+def _synth_limped(hero_seat: int) -> list[str]:
+    """Synthesize action_history for a limped pot (0 aggressive actions)."""
+    if hero_seat == 6:  # BB
+        return ["4:CALL", "5:CALL", "6:CHECK"]
+    return [f"{hero_seat}:CALL", "6:CHECK"]
+
+
+def _synth_srp(hero_seat: int, big_blind: float) -> list[str]:
+    """Synthesize action_history for an SRP (1 aggressive action)."""
+    agg = _pick_aggressor_seat(hero_seat)
+    raise_amount = int(big_blind * 2.5)
+    return [f"{agg}:BET_TO:{raise_amount}", f"{hero_seat}:CALL"]
+
+
+def _synth_3bp(hero_seat: int, big_blind: float) -> list[str]:
+    """Synthesize action_history for a 3-bet pot (2 aggressive actions)."""
+    agg = _pick_aggressor_seat(hero_seat)
+    open_amount = int(big_blind * 2.5)
+    three_bet = int(big_blind * 8)
+    return [
+        f"{agg}:BET_TO:{open_amount}",
+        f"{hero_seat}:RAISE_TO:{three_bet}",
+        f"{agg}:CALL",
+    ]
+
+
+def _synth_4bp(hero_seat: int, big_blind: float) -> list[str]:
+    """Synthesize action_history for a 4-bet+ pot (3+ aggressive actions)."""
+    agg = _pick_aggressor_seat(hero_seat)
+    return [
+        f"{agg}:BET_TO:{int(big_blind * 2.5)}",
+        f"{hero_seat}:RAISE_TO:{int(big_blind * 8)}",
+        f"{agg}:RAISE_TO:{int(big_blind * 20)}",
+        f"{hero_seat}:CALL",
+    ]
+
+
 def _infer_action_history(
     hand: dict,
     street_index: int,
@@ -493,95 +546,122 @@ def _infer_action_history(
 ) -> tuple[list[str], str]:
     """Synthesize a plausible action_history for pot class classification.
 
-    The session data does NOT contain opponent actions.  We infer the pot
-    class from the pot size at the first street.
+    V2: Uses hero preflop investment and facing_bet+call_amount instead of
+    the unreliable 'pot' field.  Preflop decisions are tagged as
+    'preflop_unknown' because pot class is not yet determined at that point.
 
     Returns (action_history, inference_method).
 
-    RISK: This is the single most unreliable field.  It determines pot_class
-    (SRP vs 3bp vs limped) which gates EXACT vs EMERGENCY routing.  If we
-    get this wrong, we'll miscount EXACT hits.
+    Signal priority:
+      1. preflop facing_bet + call_amount (what hero faces)
+      2. hero preflop investment: starting_stack - first_postflop_stack
+      3. position context (BB check = limped if no raise faced)
 
-    Mitigations:
-    - SRP is the most common case at NL10 6-max (~65% of hands)
-    - We classify based on preflop pot size relative to big blind
-    - Hands with ambiguous pot class are flagged in warnings
+    The old pot-based method is removed — pot_semantics_audit.py proved
+    the pot field can be below 1.5bb (less than blinds), making it
+    unusable for classification.
     """
+    # ── Preflop decisions: pot class is unknowable ───────────────────────
+    if phase == "PREFLOP":
+        # Hero hasn't completed preflop action yet.  The pot class depends
+        # on what hero does and what happens after, which we don't know.
+        # Return empty history (→ Limped classification in Rust) but tag
+        # distinctly so reporting can separate these from real limps.
+        return [], "preflop_unknown"
+
     streets = hand.get("streets", [])
     if not streets:
         return [], "empty_streets"
 
-    preflop = streets[0] if streets[0].get("phase", "").upper() == "PREFLOP" else None
+    # ── Find preflop street ──────────────────────────────────────────────
+    preflop = None
+    for s in streets:
+        if s.get("phase", "").upper() == "PREFLOP":
+            preflop = s
+            break
+
     if preflop is None:
         return [], "no_preflop_street"
 
-    preflop_pot = preflop.get("pot", 0)
-    pot_bb = preflop_pot / big_blind if big_blind > 0 else 0
+    # ── Signal 1: what did hero face at preflop? ─────────────────────────
+    pf_facing = preflop.get("facing_bet", False)
+    pf_call = preflop.get("call_amount", 0)
+    pf_call_bb = pf_call / big_blind if big_blind > 0 else 0
 
-    # Determine who the aggressor likely is.
-    # Convention: in SRP, the non-BB non-SB player opened.
-    # If hero is BB, aggressor is likely BTN or CO.
-    # If hero is BTN, aggressor is hero.
+    # Sanity gate: CoinPoker call_amount can be corrupt (values >> stack).
+    # If call exceeds hero's stack, the field is unreliable — skip it.
+    starting_stack_bb = hand.get("starting_stack", 0) / big_blind if big_blind > 0 else 100
+    if pf_call_bb > starting_stack_bb:
+        pf_facing = False  # treat as unreliable, fall through to investment
+        pf_call_bb = 0
 
-    # Simple heuristic based on pot size at first decision:
-    # - pot <= 3bb: limped or just blinds posted
-    # - 3bb < pot <= 10bb: single raise pot (SRP)
-    # - 10bb < pot <= 30bb: 3-bet pot
-    # - pot > 30bb: 4-bet+ pot
+    # ── Signal 2: hero's total preflop investment ────────────────────────
+    # Use the FIRST postflop street's stack to compute how much hero
+    # invested during preflop.  This reflects the actual outcome, not
+    # just what hero faced at their initial decision.
+    starting_stack = hand.get("starting_stack", 0)
+    first_postflop_stack = starting_stack  # fallback
 
-    if pot_bb <= 3.0:
-        # Limped pot or just blinds
-        # Use empty action history -> Limped classification
-        method = "limped_pot_bb_le_3"
-        if hero_seat == 6:  # BB
-            return ["4:CALL", "5:CALL", "6:CHECK"], method
-        else:
-            return [f"{hero_seat}:CALL", "6:CHECK"], method
+    for s in streets:
+        sp = s.get("phase", "").upper()
+        if sp in ("FLOP", "TURN", "RIVER"):
+            first_postflop_stack = s.get("stack", starting_stack)
+            break
 
-    if pot_bb <= 10.0:
-        # SRP: one raise + one call
-        method = "srp_pot_bb_3_to_10"
-        # Pick an aggressor seat that is NOT the hero.
-        # Use BTN (seat 4) as default aggressor unless hero is BTN.
-        if hero_seat == 4:
-            agg_seat = 3  # CO
-        else:
-            agg_seat = 4  # BTN
+    hero_invest = max(0, starting_stack - first_postflop_stack)
+    hero_invest_bb = hero_invest / big_blind if big_blind > 0 else 0
 
-        raise_amount = int(big_blind * 2.5)  # standard open
-        return [
-            f"{agg_seat}:BET_TO:{raise_amount}",
-            f"{hero_seat}:CALL",
-        ], method
+    # ── Classification logic ─────────────────────────────────────────────
+    #
+    # Priority: facing_bet signal first (direct observation), then
+    # investment (outcome-based), then position fallback.
+    #
+    # When hero faces a raise (call_amount >= 1.5bb), the pot is at
+    # least SRP from villain's side.  Hero may have then 3-bet (invest
+    # will be higher), so investment is the tiebreaker.
 
-    if pot_bb <= 30.0:
-        # 3-bet pot
-        method = "3bp_pot_bb_10_to_30"
-        if hero_seat == 4:
-            agg_seat = 3
-        else:
-            agg_seat = 4
+    if pf_facing and pf_call_bb >= _CALL_3BP_CEIL:
+        # Hero faces a 4-bet sized call → 4bp
+        return _synth_4bp(hero_seat, big_blind), "v2_facing_4bet"
 
-        open_amount = int(big_blind * 2.5)
-        three_bet = int(big_blind * 8)
-        return [
-            f"{agg_seat}:BET_TO:{open_amount}",
-            f"{hero_seat}:RAISE_TO:{three_bet}",
-            f"{agg_seat}:CALL",
-        ], method
+    if pf_facing and pf_call_bb >= _CALL_SRP_CEIL:
+        # Hero faces a 3-bet
+        if hero_invest_bb >= _INVEST_3BP_CEIL:
+            return _synth_4bp(hero_seat, big_blind), "v2_facing_3bet_invest_4bp"
+        return _synth_3bp(hero_seat, big_blind), "v2_facing_3bet"
 
-    # 4bet+ pot
-    method = "4bp_pot_bb_gt_30"
-    if hero_seat == 4:
-        agg_seat = 3
-    else:
-        agg_seat = 4
-    return [
-        f"{agg_seat}:BET_TO:{int(big_blind * 2.5)}",
-        f"{hero_seat}:RAISE_TO:{int(big_blind * 8)}",
-        f"{agg_seat}:RAISE_TO:{int(big_blind * 20)}",
-        f"{hero_seat}:CALL",
-    ], method
+    if pf_facing and pf_call_bb >= _CALL_LIMP_CEIL:
+        # Hero faces a standard raise (SRP)
+        if hero_invest_bb >= _INVEST_SRP_CEIL:
+            # Hero 3-bet after facing a raise
+            return _synth_3bp(hero_seat, big_blind), "v2_facing_raise_invest_3bp"
+        return _synth_srp(hero_seat, big_blind), "v2_facing_raise_srp"
+
+    if pf_facing and pf_call_bb < _CALL_LIMP_CEIL:
+        # Hero faces a limp (call_amount is completing blind vs limper)
+        if hero_invest_bb >= _INVEST_SRP_CEIL:
+            # Hero raised after facing a limp → becomes SRP
+            return _synth_srp(hero_seat, big_blind), "v2_facing_limp_invest_srp"
+        return _synth_limped(hero_seat), "v2_facing_limp"
+
+    # ── Not facing a bet: open opportunity or BB check ───────────────────
+    # Hero was first to act or in BB with only limpers.
+    # Use investment to determine what hero actually did.
+
+    if hero_invest_bb >= _INVEST_3BP_CEIL:
+        return _synth_4bp(hero_seat, big_blind), "v2_nofacing_invest_4bp"
+
+    if hero_invest_bb >= _INVEST_SRP_CEIL:
+        return _synth_3bp(hero_seat, big_blind), "v2_nofacing_invest_3bp"
+
+    if hero_invest_bb >= _INVEST_LIMP_CEIL:
+        # Hero invested 2-5bb without facing a bet: hero opened and got
+        # called, or called a limp-raise.  Either way the pot is SRP-like.
+        return _synth_srp(hero_seat, big_blind), "v2_nofacing_invest_srp"
+
+    # Hero invested < 2bb and wasn't facing a bet.
+    # This is a limped pot (BB checked, SB completed, or hero limped).
+    return _synth_limped(hero_seat), "v2_nofacing_invest_limped"
 
 
 # ─── Legal actions inference ─────────────────────────────────────────────────
