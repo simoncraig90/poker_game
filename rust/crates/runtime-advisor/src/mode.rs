@@ -591,22 +591,24 @@ jam_threshold_of_stack: 0.95
     // ── Structural tests (adapted from previous suite) ───────────────────────
 
     #[test]
-    fn approximate_quality_skips_exact() {
+    fn non_exact_quality_skips_exact() {
         let (_pdir, prior) = build_prior(0.50);
         let (adir, _qdir, router) = make_router(prior);
 
         // Write artifact that would match if quality were Exact.
-        // But 3bp gives Approximate quality, so EXACT is never tried.
+        // But 4bp gives Unknown quality, so EXACT is never tried.
         write_artifact(
             adir.path(),
-            "3bp/flop/co_vs_btn_2way/s100/bb10/norake/mv1",
+            "4bp/flop/btn_vs_btn_2way/s100/bb10/norake/mv1",
             &test_actions(),
             &test_matrix(),
         );
 
         let mut req = make_request();
+        // 4bp: open, 3bet, 4bet, call = 3 aggressive actions.
         req.action_history = vec![
-            "4:BET_TO:250".into(), "6:RAISE_TO:750".into(), "4:CALL".into(),
+            "4:BET_TO:250".into(), "6:RAISE_TO:750".into(),
+            "4:RAISE_TO:2000".into(), "6:CALL".into(),
         ];
         req.hero_seat = 4;
         req.board_bucket = Some(10);

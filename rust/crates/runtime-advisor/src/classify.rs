@@ -282,10 +282,13 @@ fn postflop_order(pos: Position) -> u8 {
 
 // ─── Pot class classification ─────────────────────────────────────────────────
 
-/// Count aggressive preflop actions and identify the final aggressor seat.
+/// Count aggressive preflop actions and identify the original opener seat.
 ///
 /// A BET_TO or RAISE_TO action in the preflop action_history increments the
-/// aggression counter. The seat of the last such action is the aggressor.
+/// aggression counter. The seat of the **first** such action is the aggressor
+/// (the original opener), not the last. This ensures that in 3bp/4bp pots the
+/// artifact key describes the opener-vs-hero matchup, giving correct IP/OOP
+/// derivation. For SRP there is only one aggression so first == last.
 ///
 /// Action format: "SEAT:ACTION" or "SEAT:ACTION:AMOUNT"
 fn classify_pot(
@@ -293,7 +296,7 @@ fn classify_pot(
     _active_seats: &[u8],
 ) -> Result<(PotClass, Option<u8>), ClassifyError> {
     let mut n_aggressive = 0u32;
-    let mut last_aggressor_seat: Option<u8> = None;
+    let mut first_aggressor_seat: Option<u8> = None;
     let mut had_caller_before_squeeze = false;
     let mut squeeze_candidate = false;
 
@@ -315,7 +318,9 @@ fn classify_pot(
                     squeeze_candidate = true;
                 }
                 n_aggressive += 1;
-                last_aggressor_seat = Some(seat);
+                if first_aggressor_seat.is_none() {
+                    first_aggressor_seat = Some(seat);
+                }
                 had_caller_before_squeeze = false;
             }
             "CALL" => {
@@ -344,7 +349,7 @@ fn classify_pot(
         }
     };
 
-    Ok((pot_class, last_aggressor_seat))
+    Ok((pot_class, first_aggressor_seat))
 }
 
 // ─── Stack bucket ─────────────────────────────────────────────────────────────
@@ -365,7 +370,7 @@ fn classification_quality(
     _stack_bucket: StackBucket,
     rake_profile: RakeProfile,
 ) -> ClassificationQuality {
-    // Exact coverage: SRP or Limped, 2-way, no rake, any stack bucket.
+    // Exact coverage: SRP, Limped, or ThreeBp, 2-way, no rake, any stack bucket.
     //
     // The stack_bucket constraint was removed in Phase 2 to allow S40/S60/S150/S200+
     // artifacts to be served when present.  The artifact-key lookup will still miss
@@ -373,11 +378,18 @@ fn classification_quality(
     // it only enables the EXACT *attempt*, not a guaranteed hit.
     //
     // Limped pots were added in Phase 3 (same gating logic: 2-way, norake).
+    // ThreeBp was added in Phase 12 (same gating logic).
+    //
+    // FourBp is NOT included: the current strategy/menu assumptions (check/cbet_small/
+    // cbet_medium) are wrong for low-SPR 4bp play. Defer until the strategy matrix
+    // is redesigned for ~20bb SPR spots with check/jam and bet_large/jam actions.
     //
     // Note: board_bucket validity is enforced by the artifact_key lookup itself —
     // a None board_bucket (preflop_unknown) will produce a key with "preflop" as
     // the board component, which only matches if a preflop artifact actually exists.
-    let is_exact = (pot_class == PotClass::Srp || pot_class == PotClass::Limped)
+    let is_exact = (pot_class == PotClass::Srp
+                 || pot_class == PotClass::Limped
+                 || pot_class == PotClass::ThreeBp)
         && n_players == 2
         && rake_profile == RakeProfile::NoRake;
 
@@ -542,7 +554,7 @@ mod tests {
 
     #[test]
     fn three_bet_pot() {
-        // BTN opens, BB 3bets, BTN calls
+        // BTN opens, BB 3bets, BTN calls — hero is BTN (the opener who called)
         let history = vec!["4:BET_TO:250", "6:RAISE_TO:750", "4:CALL"];
         let inp = ClassifyInput {
             active_seats: &six_seats(),
@@ -559,8 +571,36 @@ mod tests {
         let (key, quality) = classify_spot(&inp).unwrap();
         assert_eq!(key.pot_class, PotClass::ThreeBp);
         assert_eq!(key.hero_pos, Position::Btn);
-        // 3bp, not exact coverage in Phase 1
-        assert_eq!(quality, ClassificationQuality::Approximate);
+        // Aggressor is the FIRST raiser (opener = BTN seat 4), not the 3-bettor.
+        assert_eq!(key.aggressor_pos, Some(Position::Btn));
+        // 3bp is Exact quality as of Phase 12.
+        assert_eq!(quality, ClassificationQuality::Exact);
+    }
+
+    #[test]
+    fn three_bet_pot_aggressor_is_opener() {
+        // CO opens (seat 3), BB 3-bets (seat 6), CO calls — hero is BB (the 3-bettor)
+        // Aggressor should be CO (the original opener), not BB (the 3-bettor).
+        // This gives key "3bp/.../co_vs_bb_2way/..." with correct IP/OOP.
+        let history = vec!["3:BET_TO:250", "6:RAISE_TO:750", "3:CALL"];
+        let inp = ClassifyInput {
+            active_seats: &six_seats(),
+            button_seat: 4,
+            hero_seat: 6,
+            street: Street::Flop,
+            effective_stack_bb: 97.5,
+            n_players_in_hand: 2,
+            action_history: &history,
+            board_bucket: Some(10),
+            rake_profile_str: "norake",
+            menu_version: 1,
+        };
+        let (key, quality) = classify_spot(&inp).unwrap();
+        assert_eq!(key.pot_class, PotClass::ThreeBp);
+        assert_eq!(key.hero_pos, Position::Bb);
+        // Aggressor = CO (the opener, seat 3), NOT BB (the 3-bettor).
+        assert_eq!(key.aggressor_pos, Some(Position::Co));
+        assert_eq!(quality, ClassificationQuality::Exact);
     }
 
     #[test]

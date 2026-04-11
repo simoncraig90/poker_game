@@ -40,14 +40,16 @@ See `project_coinpoker_unity.md` in memory for the full session-by-session log o
 - [x] **CoinPoker click adapter Phase 3 IL BUILT** (2026-04-08 session 11) — `--enable-phase3` flag in patcher. `PBClient.phase3.dll` ready (130 instructions, 3 EHs, 5 locals). Sentinel-file format (one file per ActionId). NOT deployed — gated on operator-supervised single-hand live test.
 
 ### Done (Rust runtime-advisor — 2026-04-11)
-- [x] **Rust EXACT + EMERGENCY baseline** — full pipeline: action contract, classify, artifact_key, legalizer, integrity + quarantine, emergency range prior, strategy binary format v1, EXACT routing, conservative EMERGENCY fallback, trust scoring. 156 Rust tests across 4 crates.
+- [x] **Rust EXACT + EMERGENCY baseline** — full pipeline: action contract, classify, artifact_key, legalizer, integrity + quarantine, emergency range prior, strategy binary format v1, EXACT routing, conservative EMERGENCY fallback, trust scoring. 118 Rust tests across 4 crates.
 - [x] **advisor-cli binary** — JSON stdin/stdout bridge callable from Python. JSONL mode, per-request latency measurement.
-- [x] **Strategy artifact builder** — `python/scripts/build_exact_artifact.py` generates strategy.bin + manifest from YAML or builds initial corpus (`--corpus`). 28 artifacts for common SRP spots (3 positions x 8 board buckets + 4 preflop).
-- [x] **Eval lab** — `baseline_replay_runner.py` (synthetic + file-based replay), `hit_rate_report.py` (EXACT/EMERGENCY rates, spot class breakdown, snap rate, trust), `latency_bench.py` (P50/P95/P99 by mode).
+- [x] **Strategy artifact builder** — `python/scripts/build_exact_artifact.py` generates strategy.bin + manifest from YAML or `--from-manifest` JSONL batch mode. 406 artifacts across SRP, limped, and 3bp families.
+- [x] **Eval lab** — `baseline_replay_runner.py` (synthetic + file-based replay), `hit_rate_report_v2.py` (EXACT/EMERGENCY rates, spot class breakdown, snap rate, trust), `latency_bench.py` (P50/P95/P99 by mode).
 - [x] **Mode router** — `python/advisor_service/mode_router.py` subprocess bridge with structured logging and accumulated stats.
-- [x] **First baseline numbers**: EXACT 57%, EMERGENCY 43% on synthetic hands. EXACT mean 1.2ms, EMERGENCY mean 66us. Zero errors, zero illegal outputs.
 - [x] **Session-to-replay converter** — `python/eval_lab/session_to_replay.py`. Converts session JSONL (Unibet + CoinPoker + review formats) to `RecommendRequest`-shaped replay inputs. Handles position→seat mapping, big-blind inference, action-history synthesis, legal-action inference, board-bucket computation. Every inferred field explicitly tagged in `inference_metadata`. `--validate --sample N` mode with 10 structural checks. `--extract-requests` mode for the replay runner.
-- [x] **First real-data baseline (733 hands → 1143 decisions)**: EXACT 3.2%, EMERGENCY 96.8%. Zero errors, zero illegal outputs. Dominant EMERGENCY source: limped pots (58.4%). SRP hits 9.5% EXACT. 230 "exact quality" EMERGENCY hits (SRP spots that missed on board_bucket or stack_bucket) are the most immediately buildable coverage gaps.
+- [x] **Phase 11: SRP turn + river exact** — 15 SRP turn artifacts (35 decisions recovered) + 17 SRP river artifacts + 8 limped/SRP stragglers. 84.4% → 93.7% guided.
+- [x] **Phase 12: bbunk fix + 3bp exact** — Fixed incomplete-board rows in session_to_replay.py (7 garbage decisions removed). Fixed classify_pot to return first aggressor (opener) not last, giving correct IP/OOP for 3bp keys. Widened classification gate for ThreeBp. Built 26 3bp artifacts. 93.7% → 96.6% guided. Frozen as production baseline.
+- [x] **Phase 12 frozen baseline**: 1097/1136 = 96.6% guided, 502 EXACT, 39 EMERGENCY (all 4bp), 0.876 mean trust, 406 artifacts, zero errors. Checksums in `python/eval_lab/baselines/PHASE12_FROZEN.md`.
+- [x] **Phase 13: 4bp family design** — SPR analysis of 39 4bp decisions (mean SPR 1.0, 37/39 < 2.0). Designed 2-action [check, jam] menu for low-SPR play. Verified legalizer snap paths. Design doc at `docs/4BP_FAMILY_DESIGN.md`. Ready for Phase 14 implementation.
 
 ### In Progress
 - [ ] Fix CHECK when need to CALL (preflop: base advisor returns CHECK)

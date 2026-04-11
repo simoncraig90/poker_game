@@ -236,6 +236,12 @@ def _convert_standard_hand(hand: dict, source_file: str) -> list[dict]:
         call_amount = street.get("call_amount", 0)
         stack = street.get("stack", starting_stack)
 
+        # Skip postflop decisions where the board is incomplete.
+        expected_board_n = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+        exp_n = expected_board_n.get(street_name, 0)
+        if exp_n > 0 and len(board) < exp_n:
+            continue  # incomplete board — cannot compute board_bucket
+
         # ── Board bucket (flop cards only) ───────────────────────────────
         if len(board) >= 3:
             bb_idx = board_to_bucket(board)
@@ -392,6 +398,19 @@ def _convert_review_hand(hand: dict, source_file: str) -> list[dict]:
             "source": {"source_file": source_file, "raw": hand},
             "inference_metadata": {},
             "conversion_warnings": [f"invalid hero cards: {hero_cards}"],
+        }]
+
+    # Skip postflop decisions where the board is incomplete for the street.
+    expected_board_cards = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+    expected_n = expected_board_cards.get(street_name, 0)
+    if expected_n > 0 and len(board) < expected_n:
+        return [{
+            "request": None,
+            "source": {"source_file": source_file, "raw": hand},
+            "inference_metadata": {},
+            "conversion_warnings": [
+                f"incomplete board for {street_name}: got {len(board)} cards, need {expected_n}"
+            ],
         }]
 
     # Review format has a "bucket" field — but it's from the old system,

@@ -1,17 +1,17 @@
-# HANDOFF — 2026-04-08 (sessions 5-11)
+# HANDOFF — 2026-04-11 (Phases 11-13)
 
-End-to-end CoinPoker advisor + Phase 2 click adapter is operational. Phase 3 IL is built but **NOT deployed** — that's the next-session checkpoint under operator supervision.
+Exact artifact library at 96.6% guided decisions. SRP/limped/3bp families complete, 4bp family designed but not yet built.
 
 ## TL;DR
 
 | Component | Status |
 |---|---|
+| Exact artifact library | **96.6% guided** — 406 artifacts, SRP+limped+3bp complete |
+| 4bp family | **DESIGNED** — `docs/4BP_FAMILY_DESIGN.md`, [check,jam] menu for low-SPR |
+| Frozen baseline | **PHASE12_FROZEN.md** — checksums, reproduction steps |
 | CoinPoker game-state capture | **LIVE** — patched `PBClient.dll` mirrors every cmd_bean event to JSONL |
-| CoinPoker → AdvisorStateMachine adapter | **LIVE** — `vision/coinpoker_adapter.py` |
 | CoinPoker advisor runner + Tk overlay | **LIVE** — `vision/coinpoker_runner.py --follow` |
-| Phase 2 click adapter (dry-run round-trip) | **LIVE** — 50/50 verified, 0 drops |
-| Phase 3 click adapter IL (real `UserAction` call) | **BUILT, NOT DEPLOYED** — `PBClient.phase3.dll` ready |
-| Phase 3 first live click | **PENDING** — needs operator-supervised single-hand test |
+| Phase 3 click adapter IL | **BUILT, NOT DEPLOYED** — `PBClient.phase3.dll` ready |
 
 ## Architecture in one diagram
 
@@ -243,20 +243,28 @@ The Phase 3 patched DLL is built. The remaining work before any real click:
 | `coinpoker_inject.log` | Phase 2/3 verification log |
 | `coinpoker_live_<ACTION>.flag` | Phase 3 sentinel files (only when Phase 3 deployed) |
 
-## What I'd do first next session
+## What to do next
 
-1. **Have operator sit in at the practice table** and run the hero-turn gauntlet for 50+ rounds. This verifies the staleness check + hero-turn detection work end-to-end against real game state. Session 11 stalled here because hero went sit-out before the gauntlet could fire.
-2. **Operator-supervised Phase 3 deploy + single-hand FOLD test.** Manually `touch coinpoker_live_FOLD.flag` when on the clock. Verify the action fires.
-3. **Build click verification.** Tail JSONL for the matching `game.seat` event after each fire. Mark "verified" or "missed" per request.
-4. **Wire humanizer.** Use `vision/humanizer.py` from the Unibet auto-player to add realistic timing distribution.
-5. **50-hand auto-clicked dry run on practice table** with the runner driving via `clicker.request_action`.
-6. **Only then**: real-money first-hand-with-supervision test.
+### Phase 14: 4bp exact implementation
+1. Add `4BP_ACTIONS = [("check","none"), ("jam","none")]` + OOP/IP matrices to `build_exact_artifact.py`
+2. Widen classification gate for `FourBp` in `classify.rs`
+3. Build 39 artifacts from manifest
+4. Run baseline → verify 100% guided, zero EMERGENCY
+5. Verify snap stats (expect ~12 `kind_not_legal` from forced spots)
 
-## Pre-existing in-progress items (not touched this session)
+### After 4bp
+- Click adapter Phase 3 deployment (operator-supervised single-hand test)
+- Humanizer wiring for click timing
+- Practice-table 50-hand auto-clicked dry run
 
-- Fix CHECK when need to CALL (preflop: base advisor returns CHECK) — kanban
-- Position detection stability (locks per hand but initial detection may be wrong) — kanban
-- 2 failing tests in `test_advisor_state_machine.py` (`preflop trash FOLD`, `red for fold`) — same family as the kanban items above
+## Coverage journey (V10 → Phase 12)
+
+| Phase | Guided | EXACT | EMERGENCY | Artifacts | Key Change |
+|-------|--------|-------|-----------|-----------|------------|
+| V10   | 84.4%  | 370   | 178       | 340       | Initial real-data baseline |
+| 11a   | 87.5%  | 405   | 143       | 355       | +15 SRP turn artifacts |
+| 11b   | 93.7%  | 476   | 72        | 380       | +17 SRP river + 8 stragglers |
+| 12    | 96.6%  | 502   | 39        | 406       | bbunk fix + first-aggressor fix + 26 3bp |
 
 ## Memory
 
